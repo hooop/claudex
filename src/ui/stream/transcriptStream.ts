@@ -63,8 +63,11 @@ function verdictText(signal: Signal, from: AgentId): string | null {
   switch (signal) {
     case "continue":
       return `↳ poursuit · passe la main à ${AGENT_STYLE[other(from)].badge}`;
+    // Says the rule rather than predicting the outcome: the renderer is called
+    // before the scheduler has compared both signals, so it cannot know whether
+    // this turn is the one that closes the debate.
     case "consensus":
-      return "✓ d'accord, plus rien à ajouter";
+      return "✓ d'accord — le débat se clôt quand les deux l'ont signalé";
     case "wait-human":
       return "⏸ attend ta réponse — débat en pause";
     // This used to be silent, back when a non-topic closed the session and the

@@ -155,7 +155,7 @@ describe("TranscriptStream", () => {
     });
 
     it("distingue un accord d'une attente humaine", () => {
-      expect(verdictOf("claude", "consensus")).toContain("✓ d'accord, plus rien à ajouter");
+      expect(verdictOf("claude", "consensus")).toContain("le débat se clôt quand les deux");
       expect(verdictOf("codex", "wait-human")).toContain("⏸ attend ta réponse");
     });
 
