@@ -67,10 +67,11 @@ function verdictText(signal: Signal, from: AgentId): string | null {
       return "✓ d'accord, plus rien à ajouter";
     case "wait-human":
       return "⏸ attend ta réponse — débat en pause";
-    // The rejection is already told by the return to the welcome screen, and
-    // this turn is deliberately left out of the archived transcript.
+    // This used to be silent, back when a non-topic closed the session and the
+    // return to the welcome screen said it. The conversation stays open now, so
+    // the turn has to say what it decided and what happens next like any other.
     case "no-topic":
-      return null;
+      return "✕ aucun sujet à débattre — le débat démarrera sur ton prochain message";
     case null:
       return "⚠ aucune décision signalée";
   }

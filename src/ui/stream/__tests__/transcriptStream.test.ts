@@ -163,6 +163,15 @@ describe("TranscriptStream", () => {
       expect(verdictOf("claude", null)).toContain("⚠ aucune décision signalée");
     });
 
+    // Muet à l'origine, quand un non-sujet fermait la session : le retour à
+    // l'accueil le disait. La conversation reste ouverte désormais, donc ce
+    // tour doit annoncer sa décision et la suite comme tous les autres.
+    it("annonce qu'il n'y a pas de sujet, et ce qui va se passer", () => {
+      const verdict = verdictOf("claude", "no-topic");
+      expect(verdict).toContain("✕ aucun sujet à débattre");
+      expect(verdict).toContain("prochain message");
+    });
+
     it("reste muet sur la synthèse, qui ne décide rien", () => {
       const { stream, plain } = harness();
       const e = entry({ from: "system", kind: "summary" });
