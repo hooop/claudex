@@ -1,4 +1,4 @@
-import { Box, Static, Text, useInput, useStdout } from "ink";
+import { Box, Text, useInput, useStdout } from "ink";
 import chalk from "chalk";
 import { useCallback, useEffect, useRef, useState } from "react";
 import wrapAnsi from "wrap-ansi";
@@ -24,7 +24,6 @@ import {
   DynamicFooter,
   footerRows,
   inputBarMaxRows,
-  pinnedFooterHeight,
   type FooterSurfaces,
 } from "./components/DynamicFooter.js";
 import { DEBATE_COMMANDS } from "./components/CommandPalette.js";
@@ -54,8 +53,8 @@ import { TranscriptStream, type TailView } from "./stream/transcriptStream.js";
  *
  * That split is the whole design. Scrolling, selection and copy stay the
  * terminal's, and a fifty-round debate costs no more to render than the first
- * one. Only the empty space before the first screen fills is temporarily part
- * of Ink's frame; afterwards the live area is seven rows again.
+ * one. The live area is bounded to seven rows at all times — deliberately,
+ * including at startup: see the footer height below.
  */
 export function DebateView(props: {
   session: DebateSession;
@@ -83,11 +82,6 @@ export function DebateView(props: {
     columns: stdout?.columns ?? 80,
     terminalRows: stdout?.rows ?? 24,
   }));
-  const [{ permanentRows, staticBlocks }, setPinnedFrame] = useState<PinnedFrame>(() => ({
-    permanentRows: 0,
-    staticBlocks: [],
-  }));
-  const [pinnedOutput, setPinnedOutput] = useState(true);
   const [tail, setTail] = useState<TailView | null>(null);
   const [phase, setPhase] = useState<Phase>(session.phase);
   const [thinkingAgent, setThinkingAgent] = useState<AgentId | null>(null);
@@ -106,9 +100,6 @@ export function DebateView(props: {
   );
 
   const streamRef = useRef<TranscriptStream | null>(null);
-  const permanentRowsRef = useRef(0);
-  const pinnedOutputRef = useRef(true);
-  const staticBlockIdRef = useRef(0);
   const disposingRef = useRef(false);
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Set right before sending an /implement instruction to a specific agent,
@@ -124,35 +115,22 @@ export function DebateView(props: {
   }, []);
 
   /**
-   * Ink's Static output is used only while the transcript is shorter than the
-   * viewport. It lets permanent lines advance from the top while the shrinking
-   * live area keeps the prompt at the bottom. Once the first screen is full,
-   * writes go straight back to Ink's stdout bridge and retain the original
-   * append-only, six-row renderer.
+   * Every permanent line goes straight to Ink's stdout bridge.
+   *
+   * This deliberately does NOT use Ink's `<Static>`, even for the first screen
+   * where it would let output advance from the top a little more smoothly.
+   *
+   * Ink 5 and 6 recorded the `<Static>` element on their root node and never
+   * cleared that reference when it unmounted, so once this screen closed — a
+   * rejected topic, `/new` — every later frame read the dead node's layout, got
+   * width 0 with an undefined height, and Ink allocated one row per line for
+   * 2^65 rows. The process died in under a second. Ink 7 fixes that and the
+   * project runs on Ink 7, so bringing `<Static>` back would be safe; it is
+   * simply not worth the state it costs. See limits.md.
    */
   const writePermanent = useCallback(
     (data: string) => {
-      const addedRows = outputRows(data, stdout?.columns ?? 80);
-      if (addedRows === 0) return;
-
-      const wasPinned = pinnedOutputRef.current && !disposingRef.current;
-      const nextRows = permanentRowsRef.current + addedRows;
-      permanentRowsRef.current = nextRows;
-
-      if (wasPinned) {
-        const block = {
-          id: staticBlockIdRef.current++,
-          text: staticBlockText(data),
-        };
-        // One state update keeps the new Static block and the matching spacer
-        // retraction in the same Ink commit.
-        setPinnedFrame((frame) => ({
-          permanentRows: nextRows,
-          staticBlocks: [...frame.staticBlocks, block],
-        }));
-        return;
-      }
-
+      if (outputRows(data, stdout?.columns ?? 80) === 0) return;
       write(data);
     },
     [stdout, write],
@@ -167,25 +145,15 @@ export function DebateView(props: {
       });
     };
 
-    // Ink registered its own listener before this component mounted. Running
-    // ours first lets React synchronously shrink the legacy Ink tree before
-    // Ink measures it; otherwise a resize during the tall startup frame can
-    // enter Ink's `clearTerminal` path, whose 3J sequence erases scrollback.
+    // Ours runs before Ink's own listener so React has shrunk the tree by the
+    // time Ink measures it. The live area is bounded anyway, so this is now
+    // belt-and-braces rather than the only thing standing between a resize and
+    // an erased scrollback.
     stdout.prependListener("resize", onResize);
     return () => {
       stdout.off("resize", onResize);
     };
   }, [stdout]);
-
-  useEffect(() => {
-    if (!pinnedOutput || permanentRows < pinningThreshold(terminalRows)) return;
-
-    // Static children are flushed synchronously by Ink during the commit which
-    // triggered this effect. Switching the writer afterwards preserves ordering
-    // between the last bootstrapped block and the first direct append.
-    pinnedOutputRef.current = false;
-    setPinnedOutput(false);
-  }, [permanentRows, pinnedOutput, terminalRows]);
 
   useEffect(() => {
     disposingRef.current = false;
@@ -483,16 +451,20 @@ export function DebateView(props: {
   };
   const maxInputRows = inputBarMaxRows(footerSurfaces);
   const rows = footerRows(footerSurfaces);
-  const preferredFooterHeight = pinnedOutput
-    ? pinnedFooterHeight(terminalRows, permanentRows)
-    : Math.min(MAX_DYNAMIC_ROWS, Math.max(1, terminalRows - 1));
+  // Never taller than the bounded live area, and always read from the
+  // terminal's *live* height rather than state.
+  //
+  // Claudex used to draw a full-height frame while the first screen filled, so
+  // the prompt sat on the last row. Ink clears the whole terminal — scrollback
+  // included — as soon as a previous frame was taller than the current viewport
+  // (`shouldClearTerminalForFrame`, `wasOverflowing`). Shrinking the window
+  // during those first seconds therefore destroyed the transcript this design
+  // exists to preserve. Three seconds of nicer layout is not worth that.
+  const liveRows = stdout?.rows ?? terminalRows;
+  const preferredFooterHeight = Math.min(MAX_DYNAMIC_ROWS, Math.max(1, liveRows - 1));
 
   return (
     <>
-      <Static items={staticBlocks}>
-        {(block) => <Text key={block.id}>{block.text}</Text>}
-      </Static>
-
       <DynamicFooter
         columns={columns}
         terminalRows={terminalRows}
@@ -591,16 +563,6 @@ export function DebateView(props: {
   );
 }
 
-interface StaticBlock {
-  id: number;
-  text: string;
-}
-
-interface PinnedFrame {
-  permanentRows: number;
-  staticBlocks: StaticBlock[];
-}
-
 /** Number of physical terminal rows represented by a writer block. */
 export function outputRows(data: string, columns: number): number {
   if (data === "") return 0;
@@ -616,19 +578,6 @@ export function outputRows(data: string, columns: number): number {
     );
 }
 
-const ZERO_WIDTH_SPACE = "\u200b";
-
-/** Text handed to Ink Static, preserving even a block containing one blank row. */
-export function staticBlockText(data: string): string {
-  const withoutFinalNewline = data.endsWith("\n") ? data.slice(0, -1) : data;
-  // Ink trims spaces from every rendered row and deliberately ignores a Static
-  // output equal to "\n". U+200B survives that trim without occupying a column.
-  return withoutFinalNewline === "" ? ZERO_WIDTH_SPACE : withoutFinalNewline;
-}
-
-function pinningThreshold(terminalRows: number): number {
-  return Math.max(0, terminalRows - 1 - MAX_DYNAMIC_ROWS);
-}
 
 function bannerFor(
   consensusReached: boolean,

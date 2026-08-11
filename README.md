@@ -13,7 +13,7 @@ Un terminal, un débat structuré entre Claude Code et Codex, et toi qui arbitre
 - Tu peux intervenir à tout moment : message aux deux agents, ou ciblé sur l'un des deux.
 - Tu peux changer le modèle de l'un ou l'autre en cours de session.
 - Les demandes d'autorisation d'outil de Claude Code s'affichent dans l'interface et attendent ta décision.
-- Le débat s'écrit dans le terminal comme une sortie normale : le scroll, la sélection et le copier-coller restent ceux de ton émulateur, et rien de déjà affiché n'est jamais redessiné. La première intervention remplit l'écran depuis le haut tandis que la saisie reste en bas ; l'espace vide initial se résorbe ensuite et le renderer redevient un pied de page de six lignes au plus. Les réponses Claude et Codex arrivent par vrais deltas. Commandes et outils sont résumés sur l'unique ligne de statut, sans leur sortie détaillée.
+- Le débat s'écrit dans le terminal comme une sortie normale : le scroll, la sélection et le copier-coller restent ceux de ton émulateur, et rien de déjà affiché n'est jamais redessiné. La zone vive est bornée à sept lignes en permanence, y compris au démarrage — c'est délibéré : une trame aussi haute que le terminal amène Ink à tout effacer, scrollback compris, dès que la fenêtre rétrécit. Les réponses Claude et Codex arrivent par vrais deltas. Commandes et outils sont résumés sur l'unique ligne de statut, sans leur sortie détaillée.
 - Mémoire de projet persistante (`.claudex/memory/`) : décisions actées, devlog des sessions, limites connues — lue automatiquement par Claude Code (`CLAUDE.md`) et par Codex (`AGENTS.md`) à chaque session.
 - `/new`, `/quit` et Ctrl+C utilisent un arrêt quiescent : les tours sont annulés, les adaptateurs réellement arrêtés, puis seulement l'instantané stable est archivé. Un échec conserve l'interface et se reprend avec `/retry`.
 
@@ -49,7 +49,7 @@ elles sont courtes et `CLAUDE.md` comme `AGENTS.md` les référencent.
 
 ## Prérequis
 
-- Node.js 20 ou plus récent.
+- Node.js 22 ou plus récent (exigé par Ink 7).
 - **Claude Code** installé et authentifié (commande `claude` disponible).
 - **Codex CLI** installé et authentifié (commande `codex` disponible).
 - Un vrai terminal interactif : Claudex refuse de démarrer sans TTY.

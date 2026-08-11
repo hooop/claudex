@@ -21,6 +21,9 @@ function fakeTerminal() {
   const inputQueue: string[] = [];
   const output: string[] = [];
   const stdout = Object.assign(new EventEmitter(), {
+    // Ink 7 ne dessine de trame que si la sortie est un vrai terminal
+    // (`interactive` = !CI && stdout.isTTY). Sans ce drapeau, il n'écrit rien.
+    isTTY: true,
     columns: 80,
     rows: 24,
     write: (chunk: string) => {
@@ -84,7 +87,9 @@ function mount(
 async function press(terminal: ReturnType<typeof fakeTerminal>, input: string): Promise<void> {
   await act(async () => {
     terminal.pushInput(input);
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    // Ink 7 régule ses rendus (`renderThrottleMs`, dérivé de maxFps) : une trame
+    // n'est plus écrite dans le même tour de boucle que la frappe.
+    await new Promise((resolve) => setTimeout(resolve, 60));
   });
 }
 
@@ -185,7 +190,9 @@ describe("InputBar — navigation contextuelle", () => {
     const terminal = mount();
     await ready(terminal);
 
-    const frame = terminal.output.join("").replace(/\n$/, "");
+    // Ink 7 ouvre chaque trame par une séquence de mise à jour synchronisée :
+    // on retire l'ANSI avant de compter, sinon elle compte comme une ligne.
+    const frame = terminal.output.join("").replace(ANSI_SEQUENCE, "").replace(/\n$/, "");
     const lines = frame.split("\n");
     expect(lines).toHaveLength(INPUT_BAR_MIN_ROWS);
     expect(lines[0]).not.toContain("‣");

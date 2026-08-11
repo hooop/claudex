@@ -16,9 +16,8 @@ import { DebateSession } from "../../orchestrator/session.js";
 import type { AgentResult } from "../../orchestrator/types.js";
 import type { AgentId } from "../../types.js";
 import { MAX_DYNAMIC_ROWS } from "../theme.js";
-import { bannerLines, DebateView, outputRows, staticBlockText } from "../DebateView.js";
+import { bannerLines, DebateView, outputRows } from "../DebateView.js";
 import { getHeaderAnimation, HEADER_ROWS, headerFrame } from "../headerArt.js";
-import { displayWidth } from "../stream/lineBuffer.js";
 
 const CLEAR_SCREEN = /\u001b\[[23]J/;
 const CURSOR_UP = /\u001b\[1A/g;
@@ -72,6 +71,7 @@ function fakeTerminal(columns = 100, rows = 30) {
   const inputQueue: string[] = [];
 
   const stdout = Object.assign(new EventEmitter(), {
+    isTTY: true,
     columns,
     rows,
     write: (data: string) => {
@@ -247,7 +247,15 @@ describe("DebateView — rendu append-only", () => {
     t.app.unmount();
   });
 
-  it("place la première ligne en haut de l'espace libre et garde le prompt en bas", async () => {
+  /**
+   * Claudex dessinait une trame pleine hauteur au démarrage, pour poser la
+   * saisie sur la dernière ligne. Ink efface tout le terminal — scrollback
+   * compris — dès qu'une trame précédente était plus haute que la fenêtre
+   * courante (`shouldClearTerminalForFrame`, `wasOverflowing`), donc rétrécir
+   * la fenêtre pendant ces quelques secondes détruisait le transcript. La zone
+   * vive est désormais bornée en permanence : c'est ce que ce test verrouille.
+   */
+  it("garde la zone vive bornée dès la première intervention", async () => {
     const t = mount({ fromFullScreen: true });
     await tick();
     t.chunks.length = 0;
@@ -257,15 +265,13 @@ describe("DebateView — rendu append-only", () => {
     t.agents.claude.emit("PREMIÈRE INTERVENTION");
     await tick();
 
-    const frame = [...t.chunks].reverse().find((chunk) => chunk.includes("PREMIÈRE INTERVENTION"));
+    const frame = [...t.chunks].reverse().find((chunk) => chunk.includes("‣"));
     expect(frame).toBeDefined();
-    const lines = frame!.replace(ANSI_SEQUENCE, "").split("\n");
-    const interventionRow = lines.findIndex((line) => line.includes("PREMIÈRE INTERVENTION"));
-    const promptRow = lines.findIndex((line) => line.includes("‣"));
+    const lines = frame!.replace(ANSI_SEQUENCE, "").replace(/\n$/, "").split("\n");
+    expect(lines.length).toBeLessThanOrEqual(MAX_DYNAMIC_ROWS);
 
-    expect(interventionRow).toBeGreaterThanOrEqual(0);
-    expect(promptRow).toBeGreaterThan(interventionRow + 10);
-    expect(frame).not.toMatch(CLEAR_SCREEN);
+    expect(t.chunks.join("")).toContain("PREMIÈRE INTERVENTION");
+    expect(t.chunks.join("")).not.toMatch(CLEAR_SCREEN);
     expect(t.chunks.join("")).not.toContain("ANCIEN PROMPT");
 
     t.app.unmount();
@@ -303,7 +309,7 @@ describe("DebateView — rendu append-only", () => {
     t.app.unmount();
   });
 
-  it("préserve l'ordre et l'unicité au basculement Static vers stdout", async () => {
+  it("écrit chaque bloc une seule fois, dans l'ordre, au fil du remplissage", async () => {
     const t = mount();
     await vi.waitFor(() => expect(t.agents.claude.pending).toBe(true));
 
@@ -415,10 +421,4 @@ describe("helpers d'amorçage", () => {
     expect(outputRows("\u001b[31m123456\u001b[39m\n", 5)).toBe(2);
   });
 
-  it("préserve un bloc composé d'une seule ligne vide pour Ink Static", () => {
-    const text = staticBlockText("\n");
-    expect(text).not.toBe("");
-    expect(displayWidth(text)).toBe(0);
-    expect(text.trim()).toBe(text);
-  });
 });

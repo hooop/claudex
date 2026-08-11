@@ -1,0 +1,17 @@
+# Écrit par Claudex au premier lancement, pour que les transcripts de tes débats
+# ne partent pas dans un commit de ce dépôt.
+#
+# Liste blanche : tout est exclu par défaut — y compris ce que Claudex écrira
+# dans de futures versions — et seul ce qui est explicitement rouvert ci-dessous
+# est versionné.
+*
+!.gitignore
+!memory/
+memory/*
+!memory/decisions.md
+!memory/limits.md
+
+# decisions.md et limits.md sont courts, écrits à dessein, et référencés par
+# CLAUDE.md comme par AGENTS.md : une personne qui clone le dépôt doit les
+# recevoir. Retire les deux dernières lignes pour garder la mémoire du projet
+# entièrement locale.

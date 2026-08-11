@@ -60,3 +60,37 @@ d'autonomie, et un tour né d'une intervention ne pouvait jamais enregistrer un 
 
 **Comment appliquer :** ne pas lire cette trace comme un consensus ordinaire. La décision de fond
 tient, mais toute affirmation de détail doit être revérifiée avant implémentation.
+
+## 2026-08-11 — Ink 5/6 n'oublie jamais un `<Static>` démonté (crash mémoire)
+
+**Constat :** utiliser `<Static>` d'Ink dans un écran qui peut être démonté fait mourir Claudex,
+en moins d'une seconde, avec `JavaScript heap out of memory` — après un `/new`, ou après un premier
+message refusé comme non débattable.
+
+**Mécanisme, vérifié par photographie mémoire et capture de pile :**
+`node_modules/ink/build/reconciler.js`, `finalizeInitialChildren()` enregistre `rootNode.staticNode = node`
+quand un `<Static>` apparaît, et **ne le remet jamais à zéro** quand ce composant disparaît. Ensuite,
+`renderer.js` fait inconditionnellement `if (node.staticNode?.yogaNode)` et lit la mise en page d'un
+nœud mort : il obtient `width=0` et `height=36893488147419103000` (la valeur « non définie » de Yoga).
+`Output.get()` exécute alors `for (let y = 0; y < 3.7e19; y++) output.push([])` — avec une largeur nulle,
+chaque ligne est un tableau vide. La photographie du crash montrait exactement un tableau local
+(« stack roots ») contenant **22 295 844 tableaux vides**.
+
+**Pourquoi ça n'apparaissait qu'après une session :** seul `DebateView` utilisait `<Static>`.
+Un écran d'accueil neuf ne crashe jamais ; après un cycle de session, n'importe quel rendu suffit.
+
+**Corrigé en amont dans Ink 7.0.0** (`removeChildFromContainer` remet `staticNode` à `undefined`).
+**Le projet est monté sur Ink 7.1.1 + React 19.2 le même jour**, donc ce défaut précis n'est plus
+atteignable. `<Static>` a tout de même été retiré de `DebateView` : il ne servait qu'aux premières
+secondes d'un débat et coûtait un état entier.
+
+**Un second piège, découvert pendant la montée, celui-là toujours actif :** Ink efface tout le
+terminal — scrollback compris — dès qu'une trame précédente était plus haute que la fenêtre courante
+(`shouldClearTerminalForFrame`, condition `wasOverflowing`). Claudex dessinait volontairement une
+trame pleine hauteur au démarrage, pour poser la saisie sur la dernière ligne : rétrécir la fenêtre
+pendant ces quelques secondes détruisait le transcript. La zone vive est désormais **bornée en
+permanence** à `MAX_DYNAMIC_ROWS`, et `pinnedFooterHeight` n'est plus utilisée par `DebateView`.
+
+**Comment appliquer :** ne jamais dessiner une trame Ink aussi haute que le terminal. Ce n'est pas
+qu'une question de scintillement : c'est la seule chose capable d'effacer l'historique que tout le
+rendu append-only existe pour préserver.

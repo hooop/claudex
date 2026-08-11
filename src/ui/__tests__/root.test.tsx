@@ -118,6 +118,7 @@ function fakeTerminal() {
   const chunks: string[] = [];
   const inputQueue: string[] = [];
   const stdout = Object.assign(new EventEmitter(), {
+    isTTY: true,
     columns: 80,
     rows: 24,
     write: (data: string) => {

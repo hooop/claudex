@@ -1,6 +1,7 @@
 node_modules/
 dist/
 *.log
+*.heapsnapshot
 .DS_Store
 
 # Mémoire écrite par Claudex pendant ses propres sessions. Même politique que
