@@ -140,7 +140,6 @@ function createMockCallbacks(): SchedulerCallbacks & { entries: TranscriptEntry[
     onSuspensionChange: vi.fn(),
     onLifecycleChange: vi.fn(),
     onTopicAccepted: vi.fn(),
-    onTopicRejected: vi.fn(),
     onPermissionRequest: vi.fn(),
     onPermissionCancelled: vi.fn(),
     onConsensusReached: vi.fn(),
@@ -835,15 +834,43 @@ describe("Scheduler", () => {
   });
 
   describe("Provisional topic protocol", () => {
-    it("rejects a genuine non-topic without starting the second agent", async () => {
+    /**
+     * A non-topic used to tear the session down and return to the welcome
+     * screen, which wiped the answer off the screen before it could be read.
+     * The conversation now simply stays open and waits, like any other request
+     * for human input — nothing reaches project memory until a topic is
+     * actually accepted.
+     */
+    it("keeps the session open on a genuine non-topic and waits for the human", async () => {
       scheduler.start("bonjour");
       await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
 
       agents.claude.complete("Bonjour ! Donne-moi un sujet technique à examiner.\n\n<<NO_TOPIC>>");
 
-      await vi.waitFor(() => expect(callbacks.onTopicRejected).toHaveBeenCalledOnce());
+      await vi.waitFor(() => expect(scheduler.suspension()).toBe("waiting-human"));
+      expect(scheduler.topicStatus()).toBe("provisional");
       expect(callbacks.onTopicAccepted).not.toHaveBeenCalled();
       expect(agents.codex.getSendCount()).toBe(0);
+      expect(scheduler.lifecycleState()).toBe("open");
+    });
+
+    it("lets the next message replace the subject instead of clarifying it", async () => {
+      scheduler.start("bonjour");
+      await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
+      agents.claude.complete("Pas de sujet ici.\n\n<<NO_TOPIC>>");
+      await vi.waitFor(() => expect(scheduler.suspension()).toBe("waiting-human"));
+
+      scheduler.intervene("Quelle architecture pour la file d'attente ?", "both");
+
+      // The real subject qualifies on its own; "bonjour" must not survive as
+      // the topic with the real one appended underneath as a clarification.
+      await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
+      const message = agents.claude.lastMessage ?? "";
+      expect(message).toContain("Quelle architecture pour la file d'attente ?");
+      expect(message).not.toContain("Sujet proposé :\nbonjour");
+
+      agents.claude.complete("Analysons.\n\n<<CONTINUE>>");
+      await vi.waitFor(() => expect(callbacks.onTopicAccepted).toHaveBeenCalledOnce());
     });
 
     it("distinguishes a real topic needing clarification and waits for the human", async () => {

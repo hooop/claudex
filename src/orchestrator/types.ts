@@ -108,7 +108,6 @@ export type JobOutcome =
   | "cancelled" // Human cancellation; retry remains possible
   | "protocol-error" // Response is visible but cannot drive the state machine
   | "wait-human" // Agent explicitly needs clarification
-  | "topic-rejected" // The provisional input was not a debate topic
   | "terminal"; // Consensus reached, trigger synthesis
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -207,7 +206,6 @@ export type SessionEvents = {
   "suspension-changed": [reason: SuspensionReason | null];
   lifecycle: [lifecycle: SessionLifecycle];
   "topic-accepted": [];
-  "topic-rejected": [];
   "permission-request": [request: PermissionRequest];
   "permission-cancelled": [requestId: string];
   "consensus-reached": [];

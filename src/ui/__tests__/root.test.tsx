@@ -152,7 +152,9 @@ function fakeTerminal() {
 async function press(terminal: ReturnType<typeof fakeTerminal>, input: string): Promise<void> {
   await act(async () => {
     terminal.pushInput(input);
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    // Ink 7 régule ses rendus : une frappe n'est plus reflétée dans le même
+    // tour de boucle.
+    await new Promise((resolve) => setTimeout(resolve, 60));
   });
 }
 
@@ -275,7 +277,13 @@ describe("Root — cycle de vie du header", () => {
     app.unmount();
   });
 
-  it("revient à l'accueil sans devlog ni archive pour un vrai non-sujet", async () => {
+  /**
+   * A non-topic used to close the session and go back to the welcome screen,
+   * which wiped the agent's answer before it could be read. The conversation
+   * now stays open — only the writes to project memory are withheld until a
+   * real subject is accepted.
+   */
+  it("garde la conversation ouverte, sans devlog ni archive, pour un vrai non-sujet", async () => {
     mocks.setAutoResponse("Bonjour, indique un sujet technique.\n\n<<NO_TOPIC>>");
     const terminal = fakeTerminal();
     const app = render(<Root cwd="/projet-test" />, {
@@ -290,7 +298,11 @@ describe("Root — cycle de vie du header", () => {
     await press(terminal, "Bonjour");
     await press(terminal, "\r");
 
-    await vi.waitFor(() => expect(mocks.animatedHeader).toHaveBeenCalledTimes(2));
+    // Ce faux agent renvoie son texte d'un bloc, sans deltas, donc le rendu du
+    // message n'est pas observable ici ; ce qui compte est que l'écran de débat
+    // n'ait pas été démonté. Un retour à l'accueil réanimerait le header.
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(mocks.animatedHeader).toHaveBeenCalledTimes(1);
     expect(mocks.appendDevlog).not.toHaveBeenCalled();
     expect(mocks.saveTranscript).not.toHaveBeenCalled();
     app.unmount();

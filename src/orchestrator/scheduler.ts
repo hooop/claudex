@@ -72,7 +72,6 @@ export interface SchedulerCallbacks {
   onSuspensionChange: (reason: SuspensionReason | null) => void;
   onLifecycleChange: (lifecycle: SessionLifecycle) => void;
   onTopicAccepted: () => void;
-  onTopicRejected: () => void;
   onPermissionRequest: (request: PermissionRequest) => void;
   onPermissionCancelled: (requestId: string) => void;
   onConsensusReached: () => void;
@@ -146,10 +145,12 @@ export class Scheduler {
   // Provisional subject and autonomy policy
   // ─────────────────────────────────────────────────────────────────────────
   private topic = "";
-  private topicState: "not-started" | "provisional" | "accepted" | "rejected" = "not-started";
+  private topicState: "not-started" | "provisional" | "accepted" = "not-started";
   private provisionalRevision = 0;
   private provisionalClarifications: string[] = [];
   private latestProvisionalResponse: { agent: AgentId; text: string } | null = null;
+  /** The last qualification found no subject, so the next message replaces it. */
+  private provisionalWasNonTopic = false;
   private autonomyBudget: AutonomyBudget | undefined;
   private autonomyStartsUsed = 0;
   private autonomyWindowStartedAt: number | null = null;
@@ -203,7 +204,16 @@ export class Scheduler {
       if (target !== "both") return false;
       this.addEntry({ from: "human", kind: "intervention", text, to: "both" });
       this.incrementEpoch();
-      this.provisionalClarifications.push(text);
+      if (this.provisionalWasNonTopic) {
+        // The previous entry held no subject at all, so this message is not a
+        // clarification of it — it replaces it. Keeping "Coucou" as the subject
+        // and appending the real one underneath would qualify the wrong text.
+        this.topic = text.trim() || this.topic;
+        this.provisionalClarifications = [];
+        this.provisionalWasNonTopic = false;
+      } else {
+        this.provisionalClarifications.push(text);
+      }
       this.provisionalRevision++;
       this.latestProvisionalResponse = null;
       this.resetAutonomyWindow();
@@ -318,7 +328,7 @@ export class Scheduler {
     return this.autonomyBudget;
   }
 
-  topicStatus(): "not-started" | "provisional" | "accepted" | "rejected" {
+  topicStatus(): "not-started" | "provisional" | "accepted" {
     return this.topicState;
   }
 
@@ -561,7 +571,6 @@ export class Scheduler {
           this.setSuspension("waiting-human");
           return;
         }
-        if (outcome === "topic-rejected") return;
         if (outcome === "terminal") {
           // Consensus — trigger synthesis
           continue;
@@ -589,8 +598,7 @@ export class Scheduler {
             this.setSuspension("waiting-human");
             return;
           }
-          if (outcome === "topic-rejected") return;
-          if (outcome === "terminal") {
+            if (outcome === "terminal") {
             // Consensus — trigger synthesis
             continue;
           }
@@ -945,10 +953,17 @@ export class Scheduler {
         if (job.origin === "initial") {
           this.latestProvisionalResponse = { agent, text: cleanText };
           if (signal === "no-topic") {
-            this.topicState = "rejected";
-            this.callbacks.onTopicRejected();
-            return "topic-rejected";
+            // Not a debatable subject — but the conversation stays open and on
+            // screen. Tearing the session down here used to wipe the answer
+            // before it could be read, and nothing about "this isn't a topic"
+            // requires closing anything. The session simply waits, exactly as
+            // it does for WAIT_HUMAN, and the next message replaces the
+            // subject. Nothing reaches project memory until a topic is
+            // actually accepted.
+            this.provisionalWasNonTopic = true;
+            return "wait-human";
           }
+          this.provisionalWasNonTopic = false;
 
           this.acceptProvisionalTopic();
           const next = this.other(agent);
@@ -1097,7 +1112,8 @@ export class Scheduler {
     const text = [
       "Qualifie d'abord l'entrée humaine ci-dessous.",
       `Sujet proposé :\n${this.topic}${clarifications}`,
-      "Si elle ne contient réellement aucun sujet technique à discuter, réponds brièvement puis termine par " +
+      "Si elle ne contient réellement aucun sujet technique à discuter, réponds brièvement et " +
+        "invite l'humain à donner un sujet, puis termine par " +
         NO_TOPIC_MARKER +
         ". Si elle contient un sujet mais qu'une information humaine est indispensable avant de débattre, pose la question puis termine par " +
         WAIT_HUMAN_MARKER +

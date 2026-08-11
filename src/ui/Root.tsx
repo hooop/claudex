@@ -251,30 +251,6 @@ export function Root(props: { cwd: string; initialTopic?: string }) {
     [coordinatorState.kind, cwd, executeTerminal, exit, requestTerminal, topic],
   );
 
-  const closeRejectedTopic = useCallback(
-    (rejectedSession: DebateSession, rejectedTopic: string) => {
-      if (pendingTerminalRef.current) return;
-      const pending: PendingTerminal = {
-        session: rejectedSession,
-        topic: rejectedTopic,
-        destination: "new",
-        archive: false,
-        stage: "shutdown",
-      };
-      pendingTerminalRef.current = pending;
-      // Let the qualifying turn finish its own callback stack before shutdown
-      // invalidates run tokens; this prevents a duplicate completion event.
-      queueMicrotask(() => {
-        if (pendingTerminalRef.current === pending) {
-          executeTerminal(pending).then(undefined, (error: unknown) => {
-            setCoordinatorNotice(error instanceof Error ? error.message : String(error));
-          });
-        }
-      });
-    },
-    [executeTerminal],
-  );
-
   const startTopic = useCallback(
     (newTopic: string) => {
       const trimmed = newTopic.trim();
@@ -298,13 +274,12 @@ export function Root(props: { cwd: string; initialTopic?: string }) {
           );
         });
       });
-      nextSession.on("topic-rejected", () => closeRejectedTopic(nextSession, trimmed));
       setCoordinatorNotice(null);
       setTopic(trimmed);
       sessionRef.current = nextSession;
       setSession(nextSession);
     },
-    [closeRejectedTopic, cwd, rememberedAutonomy],
+    [cwd, rememberedAutonomy],
   );
 
   const handleAutonomySelected = useCallback(

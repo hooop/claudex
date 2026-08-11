@@ -65,7 +65,6 @@ export class DebateSession extends TypedEmitter<SessionEvents> {
       onSuspensionChange: (reason) => this.emit("suspension-changed", reason),
       onLifecycleChange: (lifecycle) => this.emit("lifecycle", lifecycle),
       onTopicAccepted: () => this.emit("topic-accepted"),
-      onTopicRejected: () => this.emit("topic-rejected"),
       onPermissionRequest: (request) => this.emit("permission-request", request),
       onPermissionCancelled: (requestId) => this.emit("permission-cancelled", requestId),
       onConsensusReached: () => this.emit("consensus-reached"),
@@ -101,7 +100,7 @@ export class DebateSession extends TypedEmitter<SessionEvents> {
     return this.scheduler.lifecycleState();
   }
 
-  get topicStatus(): "not-started" | "provisional" | "accepted" | "rejected" {
+  get topicStatus(): "not-started" | "provisional" | "accepted" {
     return this.scheduler.topicStatus();
   }
 
