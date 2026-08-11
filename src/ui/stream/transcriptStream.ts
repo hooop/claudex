@@ -46,7 +46,7 @@ export interface TailView {
 
 /** How a streaming entry ended, as far as the renderer needs to care. */
 export type EntryOutcome =
-  | { status: "ok"; signal: Signal }
+  | { status: "ok"; signal: Signal; closesDebate?: boolean }
   | { status: "error"; message: string }
   | { status: "cancelled" };
 
@@ -59,15 +59,19 @@ export type EntryOutcome =
  * agent did rather than predicting what the scheduler will do next, so the line
  * stays true even when the debate is suspended right after it.
  */
-function verdictText(signal: Signal, from: AgentId): string | null {
+function verdictText(signal: Signal, from: AgentId, closesDebate: boolean): string | null {
+  const me = AGENT_STYLE[from].badge;
   switch (signal) {
     case "continue":
       return `↳ poursuit · passe la main à ${AGENT_STYLE[other(from)].badge}`;
-    // Says the rule rather than predicting the outcome: the renderer is called
-    // before the scheduler has compared both signals, so it cannot know whether
-    // this turn is the one that closes the debate.
+    // The two cases read very differently and must not share a wording: one
+    // agreement leaves the debate running, the pair ends it. The scheduler
+    // tells us which this is, since it compares the signals after the entry
+    // has already been closed.
     case "consensus":
-      return "✓ d'accord — le débat se clôt quand les deux l'ont signalé";
+      return closesDebate
+        ? "✓ Consensus approuvé — le débat est clos"
+        : `✓ ${me} est prêt pour un consensus — au tour de ${AGENT_STYLE[other(from)].badge}`;
     case "wait-human":
       return "⏸ attend ta réponse — débat en pause";
     // This used to be silent, back when a non-topic closed the session and the
@@ -256,7 +260,7 @@ export class TranscriptStream {
     } else if (active.from === "claude" || active.from === "codex") {
       // Only a debater closes a turn with a decision. The synthesis is written
       // by an agent too, but it speaks as the system and signals nothing.
-      const verdict = verdictText(outcome.signal, active.from);
+      const verdict = verdictText(outcome.signal, active.from, outcome.closesDebate === true);
       const color = AGENT_STYLE[active.from].color;
       // Blank rail line first: the verdict is about the turn, not a last
       // sentence of it, and must not read as one.

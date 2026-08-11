@@ -945,7 +945,18 @@ export class Scheduler {
           return "protocol-error";
         }
 
-        this.callbacks.onEntryCompleted(entry.id, { status: "ok", signal });
+        // Whether this agreement is the one that ends the debate, decided here
+        // because the renderer has to say so on the turn itself while the real
+        // comparison below runs after the entry is already closed. Pure read:
+        // this agent's own signal is recorded further down, and the rule
+        // matches `checkConsensus` — both agents, same epoch.
+        const otherSignal = this.signals[this.other(agent)];
+        const closesDebate =
+          signal === "consensus" &&
+          jobEpoch === this.consensusEpoch &&
+          otherSignal.signal === "consensus" &&
+          otherSignal.epoch === this.consensusEpoch;
+        this.callbacks.onEntryCompleted(entry.id, { status: "ok", signal, closesDebate });
 
         // Remove job from queue (success = acquitted)
         this.removeJob(job);

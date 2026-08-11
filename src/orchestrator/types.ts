@@ -156,7 +156,7 @@ export type Signal = "continue" | "consensus" | "no-topic" | "wait-human" | null
  * decided — the marker itself never reaches the transcript.
  */
 export type EntryOutcome =
-  | { status: "ok"; signal: Signal }
+  | { status: "ok"; signal: Signal; closesDebate?: boolean }
   | { status: "error"; message: string }
   | { status: "cancelled" };
 

@@ -140,12 +140,12 @@ describe("TranscriptStream", () => {
     // Le marqueur de protocole est filtré du transcript : sans cette ligne, on
     // lit une réponse sans savoir ce que l'agent a décidé, ni pourquoi le débat
     // s'arrête ou continue.
-    const verdictOf = (from: "claude" | "codex", signal: Signal) => {
+    const verdictOf = (from: "claude" | "codex", signal: Signal, closesDebate = false) => {
       const { stream, plain } = harness();
       const e = entry({ from, kind: "message" });
       stream.entryStarted(e);
       stream.chunk(e.id, "Mon analyse.\n");
-      stream.entryCompleted(e.id, { status: "ok", signal });
+      stream.entryCompleted(e.id, { status: "ok", signal, closesDebate });
       return plain();
     };
 
@@ -154,8 +154,20 @@ describe("TranscriptStream", () => {
       expect(verdictOf("codex", "continue")).toContain("↳ poursuit · passe la main à Claude");
     });
 
+    // Un accord isolé laisse le débat tourner, la paire l'arrête : les deux
+    // situations ne doivent pas se lire pareil.
+    it("distingue le premier accord de celui qui clôt le débat", () => {
+      const premier = verdictOf("claude", "consensus");
+      expect(premier).toContain("Claude est prêt pour un consensus");
+      expect(premier).toContain("au tour de Codex");
+      expect(premier).not.toContain("terminé");
+
+      const dernier = verdictOf("codex", "consensus", true);
+      expect(dernier).toContain("Consensus approuvé");
+      expect(dernier).toContain("le débat est clos");
+    });
+
     it("distingue un accord d'une attente humaine", () => {
-      expect(verdictOf("claude", "consensus")).toContain("le débat se clôt quand les deux");
       expect(verdictOf("codex", "wait-human")).toContain("⏸ attend ta réponse");
     });
 
