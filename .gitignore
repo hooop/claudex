@@ -1,0 +1,18 @@
+node_modules/
+dist/
+*.log
+.DS_Store
+
+# Mémoire écrite par Claudex pendant ses propres sessions. Même politique que
+# celle qu'il installe chez ses utilisateurs (CLAUDEX_GITIGNORE, dans
+# src/memory/store.ts) : tout est exclu par défaut, y compris ce qui sera
+# ajouté plus tard, et seuls decisions.md et limits.md sont versionnés — ils
+# sont courts et CLAUDE.md comme AGENTS.md les référencent.
+.claudex/*
+!.claudex/memory/
+.claudex/memory/*
+!.claudex/memory/decisions.md
+!.claudex/memory/limits.md
+
+# Exports bruts de débats, conservés en local.
+debat.md/

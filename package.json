@@ -1,0 +1,44 @@
+{
+  "name": "claudex",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "description": "Terminal orchestrator for a live, human-arbitrated debate between Claude Code and Codex before any code gets written.",
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "claudex": "./bin/claudex.mjs"
+  },
+  "scripts": {
+    "dev": "node --import tsx src/cli.tsx",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src bin",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "check": "npm run typecheck && npm run lint && npm test"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.1.0",
+    "chalk": "^5.6.2",
+    "ink": "^5.1.0",
+    "ink-select-input": "^6.2.0",
+    "ink-spinner": "^5.0.0",
+    "react": "^18.3.1",
+    "string-width": "^7.2.0",
+    "tsx": "^4.19.2",
+    "wrap-ansi": "^9.0.2"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^22.10.2",
+    "@types/react": "^18.3.18",
+    "eslint": "^10.8.1",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.9.0",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.67.0",
+    "vitest": "^4.1.10"
+  }
+}
