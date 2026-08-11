@@ -84,13 +84,27 @@ Un écran d'accueil neuf ne crashe jamais ; après un cycle de session, n'import
 atteignable. `<Static>` a tout de même été retiré de `DebateView` : il ne servait qu'aux premières
 secondes d'un débat et coûtait un état entier.
 
-**Un second piège, découvert pendant la montée, celui-là toujours actif :** Ink efface tout le
-terminal — scrollback compris — dès qu'une trame précédente était plus haute que la fenêtre courante
-(`shouldClearTerminalForFrame`, condition `wasOverflowing`). Claudex dessinait volontairement une
-trame pleine hauteur au démarrage, pour poser la saisie sur la dernière ligne : rétrécir la fenêtre
-pendant ces quelques secondes détruisait le transcript. La zone vive est désormais **bornée en
-permanence** à `MAX_DYNAMIC_ROWS`, et `pinnedFooterHeight` n'est plus utilisée par `DebateView`.
+**Comment appliquer :** rien à éviter, `<Static>` est de nouveau utilisable et utilisé.
 
-**Comment appliquer :** ne jamais dessiner une trame Ink aussi haute que le terminal. Ce n'est pas
-qu'une question de scintillement : c'est la seule chose capable d'effacer l'historique que tout le
-rendu append-only existe pour préserver.
+## 2026-08-11 — Rétrécir la fenêtre pendant l'amorçage brouille l'affichage (cosmétique)
+
+**Constat :** Ink efface tout le terminal et réécrit son tampon statique dès qu'une trame précédente
+était plus haute que la fenêtre courante (`shouldClearTerminalForFrame`, condition `wasOverflowing`).
+Claudex dessine volontairement une trame pleine hauteur pendant l'amorçage d'un débat, pour garder la
+saisie en bas de l'écran. Rétrécir la fenêtre à ce moment-là efface l'écran et fait réapparaître en
+double les lignes déjà affichées.
+
+**Pourquoi on l'accepte :** c'est purement visuel, et borné aux quelques secondes où le premier écran
+n'est pas encore rempli. Le transcript archivé est construit depuis l'état de l'ordonnanceur
+(`shutdown.transcript`), jamais depuis le terminal : **aucune donnée n'est perdue**, le fichier de
+`.claudex/memory/transcripts/` est intact.
+
+**Ce qui a été essayé et n'a pas marché :** borner la hauteur du pied de page sur la taille courante
+du terminal plutôt que sur l'état React. Ink recalcule sa mise en page et redessine de façon
+synchrone dans son propre gestionnaire de redimensionnement, avant que React ait appliqué la mise à
+jour — il lit donc toujours l'ancienne trame haute. Supprimer la trame haute règle le problème mais
+fait remonter la saisie en haut de l'écran au démarrage, ce qui a été jugé pire.
+
+**Comment appliquer :** ne pas retenter de « corriger » ce point par un calcul de hauteur. Le seul
+vrai correctif serait de reproduire l'effet visuel sans trame Ink haute — par exemple en poussant le
+curseur avec des lignes vides écrites dans le scrollback — ce qui reste à concevoir.

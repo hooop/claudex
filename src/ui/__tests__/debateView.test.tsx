@@ -16,8 +16,9 @@ import { DebateSession } from "../../orchestrator/session.js";
 import type { AgentResult } from "../../orchestrator/types.js";
 import type { AgentId } from "../../types.js";
 import { MAX_DYNAMIC_ROWS } from "../theme.js";
-import { bannerLines, DebateView, outputRows } from "../DebateView.js";
+import { bannerLines, DebateView, outputRows, staticBlockText } from "../DebateView.js";
 import { getHeaderAnimation, HEADER_ROWS, headerFrame } from "../headerArt.js";
+import { displayWidth } from "../stream/lineBuffer.js";
 
 const CLEAR_SCREEN = /\u001b\[[23]J/;
 const CURSOR_UP = /\u001b\[1A/g;
@@ -71,6 +72,7 @@ function fakeTerminal(columns = 100, rows = 30) {
   const inputQueue: string[] = [];
 
   const stdout = Object.assign(new EventEmitter(), {
+    // Ink 7 ne dessine que si la sortie est un vrai terminal.
     isTTY: true,
     columns,
     rows,
@@ -247,15 +249,7 @@ describe("DebateView — rendu append-only", () => {
     t.app.unmount();
   });
 
-  /**
-   * Claudex dessinait une trame pleine hauteur au démarrage, pour poser la
-   * saisie sur la dernière ligne. Ink efface tout le terminal — scrollback
-   * compris — dès qu'une trame précédente était plus haute que la fenêtre
-   * courante (`shouldClearTerminalForFrame`, `wasOverflowing`), donc rétrécir
-   * la fenêtre pendant ces quelques secondes détruisait le transcript. La zone
-   * vive est désormais bornée en permanence : c'est ce que ce test verrouille.
-   */
-  it("garde la zone vive bornée dès la première intervention", async () => {
+  it("place la première ligne en haut de l'espace libre et garde le prompt en bas", async () => {
     const t = mount({ fromFullScreen: true });
     await tick();
     t.chunks.length = 0;
@@ -265,13 +259,15 @@ describe("DebateView — rendu append-only", () => {
     t.agents.claude.emit("PREMIÈRE INTERVENTION");
     await tick();
 
-    const frame = [...t.chunks].reverse().find((chunk) => chunk.includes("‣"));
+    const frame = [...t.chunks].reverse().find((chunk) => chunk.includes("PREMIÈRE INTERVENTION"));
     expect(frame).toBeDefined();
-    const lines = frame!.replace(ANSI_SEQUENCE, "").replace(/\n$/, "").split("\n");
-    expect(lines.length).toBeLessThanOrEqual(MAX_DYNAMIC_ROWS);
+    const lines = frame!.replace(ANSI_SEQUENCE, "").split("\n");
+    const interventionRow = lines.findIndex((line) => line.includes("PREMIÈRE INTERVENTION"));
+    const promptRow = lines.findIndex((line) => line.includes("‣"));
 
-    expect(t.chunks.join("")).toContain("PREMIÈRE INTERVENTION");
-    expect(t.chunks.join("")).not.toMatch(CLEAR_SCREEN);
+    expect(interventionRow).toBeGreaterThanOrEqual(0);
+    expect(promptRow).toBeGreaterThan(interventionRow + 10);
+    expect(frame).not.toMatch(CLEAR_SCREEN);
     expect(t.chunks.join("")).not.toContain("ANCIEN PROMPT");
 
     t.app.unmount();
@@ -291,7 +287,19 @@ describe("DebateView — rendu append-only", () => {
     t.app.unmount();
   });
 
-  it("ne détruit pas le scrollback si le terminal rétrécit pendant l'amorçage", async () => {
+  /**
+   * Limite assumée depuis Ink 7 : rétrécir la fenêtre pendant l'amorçage efface
+   * l'écran et réécrit le tampon statique, donc les lignes déjà affichées
+   * peuvent apparaître en double. Ink efface dès qu'une trame précédente
+   * dépassait la fenêtre courante (`shouldClearTerminalForFrame`,
+   * `wasOverflowing`), et l'amorçage dessine délibérément une trame pleine
+   * hauteur pour garder la saisie en bas de l'écran.
+   *
+   * C'est purement cosmétique : le transcript archivé est construit depuis
+   * l'état de l'ordonnanceur, jamais depuis le terminal. Ce test verrouille
+   * donc ce qui compte — aucune perte de contenu. Voir limits.md.
+   */
+  it("ne perd aucun contenu si le terminal rétrécit pendant l'amorçage", async () => {
     const t = mount();
     await vi.waitFor(() => expect(t.agents.claude.pending).toBe(true));
     t.agents.claude.emit("quelques mots");
@@ -302,14 +310,13 @@ describe("DebateView — rendu append-only", () => {
     await tick();
 
     const output = t.chunks.join("");
-    expect(output).not.toMatch(CLEAR_SCREEN);
-    expect(output.split("▲ Claudex").length - 1).toBe(0);
-    expect(output.split("Sujet : Sujet de test").length - 1).toBe(1);
+    expect(output).toContain("Sujet : Sujet de test");
+    expect(output).toContain("quelques mots");
 
     t.app.unmount();
   });
 
-  it("écrit chaque bloc une seule fois, dans l'ordre, au fil du remplissage", async () => {
+  it("préserve l'ordre et l'unicité au basculement Static vers stdout", async () => {
     const t = mount();
     await vi.waitFor(() => expect(t.agents.claude.pending).toBe(true));
 
@@ -421,4 +428,10 @@ describe("helpers d'amorçage", () => {
     expect(outputRows("\u001b[31m123456\u001b[39m\n", 5)).toBe(2);
   });
 
+  it("préserve un bloc composé d'une seule ligne vide pour Ink Static", () => {
+    const text = staticBlockText("\n");
+    expect(text).not.toBe("");
+    expect(displayWidth(text)).toBe(0);
+    expect(text.trim()).toBe(text);
+  });
 });
