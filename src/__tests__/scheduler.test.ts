@@ -8,7 +8,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { AgentResult } from "../orchestrator/types.js";
 import type { AgentSendOptions, CodingAgent } from "../agents/types.js";
-import { Scheduler, type SchedulerCallbacks } from "../orchestrator/scheduler.js";
+import {
+  CONSENSUS_INSTRUCTIONS,
+  Scheduler,
+  type SchedulerCallbacks,
+} from "../orchestrator/scheduler.js";
 import type { AgentId, TranscriptEntry } from "../types.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1031,5 +1035,41 @@ describe("Scheduler", () => {
       }
       expect(scheduler.lifecycleState()).toBe("closed");
     });
+  });
+});
+
+describe("règles du débat", () => {
+  const claudeSide = CONSENSUS_INSTRUCTIONS("Claude", "Codex");
+  const codexSide = CONSENSUS_INSTRUCTIONS("Codex", "Claude");
+
+  /**
+   * La règle de preuve nommait Claude et Codex : elle disait à l'un que sa
+   * lecture ne produit pas de faits, et à l'autre que son contradicteur ne peut
+   * rien vérifier. Les deux agents doivent recevoir exactement les mêmes règles,
+   * aux deux identités près.
+   */
+  it("donne les mêmes règles aux deux agents, aux identités près", () => {
+    const swapped = claudeSide
+      .replace(/Claude/gu, "__OTHER__")
+      .replace(/Codex/gu, "Claude")
+      .replace(/__OTHER__/gu, "Codex");
+    expect(swapped).toBe(codexSide);
+  });
+
+  it("exige la commande et la sortie plutôt que la confiance", () => {
+    expect(claudeSide).toContain("la commande exacte et sa sortie brute");
+    expect(claudeSide).toContain("Exiger la preuve fait partie de ton rôle");
+  });
+
+  // Sinon la sortie valide la moins chère, dans le doute, est l'accord.
+  it("fait payer le consensus au moins autant que la poursuite", () => {
+    expect(claudeSide).toContain("examiné au moins une alternative sérieuse");
+  });
+
+  // Contrainte d'affichage appliquée par le renderer : l'imposer au modèle
+  // dégrade les handoffs, qui sont des documents Markdown autoportants.
+  it("n'impose aucune contrainte Markdown aux agents", () => {
+    expect(claudeSide).not.toContain("Markdown");
+    expect(claudeSide).toContain("aucun emoji");
   });
 });
