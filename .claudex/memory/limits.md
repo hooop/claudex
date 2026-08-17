@@ -108,3 +108,37 @@ fait remonter la saisie en haut de l'écran au démarrage, ce qui a été jugé 
 **Comment appliquer :** ne pas retenter de « corriger » ce point par un calcul de hauteur. Le seul
 vrai correctif serait de reproduire l'effet visuel sans trame Ink haute — par exemple en poussant le
 curseur avec des lignes vides écrites dans le scrollback — ce qui reste à concevoir.
+
+## 2026-08-17 — Ce que coûte le prompt système de Claude, mesuré
+
+**Constat :** mesuré sur cette machine avec le SDK installé, un appel trivial (`Réponds exactement:
+ok`, outils limités à Read/Grep/Glob), en comparant la somme
+`input_tokens + cache_creation + cache_read` de la première réponse assistant :
+
+| Configuration | Prompt système |
+| --- | --- |
+| `settingSources: ["project","user"]` avec les `@` imports dans CLAUDE.md | 29 701 tokens |
+| `["project"]` avec les `@` imports | 16 364 tokens |
+| `["project"]` sans les `@` imports | 2 640 tokens |
+| `[]` | 2 328 tokens |
+
+Donc : `@fichier` dans CLAUDE.md coûtait **13 724 tokens par appel**, et les réglages utilisateur
+**13 337 tokens par appel** — catalogues de plugins et de skills qu'un agent limité à Read/Grep/Glob
+ne peut pas utiliser. Ce préfixe est payé à *chaque* appel API, donc plusieurs dizaines de fois par
+tour d'exploration, pas une fois par tour.
+
+**Piège associé, vérifié :** retirer `"user"` sans passer le modèle explicitement fait retomber le
+débat de `claude-opus-4-5` à `claude-sonnet-4-5` sans aucun message. Le modèle configuré vient de
+`~/.claude/settings.json`, que seul `settingSources: ["user"]` charge. Claudex lisait déjà ce champ
+(`readClaudeConfiguredModel`) mais uniquement pour l'afficher ; il le transmet maintenant au SDK.
+
+**Sur le cache :** il n'amortit pas autant qu'il y paraît. Le TTL est de cinq minutes et un tour de
+Codex s'intercale entre deux tours de Claude : sur la session `460ca9a4`, les tours 2 et 4
+reconstruisent 60 195 et 66 973 tokens de préfixe avec zéro lecture de cache. L'écriture de cache se
+facture 1,25× l'entrée contre 0,1× pour la lecture — sur cette session, l'écriture a coûté cinq fois
+la lecture. Réduire le préfixe reste donc rentable même avec un cache qui fonctionne.
+
+**Comment appliquer :** avant d'ajouter quoi que ce soit au prompt système du débat (import de
+mémoire, source de réglages, MCP, plugin), le mesurer par cette méthode. Un chiffre lu dans le
+`.jsonl` de session doit être dédupliqué sur `message.id` : le journal écrit une ligne par bloc de
+contenu, et une somme naïve double les totaux.

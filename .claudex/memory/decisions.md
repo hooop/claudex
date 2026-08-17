@@ -77,3 +77,62 @@ deux agents pouvaient être d'accord sans que la session puisse jamais se clore.
 **Attention pour les tests :** des agents factices qui répondent toujours `<<CONTINUE>>` ne sont
 plus freinés par rien. Un fixture qui a besoin d'un débat fini doit poser sa propre borne
 (`root.test.tsx` le fait), pas compter sur un blocage global.
+
+## 2026-08-17 — Les règles du débat ne nomment plus aucun agent
+
+**Nature :** arbitrage humain à l'issue d'un échange Claude ↔ Codex conduit hors Claudex, pièces
+mesurées à l'appui. Corrige une asymétrie inscrite dans le prompt depuis l'origine.
+
+**Constat mesuré :** sur les 37 sessions de débat retrouvées dans `~/.claude/projects/`, Claude
+n'émet plus aucun appel d'outil après son premier tour, et 55 % de ses tours s'ouvrent sur un accord
+explicite (« Je confirme », « Tu as raison », « Je reconnais »). Les occurrences du mot « objection »
+sont presque toutes des négations (« je n'ai plus d'objection »). Le motif est identique sur Sonnet
+4.5, Opus 4.5 et Sonnet 5 : il vient du harnais, pas du modèle.
+
+**Cause identifiée :** `CONSENSUS_INSTRUCTIONS` disait « Claude n'a pas d'outil d'exécution et doit
+demander à Codex de vérifier ». Les deux agents recevaient cette phrase : elle disqualifiait la seule
+capacité de l'un et signalait à l'autre que son contradicteur ne pouvait rien contrôler.
+
+**Décisions :**
+- Aucune règle ne nomme un agent en dehors des rôles `self` et `other`. Vérifié comme une propriété :
+  un test permute les deux noms dans les instructions et exige d'obtenir exactement celles de l'autre.
+- La règle de preuve devient symétrique : qui exécute donne la commande exacte et sa sortie brute ;
+  qui ne peut pas exécuter la réclame et refuse une affirmation empirique non étayée. Exiger la
+  preuve fait partie du rôle autant que la fournir.
+- Le consensus demande d'avoir examiné au moins une alternative sérieuse. Poursuivre exigeait une
+  objection *nouvelle* quand s'accorder n'exigeait rien : dans le doute, l'accord était le coup valide
+  le moins cher. Il n'est jamais demandé de fabriquer un désaccord.
+- L'interdiction des marqueurs Markdown est retirée des deux prompts. C'est une contrainte
+  d'affichage, déjà appliquée par le renderer ; l'imposer au modèle dégradait les handoffs, qui sont
+  par la décision du 2026-08-06 des documents Markdown autoportants.
+
+**Fichiers concernés :** `src/orchestrator/scheduler.ts`, `src/__tests__/scheduler.test.ts`.
+
+**Ce qui n'est pas démontré :** une cause documentée a été retirée, pas la déférence elle-même. À
+revérifier sur les prochaines sessions avec les mêmes mesures — appels d'outils après le premier
+tour, phrases d'ouverture, qui produit les preuves. Les 37 traces archivées donnent la ligne de base.
+
+## 2026-08-17 — L'asymétrie d'exécution reste en l'état, en attendant la mesure
+
+**Nature :** décision de séquencement, prise après le correctif de prompt ci-dessus.
+
+**Décision :** ne rien construire pour l'instant. Le correctif de prompt vient de retirer la cause
+la plus probable de la déférence pour un coût nul ; construire un canal d'exécution partagé avant
+d'avoir mesuré son effet reviendrait à payer une complexité d'ordonnanceur pour un problème
+peut-être déjà résolu.
+
+**Condition de réouverture :** si, sur les prochaines sessions, Claude continue de n'appeler aucun
+outil après son premier tour et d'ouvrir ses réponses par un accord, alors la capacité est bien en
+cause et le canal se justifie.
+
+**Ce qui serait construit dans ce cas — et ce qui est écarté :**
+- Retenu : un fil `codex app-server` dédié en `readOnly` + `networkAccess: false`, distinct du fil
+  débatteur, dont n'importe quel agent demande une commande et dont la sortie brute entre dans les
+  deux transcrits. Même garantie d'écriture qu'aujourd'hui, aucune dépendance nouvelle.
+- Écarté : donner Bash à Claude sous approbation humaine. Cela remplace une garantie du système
+  d'exploitation par l'attention de l'humain, qui ne peut pas déduire de `npm test` les fichiers
+  qu'il écrit. C'est précisément le raisonnement de `claudeAgent.ts`.
+- Sur les lectures non restreintes de `command/exec` (relevé par Codex, vérifié dans le schéma v2) :
+  ce n'est pas un obstacle nouveau. Le fil débatteur Codex a déjà exactement cette exposition, elle
+  est documentée dans le README et acceptée. Un second exécuteur en lecture seule n'ajoute aucune
+  classe de risque.
