@@ -1,7 +1,11 @@
-import { Box, Text, useInput } from "ink";
-import SelectInput from "ink-select-input";
+import { useInput } from "ink";
+import { useState } from "react";
 import type { AgentId } from "../../types.js";
-import { AGENT_STYLE } from "../theme.js";
+import {
+  SELECTION_PALETTE_ROWS,
+  SelectionPalette,
+  type SelectionPaletteItem,
+} from "./SelectionPalette.js";
 
 /**
  * Only models with real evidence behind them: Claude's aliases are
@@ -10,26 +14,39 @@ import { AGENT_STYLE } from "../theme.js";
  * (configured default + availability history) — nothing invented, since a
  * wrong guess here would just fail at the API.
  */
-const OPTIONS: Record<AgentId, { label: string; value: string }[]> = {
+interface ModelOption extends SelectionPaletteItem {
+  value: string;
+}
+
+const OPTIONS: Record<AgentId, ModelOption[]> = {
   claude: [
-    { label: "Opus 5 — le plus puissant, plus lent", value: "opus" },
-    { label: "Sonnet 5 — équilibré (recommandé)", value: "sonnet" },
-    { label: "Haiku 4.5 — rapide et léger", value: "haiku" },
-    { label: "Fable 5", value: "fable" },
+    { key: "opus", label: "Opus 5", description: "le plus puissant, plus lent", value: "opus" },
+    {
+      key: "sonnet",
+      label: "Sonnet 5",
+      description: "équilibré (recommandé)",
+      value: "sonnet",
+    },
+    { key: "haiku", label: "Haiku 4.5", description: "rapide et léger", value: "haiku" },
+    { key: "fable", label: "Fable 5", value: "fable" },
   ],
   codex: [
-    { label: "gpt-5.6-sol, effort max — défaut configuré", value: "gpt-5.6-sol" },
-    { label: "gpt-5.5", value: "gpt-5.5" },
+    {
+      key: "gpt-5.6-sol",
+      label: "gpt-5.6-sol, effort max",
+      description: "défaut configuré",
+      value: "gpt-5.6-sol",
+    },
+    { key: "gpt-5.5", label: "gpt-5.5", value: "gpt-5.5" },
   ],
 };
 
-/** Rows the picker is allowed to occupy: one title plus the longest option list. */
-export const MODEL_PICKER_ROWS = 1 + Math.max(...Object.values(OPTIONS).map((o) => o.length));
+/** Same fixed viewport as commands: three choices, one gap, then the controls. */
+export const MODEL_PICKER_ROWS = SELECTION_PALETTE_ROWS;
 
 /**
- * Replaces the status bar and prompt while open. Height is pinned and overflow
- * clipped: a label that wraps on a narrow terminal must not push the dynamic
- * zone past the height Ink can erase cleanly.
+ * Opens in the same fixed slot as command completion, immediately above the
+ * prompt. The parent keeps the prompt visible but routes keyboard input here.
  */
 export function ModelPicker(props: {
   agent: AgentId;
@@ -38,19 +55,36 @@ export function ModelPicker(props: {
   width: number;
 }) {
   const { agent, onSelect, onCancel, width } = props;
-  const style = AGENT_STYLE[agent];
-  const rows = 1 + OPTIONS[agent].length;
+  const options = OPTIONS[agent];
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const safeSelectedIndex = Math.min(selectedIndex, options.length - 1);
 
   useInput((_input, key) => {
-    if (key.escape) onCancel();
+    if (key.escape) {
+      onCancel();
+      return;
+    }
+    if (key.upArrow || key.downArrow) {
+      const delta = key.upArrow ? -1 : 1;
+      setSelectedIndex((current) => (current + delta + options.length) % options.length);
+      return;
+    }
+    // Entrée autant que Tab : la barre de saisie est inactive tant que le
+    // sélecteur est ouvert, donc Entrée ne servirait à rien d'autre, et c'est
+    // le réflexe universel après avoir surligné un choix aux flèches.
+    if (key.tab || key.return) {
+      const option = options[safeSelectedIndex];
+      if (option) onSelect(option.value);
+    }
   });
 
   return (
-    <Box flexDirection="column" width={width} height={rows} overflow="hidden">
-      <Text color={style.color} bold wrap="truncate-end">
-        Modèle pour {style.badge} — ↑↓ puis Entrée · Échap pour annuler
-      </Text>
-      <SelectInput items={OPTIONS[agent]} onSelect={(item) => onSelect(item.value)} />
-    </Box>
+    <SelectionPalette
+      items={options}
+      selectedIndex={safeSelectedIndex}
+      width={width}
+      actionLabel="Tab ou Entrée choisir"
+      emptyLabel="Aucun modèle disponible"
+    />
   );
 }

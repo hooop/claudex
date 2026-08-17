@@ -6,6 +6,11 @@ describe("parseCommand", () => {
     expect(parseCommand("/handoff")).toEqual({ kind: "handoff" });
   });
 
+  it("parse les commandes informatives du débat", () => {
+    expect(parseCommand("/sujet")).toEqual({ kind: "topic" });
+    expect(parseCommand("/decisions")).toEqual({ kind: "decisions" });
+  });
+
   it("ignores trailing text after /handoff (no arguments expected)", () => {
     expect(parseCommand("/handoff now")).toEqual({ kind: "handoff" });
   });

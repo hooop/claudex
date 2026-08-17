@@ -62,11 +62,22 @@ describe("TranscriptStream", () => {
     stream.entry(e);
 
     const rendered = plain().trimEnd();
-    expect(rendered).toMatch(/^• Sujet : /);
+    expect(rendered).toMatch(/^:: Sujet : /);
     expect(rendered).toMatch(/\.\.\.$/);
     expect(displayWidth(rendered)).toBeLessThanOrEqual(40);
     expect(rendered).not.toContain("\n");
     expect(e.text).toBe(canonicalText);
+  });
+
+  it("laisse deux lignes vides entre le sujet et le premier tour de Claude", () => {
+    const { stream, plain } = harness();
+    stream.entry(entry({ from: "system", kind: "system", text: "Sujet : architecture" }));
+    stream.entryStarted(entry({ from: "claude", kind: "message" }));
+
+    const lines = plain().split("\n");
+    const subject = lines.findIndex((line) => line.includes("Sujet : architecture"));
+    const claude = lines.findIndex((line) => line.includes("Claude"));
+    expect(lines.slice(subject + 1, claude)).toEqual(["", ""]);
   });
 
   it("n'émet jamais de séquence d'effacement", () => {
@@ -78,6 +89,22 @@ describe("TranscriptStream", () => {
     stream.entryCompleted(e.id, { status: "ok", signal: "continue" });
     expect(output()).not.toMatch(/\u001b\[[0-9]*[JH]/);
     expect(output()).toContain("avantaprès");
+  });
+
+  it("remplace les pictogrammes de statut avant de replier la ligne", () => {
+    const { stream, plain } = harness(40);
+    const e = entry({ from: "claude", kind: "message" });
+    stream.entryStarted(e);
+    stream.chunk(e.id, `${"✓".repeat(30)}${"texte assez long ".repeat(8)}\n`);
+    stream.entryCompleted(e.id, { status: "ok", signal: null });
+
+    const body = plain()
+      .split("\n")
+      .filter((line) => line.includes("texte") || line.includes("assez long"));
+    expect(body.length).toBeGreaterThan(1);
+    for (const line of body) expect(displayWidth(line)).toBeLessThanOrEqual(40);
+    expect(plain()).not.toContain("✓");
+    expect(plain()).toContain("[ok][ok]");
   });
 
   it("ne commit jamais un marqueur confirmé", () => {
@@ -150,8 +177,8 @@ describe("TranscriptStream", () => {
     };
 
     it("nomme la décision et à qui la main passe", () => {
-      expect(verdictOf("claude", "continue")).toContain("↳ poursuit · passe la main à Codex");
-      expect(verdictOf("codex", "continue")).toContain("↳ poursuit · passe la main à Claude");
+      expect(verdictOf("claude", "continue")).toContain("-> poursuit · passe la main à Codex");
+      expect(verdictOf("codex", "continue")).toContain("-> poursuit · passe la main à Claude");
     });
 
     // Un accord isolé laisse le débat tourner, la paire l'arrête : les deux
@@ -168,11 +195,11 @@ describe("TranscriptStream", () => {
     });
 
     it("distingue un accord d'une attente humaine", () => {
-      expect(verdictOf("codex", "wait-human")).toContain("⏸ attend ta réponse");
+      expect(verdictOf("codex", "wait-human")).toContain("[pause] attend ta réponse");
     });
 
     it("dit explicitement qu'un tour n'a rien signalé", () => {
-      expect(verdictOf("claude", null)).toContain("⚠ aucune décision signalée");
+      expect(verdictOf("claude", null)).toContain("[!] aucune décision signalée");
     });
 
     // Muet à l'origine, quand un non-sujet fermait la session : le retour à
@@ -180,7 +207,7 @@ describe("TranscriptStream", () => {
     // tour doit annoncer sa décision et la suite comme tous les autres.
     it("annonce qu'il n'y a pas de sujet, et ce qui va se passer", () => {
       const verdict = verdictOf("claude", "no-topic");
-      expect(verdict).toContain("✕ aucun sujet à débattre");
+      expect(verdict).toContain("Aucun sujet à débattre");
       expect(verdict).toContain("prochain message");
     });
 
@@ -306,5 +333,32 @@ describe("TranscriptStream — cadence", () => {
     vi.advanceTimersByTime(32);
     expect(writes.length).toBe(afterStart + 1);
     vi.useRealTimers();
+  });
+});
+
+describe("TranscriptStream — lignes figées", () => {
+  it("valide le caractère retenu par le sanitizer avant de figer la ligne", () => {
+    const { stream, plain } = harness();
+    const e = entry({ from: "claude", kind: "message" });
+    stream.entryStarted(e);
+    // Le « 4 » final est retenu : un fragment suivant pourrait en faire un keycap.
+    stream.chunk(e.id, "budget de 4");
+    stream.raw(["---"]);
+    stream.chunk(e.id, "2 euros\n");
+
+    const lines = plain().split("\n");
+    expect(lines).toContain("│ budget de 4");
+    expect(plain()).not.toContain("42 euros");
+  });
+
+  it("laisse le rail nu sur une ligne de clôture de bloc de code", () => {
+    const { stream, plain } = harness();
+    const e = entry({ from: "claude", kind: "message" });
+    stream.entryStarted(e);
+    stream.chunk(e.id, "```ts\nconst a = 1;\n```\n");
+    stream.entryCompleted(e.id, { status: "ok", signal: "continue" });
+
+    // « │ » suivi d'une espace serait recopié avec le texte à la sélection.
+    expect(plain().split("\n")).not.toContain("│ ");
   });
 });

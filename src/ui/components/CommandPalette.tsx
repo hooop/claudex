@@ -1,4 +1,8 @@
-import { Box, Text } from "ink";
+import {
+  SELECTION_PALETTE_ROWS,
+  SELECTION_PALETTE_VISIBLE_ITEMS,
+  SelectionPalette,
+} from "./SelectionPalette.js";
 
 export interface CommandSuggestion {
   /** Text inserted by Tab. A trailing space leaves the cursor ready for arguments. */
@@ -8,13 +12,8 @@ export interface CommandSuggestion {
   description: string;
 }
 
-export const COMMAND_PALETTE_VISIBLE_ITEMS = 3;
-export const COMMAND_PALETTE_ROWS = COMMAND_PALETTE_VISIBLE_ITEMS + 1;
-
-const SELECTED_RAIL_COLOR = "ansi256(220)";
-const SELECTED_COMMAND_COLOR = "ansi256(195)";
-const COMMAND_COLOR = "ansi256(66)";
-const MUTED_COLOR = "ansi256(237)";
+export const COMMAND_PALETTE_VISIBLE_ITEMS = SELECTION_PALETTE_VISIBLE_ITEMS;
+export const COMMAND_PALETTE_ROWS = SELECTION_PALETTE_ROWS;
 
 export const WELCOME_COMMANDS: readonly CommandSuggestion[] = [
   {
@@ -27,11 +26,14 @@ export const WELCOME_COMMANDS: readonly CommandSuggestion[] = [
     usage: "/model codex <nom>",
     description: "choisir le modèle Codex",
   },
+  { completion: "/decisions", usage: "/decisions", description: "consulter les décisions actées" },
   { completion: "/help", usage: "/help", description: "afficher toutes les commandes" },
   { completion: "/quit", usage: "/quit", description: "quitter Claudex" },
 ] as const;
 
 export const DEBATE_COMMANDS: readonly CommandSuggestion[] = [
+  { completion: "/sujet", usage: "/sujet", description: "afficher le sujet complet" },
+  { completion: "/decisions", usage: "/decisions", description: "consulter les décisions actées" },
   {
     completion: "/claude ",
     usage: "/claude <texte>",
@@ -111,54 +113,17 @@ export function CommandPalette(props: {
   selectedIndex: number;
   width: number;
 }) {
-  const { commands, width } = props;
-  const selectedIndex =
-    commands.length === 0 ? 0 : Math.min(props.selectedIndex, commands.length - 1);
-  const maxStart = Math.max(0, commands.length - COMMAND_PALETTE_VISIBLE_ITEMS);
-  const firstVisible = Math.min(
-    maxStart,
-    Math.max(0, selectedIndex - Math.floor(COMMAND_PALETTE_VISIBLE_ITEMS / 2)),
-  );
-  const visible = commands.slice(firstVisible, firstVisible + COMMAND_PALETTE_VISIBLE_ITEMS);
-  const position = commands.length === 0 ? "0/0" : `${selectedIndex + 1}/${commands.length}`;
-
   return (
-    <Box
-      flexDirection="column"
-      width={width}
-      height={COMMAND_PALETTE_ROWS}
-      paddingLeft={1}
-      overflow="hidden"
-    >
-      {Array.from({ length: COMMAND_PALETTE_VISIBLE_ITEMS }, (_, row) => {
-        const command = visible[row];
-        if (!command) {
-          return row === 0 && commands.length === 0 ? (
-            <Text key="empty" color={MUTED_COLOR} wrap="truncate-end">
-              › Aucune commande correspondante
-            </Text>
-          ) : (
-            <Text key={`empty-${row}`}> </Text>
-          );
-        }
-
-        const index = firstVisible + row;
-        const selected = index === selectedIndex;
-        return (
-          <Text key={command.completion} wrap="truncate-end">
-            <Text color={selected ? SELECTED_RAIL_COLOR : MUTED_COLOR}>
-              {selected ? "› " : "  "}
-            </Text>
-            <Text color={selected ? SELECTED_COMMAND_COLOR : COMMAND_COLOR} bold={selected}>
-              {command.usage}
-            </Text>
-            <Text color={MUTED_COLOR}> — {command.description}</Text>
-          </Text>
-        );
-      })}
-      <Text color={MUTED_COLOR} wrap="truncate-end">
-        ↑↓ {position} · Tab compléter · Échap fermer
-      </Text>
-    </Box>
+    <SelectionPalette
+      items={props.commands.map((command) => ({
+        key: command.completion,
+        label: command.usage,
+        description: command.description,
+      }))}
+      selectedIndex={props.selectedIndex}
+      width={props.width}
+      actionLabel="Tab compléter"
+      emptyLabel="Aucune commande correspondante"
+    />
   );
 }

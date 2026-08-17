@@ -29,6 +29,7 @@ import { LineBuffer, displayWidth, truncateEnd, type PhysicalLine } from "./line
 import { MarkdownStreamer } from "./markdownStream.js";
 import { MarkerFilter } from "./markerFilter.js";
 import { AnsiSanitizer } from "./sanitize.js";
+import { AsciiSymbolSanitizer, asciiSymbolsForDisplay } from "./asciiSymbols.js";
 import { StreamController, type StreamWriter } from "./streamController.js";
 
 export interface EntryStyle {
@@ -63,24 +64,24 @@ function verdictText(signal: Signal, from: AgentId, closesDebate: boolean): stri
   const me = AGENT_STYLE[from].badge;
   switch (signal) {
     case "continue":
-      return `↳ poursuit · passe la main à ${AGENT_STYLE[other(from)].badge}`;
+      return `-> poursuit · passe la main à ${AGENT_STYLE[other(from)].badge}`;
     // The two cases read very differently and must not share a wording: one
     // agreement leaves the debate running, the pair ends it. The scheduler
     // tells us which this is, since it compares the signals after the entry
     // has already been closed.
     case "consensus":
       return closesDebate
-        ? "✓ Consensus approuvé — le débat est clos"
-        : `✓ ${me} est prêt pour un consensus — au tour de ${AGENT_STYLE[other(from)].badge}`;
+        ? "[ok] Consensus approuvé — le débat est clos"
+        : `[ok] ${me} est prêt pour un consensus — au tour de ${AGENT_STYLE[other(from)].badge}`;
     case "wait-human":
-      return "⏸ attend ta réponse — débat en pause";
+      return "[pause] attend ta réponse — débat en pause";
     // This used to be silent, back when a non-topic closed the session and the
     // return to the welcome screen said it. The conversation stays open now, so
     // the turn has to say what it decided and what happens next like any other.
     case "no-topic":
-      return "✕ aucun sujet à débattre — le débat démarrera sur ton prochain message";
+      return "Aucun sujet à débattre — le débat démarrera sur ton prochain message";
     case null:
-      return "⚠ aucune décision signalée";
+      return "[!] aucune décision signalée";
   }
 }
 
@@ -117,14 +118,17 @@ function clockOf(timestamp: number): string {
 class EntryPipeline {
   private readonly filter = new MarkerFilter();
   private readonly sanitizer = new AnsiSanitizer();
+  private readonly ascii: AsciiSymbolSanitizer | null;
   private readonly markdown = new MarkdownStreamer();
   private readonly buffer: LineBuffer;
 
   constructor(
     private readonly style: EntryStyle,
     width: number,
+    asciiOnly: boolean,
   ) {
     this.buffer = new LineBuffer(this.bodyWidth(width));
+    this.ascii = asciiOnly ? new AsciiSymbolSanitizer() : null;
   }
 
   /** Chrome lines are quoted verbatim in one dim colour, not read as markdown. */
@@ -137,17 +141,29 @@ class EntryPipeline {
   }
 
   push(delta: string): string[] {
-    const visible = this.sanitizer.push(this.filter.push(delta));
+    const sanitized = this.sanitizer.push(this.filter.push(delta));
+    const visible = this.ascii ? this.ascii.push(sanitized) : sanitized;
     return this.buffer.push(visible).map((line) => this.render(line));
   }
 
-  /** Commit the incomplete line so something permanent can be written after it. */
+  /**
+   * Commit the incomplete line so something permanent can be written after it.
+   *
+   * The ASCII sanitizer is flushed too: it withholds a trailing digit or `#` in
+   * case the next chunk turns it into a keycap emoji, and a line that is about to
+   * become scrollback can no longer receive it. Left pending, that character
+   * reappears at the head of the next committed line — `budget de` / `12 euros`.
+   */
   interrupt(): string[] {
-    return this.buffer.flush().map((line) => this.render(line));
+    const held = this.ascii ? this.ascii.flush() : "";
+    const lines = held ? [...this.buffer.push(held), ...this.buffer.flush()] : this.buffer.flush();
+    return lines.map((line) => this.render(line));
   }
 
   finish(signalConfirmed: boolean): string[] {
-    const rest = this.sanitizer.push(this.filter.finish(signalConfirmed)) + this.sanitizer.flush();
+    const sanitized =
+      this.sanitizer.push(this.filter.finish(signalConfirmed)) + this.sanitizer.flush();
+    const rest = this.ascii ? this.ascii.push(sanitized) + this.ascii.flush() : sanitized;
     const lines = [...this.buffer.push(rest), ...this.buffer.flush()];
     return lines.map((line) => this.render(line));
   }
@@ -166,7 +182,11 @@ class EntryPipeline {
     if (!this.formatted) return chalk.dim(terminalColor(this.style.color)(line.text));
     // No trailing space on a blank line: it would be copied out with the text.
     if (line.text === "") return terminalColor(this.style.color)("│");
-    return railPrefix(this.style.color) + this.markdown.style(line);
+    // A fence marker renders to nothing at all, so the same rule applies to it:
+    // the rail must not be left carrying a space that no glyph follows.
+    const styled = this.markdown.style(line);
+    if (styled === "") return terminalColor(this.style.color)("│");
+    return railPrefix(this.style.color) + styled;
   }
 }
 
@@ -180,10 +200,12 @@ function railPrefix(color: string): string {
 }
 
 function entryBody(entry: TranscriptEntry, style: EntryStyle, width: number): string {
-  const body = `${style.badge} ${entry.text}`;
-  const isInitialSubject =
-    entry.from === "system" && entry.kind === "system" && entry.text.startsWith("Sujet :");
-  return isInitialSubject ? truncateEnd(body.replace(/\s+/gu, " ").trim(), width) : body;
+  const body = `${style.badge ? `${style.badge} ` : ""}${entry.text}`;
+  return isInitialSubject(entry) ? truncateEnd(body.replace(/\s+/gu, " ").trim(), width) : body;
+}
+
+function isInitialSubject(entry: TranscriptEntry): boolean {
+  return entry.from === "system" && entry.kind === "system" && entry.text.startsWith("Sujet :");
 }
 
 export class TranscriptStream {
@@ -210,13 +232,18 @@ export class TranscriptStream {
     this.interruptActive();
 
     const style = entryStyle(entry);
-    const pipe = new EntryPipeline(style, this.options.width());
+    const pipe = new EntryPipeline(style, this.options.width(), shouldUseAscii(entry));
 
     if (!style.rail) {
-      this.controller.push([
+      const lines = [
         ...pipe.push(entryBody(entry, style, this.options.width())),
         ...pipe.finish(false),
-      ]);
+      ];
+      // Keep the accepted prompt visually distinct from Claude's first turn.
+      // These rows belong only to the terminal presentation; the canonical
+      // transcript remains unchanged.
+      if (isInitialSubject(entry)) lines.push("", "");
+      this.controller.push(lines);
       this.controller.flush();
       return;
     }
@@ -234,7 +261,7 @@ export class TranscriptStream {
     this.interruptActive();
 
     const style = entryStyle(entry);
-    const pipe = new EntryPipeline(style, this.options.width());
+    const pipe = new EntryPipeline(style, this.options.width(), shouldUseAscii(entry));
     this.active = { id: entry.id, pipe, from: entry.from };
     this.controller.push(this.headerLines(entry, style));
     this.controller.flush();
@@ -254,7 +281,11 @@ export class TranscriptStream {
 
     const lines = active.pipe.finish(outcome.status === "ok" && outcome.signal !== null);
     if (outcome.status === "error") {
-      lines.push(chalk.hex(ERROR_STYLE.color)(`${ERROR_STYLE.badge} Erreur : ${outcome.message}`));
+      lines.push(
+        chalk.hex(ERROR_STYLE.color)(
+          `${ERROR_STYLE.badge} Erreur : ${asciiSymbolsForDisplay(outcome.message)}`,
+        ),
+      );
     } else if (outcome.status === "cancelled") {
       lines.push(chalk.dim("(Annulé)"));
     } else if (active.from === "claude" || active.from === "codex") {
@@ -304,7 +335,7 @@ export class TranscriptStream {
     const target = entry.to ? (entry.to === "both" ? " → les deux" : ` → ${entry.to}`) : "";
     const clock = entry.kind === "summary" ? "" : clockOf(entry.timestamp);
     const isAgent = entry.from === "claude" || entry.from === "codex";
-    const badge = isAgent ? style.badge : `● ${style.badge}`;
+    const badge = isAgent ? style.badge : `* ${style.badge}`;
     const label = `${badge}${target}`;
 
     const room = width - RAIL_WIDTH - displayWidth(label) - displayWidth(clock);
@@ -319,4 +350,8 @@ export class TranscriptStream {
 
     return [head, terminalColor(style.color)("│")];
   }
+}
+
+function shouldUseAscii(entry: TranscriptEntry): boolean {
+  return entry.from === "claude" || entry.from === "codex" || entry.kind === "summary";
 }

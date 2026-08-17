@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classifyLine, parseInline } from "../markdown.js";
+import { classifyLine, markdownToPlainText, parseInline } from "../markdown.js";
 
 describe("parseInline", () => {
   it("extrait gras, italique et code", () => {
@@ -66,5 +66,15 @@ describe("classifyLine", () => {
   it("traite tout le reste comme du texte", () => {
     expect(classifyLine("une phrase normale")).toEqual({ kind: "plain" });
     expect(classifyLine("")).toEqual({ kind: "plain" });
+  });
+});
+
+describe("markdownToPlainText", () => {
+  it("retire les marqueurs tout en conservant la structure lisible", () => {
+    expect(
+      markdownToPlainText(
+        "## Décision\n\n- utiliser **Architecture C**\n\n> voir `decisions.md`\n\n```ts\nconst ok = true;\n```",
+      ),
+    ).toBe("Décision\n\n- utiliser Architecture C\n\n| voir decisions.md\n\nconst ok = true;");
   });
 });

@@ -9,8 +9,9 @@
  * that straddles a line boundary stays literal — permanently, and identically for
  * every reader.
  *
- * Styling never changes a line's character count, so it can be applied after the
- * line buffer has already decided where the line ends.
+ * Styling is applied after the line buffer has decided where the line ends. The
+ * rendered line may be shorter because source delimiters are presentation syntax,
+ * not content: the terminal shows hierarchy instead of printing `##` or `**`.
  */
 
 import chalk from "chalk";
@@ -32,16 +33,16 @@ function styleInline(text: string): string {
   for (const span of spans) {
     switch (span.type) {
       case "bold":
-        out += chalk.bold(`**${span.value}**`);
+        out += chalk.bold(span.value);
         break;
       case "italic":
-        out += chalk.italic(`*${span.value}*`);
+        out += chalk.italic(span.value);
         break;
       case "code":
-        out += code(`\`${span.value}\``);
+        out += code(span.value);
         break;
       case "link":
-        out += chalk.underline(`[${span.value}]`) + chalk.dim(`(${span.url})`);
+        out += chalk.underline(span.value) + chalk.dim(` (${span.url})`);
         break;
       default:
         out += span.value;
@@ -54,27 +55,30 @@ export class MarkdownStreamer {
   private inFence = false;
   private block: BlockStyle = "plain";
 
-  /**
-   * The markup delimiters are kept visible (`**bold**`, not `bold`) so the styled
-   * line occupies exactly the columns the line buffer measured, and so a
-   * selection copied out of the terminal is still the markdown the agent wrote.
-   */
   style(line: PhysicalLine): string {
     if (!line.continuation) this.block = this.classify(line.text);
 
     switch (this.block) {
       case "fence":
-        return chalk.dim(line.text);
+        return "";
       case "code":
         return code(line.text);
       case "heading":
-        return heading(line.text);
+        return heading(styleInline(stripHeading(line.text, line.continuation)));
       case "subheading":
-        return chalk.bold(line.text);
+        return chalk.bold(styleInline(stripHeading(line.text, line.continuation)));
       case "rule":
         return chalk.dim(line.text);
-      case "quote":
-        return chalk.dim.italic(line.text);
+      case "quote": {
+        if (line.continuation) return chalk.dim.italic(styleInline(line.text));
+        // The bar replaces the marker, it does not get added to it: LineBuffer
+        // already wrapped this line at the source width, so a `>text` written
+        // without its space would render one column wider than the terminal was
+        // measured for and soft-wrap underneath the rail.
+        const body = line.text.replace(/^\s{0,3}>\s?/u, "");
+        const gap = /^\s{0,3}>\s/u.test(line.text) ? " " : "";
+        return chalk.dim.italic(styleInline(`|${gap}${body}`));
+      }
       case "list": {
         if (line.continuation) return styleInline(line.text);
         const item = classifyLine(line.text);
@@ -109,4 +113,8 @@ export class MarkdownStreamer {
         return "plain";
     }
   }
+}
+
+function stripHeading(text: string, continuation: boolean): string {
+  return continuation ? text : text.replace(/^\s{0,3}#{1,6}\s+/u, "");
 }

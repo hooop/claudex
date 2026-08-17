@@ -29,16 +29,17 @@ export const MAX_CONTENT_WIDTH = 84;
 export const RAIL_WIDTH = 2;
 
 /**
- * Ceiling on everything Ink draws during a debate, in rows.
- *
- * This is the load-bearing constant of the whole renderer. Ink erases and
- * rewrites its output on every update, and when that output is as tall as the
- * terminal it gives up on line-by-line erasure and clears the entire screen
- * instead — which, at streaming cadence, is the flicker. Keeping the dynamic
- * zone far below the terminal height keeps Ink on the cheap path forever,
- * whatever the transcript has grown to.
+ * Ceiling for the continuously redrawn debate footer. Keeping this at seven
+ * preserves the append-only renderer's steady-state cost during streaming.
  */
-export const MAX_DYNAMIC_ROWS = 7;
+export const MAX_STANDARD_DYNAMIC_ROWS = 7;
+
+/**
+ * Absolute ceiling for Ink output. A user-opened selection palette may borrow
+ * one extra row for visual separation; every continuously changing surface
+ * remains bounded by `MAX_STANDARD_DYNAMIC_ROWS`.
+ */
+export const MAX_DYNAMIC_ROWS = MAX_STANDARD_DYNAMIC_ROWS + 1;
 /** Below these, the footer can't be drawn honestly, so it isn't drawn at all. */
 export const MIN_ROWS = 10;
 export const MIN_COLS = 40;
@@ -49,6 +50,6 @@ export function contentWidthFor(columns: number): number {
 }
 
 export const HUMAN_STYLE = { color: "#f5c542", badge: "TOI" };
-export const SYSTEM_STYLE = { color: "#8b949e", badge: "•" };
+export const SYSTEM_STYLE = { color: "#8b949e", badge: "::" };
 export const ERROR_STYLE = { color: "#ff5c5c", badge: "!" };
-export const SUMMARY_STYLE = { color: "#57d68d", badge: "✓ RÉSUMÉ DU DÉBAT (non attribué)" };
+export const SUMMARY_STYLE = { color: "#57d68d", badge: "[ok] RÉSUMÉ DU DÉBAT (non attribué)" };

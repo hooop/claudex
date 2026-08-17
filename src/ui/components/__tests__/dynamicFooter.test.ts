@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { MAX_DYNAMIC_ROWS, MIN_COLS, MIN_ROWS } from "../../theme.js";
+import {
+  MAX_DYNAMIC_ROWS,
+  MAX_STANDARD_DYNAMIC_ROWS,
+  MIN_COLS,
+  MIN_ROWS,
+} from "../../theme.js";
 import { COMMAND_PALETTE_ROWS } from "../CommandPalette.js";
 import {
   footerMode,
@@ -10,14 +15,13 @@ import {
 } from "../DynamicFooter.js";
 import { INPUT_BAR_MAX_ROWS } from "../InputBar.js";
 import { MODEL_FOOTER_ROWS } from "../ModelFooter.js";
-import { MODEL_PICKER_ROWS } from "../ModelPicker.js";
 
 const surfaces = (over: Partial<FooterSurfaces> = {}): FooterSurfaces => ({
   tail: false,
   banner: false,
   notice: false,
   modal: null,
-  commandPalette: false,
+  selectionPalette: false,
   ...over,
 });
 
@@ -27,10 +31,10 @@ function allCombinations(): FooterSurfaces[] {
   for (const tail of [false, true]) {
     for (const banner of [false, true]) {
       for (const notice of [false, true]) {
-        for (const modal of [null, "permission", "model"] as const) {
+        for (const modal of [null, "permission"] as const) {
           // Un modal masque bannière et notice — c'est la règle appliquée par la vue.
           if (modal !== null && (banner || notice)) continue;
-          out.push({ tail, banner, notice, modal, commandPalette: false });
+          out.push({ tail, banner, notice, modal, selectionPalette: false });
         }
       }
     }
@@ -41,9 +45,9 @@ function allCombinations(): FooterSurfaces[] {
 describe("footerRows", () => {
   it("ne dépasse jamais le plafond de la zone dynamique", () => {
     for (const combo of allCombinations()) {
-      expect(footerRows(combo)).toBeLessThanOrEqual(MAX_DYNAMIC_ROWS);
+      expect(footerRows(combo)).toBeLessThanOrEqual(MAX_STANDARD_DYNAMIC_ROWS);
       expect(footerRows({ ...combo, inputRows: INPUT_BAR_MAX_ROWS })).toBeLessThanOrEqual(
-        MAX_DYNAMIC_ROWS,
+        MAX_STANDARD_DYNAMIC_ROWS,
       );
     }
   });
@@ -55,11 +59,15 @@ describe("footerRows", () => {
 
   it("laisse le champ grandir sans dépasser le plafond dynamique", () => {
     expect(inputBarMaxRows(surfaces())).toBe(INPUT_BAR_MAX_ROWS - MODEL_FOOTER_ROWS);
-    expect(footerRows(surfaces({ inputRows: INPUT_BAR_MAX_ROWS }))).toBe(MAX_DYNAMIC_ROWS);
+    expect(footerRows(surfaces({ inputRows: INPUT_BAR_MAX_ROWS }))).toBe(
+      MAX_STANDARD_DYNAMIC_ROWS,
+    );
 
     const crowded = surfaces({ tail: true, banner: true, notice: true });
     expect(inputBarMaxRows(crowded)).toBe(3);
-    expect(footerRows({ ...crowded, inputRows: INPUT_BAR_MAX_ROWS })).toBe(MAX_DYNAMIC_ROWS);
+    expect(footerRows({ ...crowded, inputRows: INPUT_BAR_MAX_ROWS })).toBe(
+      MAX_STANDARD_DYNAMIC_ROWS,
+    );
   });
 
   it("réserve la zone dynamique à la palette et au prompt lorsqu'elle est ouverte", () => {
@@ -67,7 +75,7 @@ describe("footerRows", () => {
       tail: true,
       banner: true,
       notice: true,
-      commandPalette: true,
+      selectionPalette: true,
       inputRows: INPUT_BAR_MAX_ROWS,
     });
 
@@ -76,11 +84,8 @@ describe("footerRows", () => {
     expect(footerRows(palette)).toBe(MAX_DYNAMIC_ROWS);
   });
 
-  it("laisse un modal remplacer le statut et la saisie tout en gardant les modèles dessous", () => {
+  it("laisse la permission remplacer le statut et la saisie tout en gardant les modèles dessous", () => {
     expect(footerRows(surfaces({ modal: "permission" }))).toBe(2 + MODEL_FOOTER_ROWS);
-    expect(footerRows(surfaces({ tail: true, modal: "model" }))).toBe(
-      MODEL_PICKER_ROWS + MODEL_FOOTER_ROWS + 1,
-    );
   });
 });
 
@@ -118,10 +123,10 @@ describe("pinnedFooterHeight", () => {
     );
 
     expect(heights[0]).toBe(29);
-    expect(heights.at(-1)).toBe(MAX_DYNAMIC_ROWS);
+    expect(heights.at(-1)).toBe(MAX_STANDARD_DYNAMIC_ROWS);
     for (let i = 1; i < heights.length; i++) {
       expect(heights[i]).toBeLessThanOrEqual(heights[i - 1]!);
-      expect(heights[i]).toBeGreaterThanOrEqual(MAX_DYNAMIC_ROWS);
+      expect(heights[i]).toBeGreaterThanOrEqual(MAX_STANDARD_DYNAMIC_ROWS);
       expect(heights[i]).toBeLessThan(30);
     }
   });

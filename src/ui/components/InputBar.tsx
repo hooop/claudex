@@ -30,6 +30,11 @@ export const INPUT_BAR_MAX_ROWS = 6;
 /** Empty background columns kept between editable content and the right edge. */
 export const INPUT_BAR_RIGHT_PADDING = 2;
 
+export function inputBarWidth(availableWidth: number): number {
+  const columns = Number.isFinite(availableWidth) ? Math.floor(availableWidth) : 80;
+  return Math.max(20, columns - 1);
+}
+
 /** Longest prefix of `text` that fits in `maxWidth` display columns. */
 function fitForward(text: string, maxWidth: number): string {
   let out = "";
@@ -126,6 +131,8 @@ export function InputBar(props: {
   onNavigate?: (direction: -1 | 1) => void;
   commands?: readonly CommandSuggestion[];
   onCommandPaletteChange?: (open: boolean) => void;
+  /** Route keyboard input elsewhere while preserving the active prompt surface. */
+  inputActive?: boolean;
 }) {
   const { onCommandPaletteChange, onRowsChange } = props;
   const [value, setValue] = useState("");
@@ -135,7 +142,8 @@ export function InputBar(props: {
   const [paletteDismissed, setPaletteDismissed] = useState(false);
   const latestSubmission = useRef<Promise<void> | null>(null);
   const { stdout } = useStdout();
-  const width = Math.max(20, (props.width ?? stdout?.columns ?? 80) - 1);
+  const width = inputBarWidth(props.width ?? stdout?.columns ?? 80);
+  const inputActive = props.inputActive ?? !props.disabled;
   const promptWidth = displayWidth(PROMPT);
   const inner = Math.max(4, width - promptWidth - INPUT_BAR_RIGHT_PADDING);
   const maxRows = Math.max(
@@ -252,7 +260,7 @@ export function InputBar(props: {
       setCursor(cursor + clean.length);
       if (!nextValue.startsWith("/")) setPaletteDismissed(false);
     },
-    { isActive: !props.disabled },
+    { isActive: inputActive },
   );
 
   useEffect(() => {

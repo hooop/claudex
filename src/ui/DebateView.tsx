@@ -2,12 +2,13 @@ import { Box, Static, Text, useInput, useStdout } from "ink";
 import chalk from "chalk";
 import { useCallback, useEffect, useRef, useState } from "react";
 import wrapAnsi from "wrap-ansi";
-import { appendDecision, appendLimit, saveHandoff } from "../memory/store.js";
+import { appendDecision, appendLimit, readDecisions, saveHandoff } from "../memory/store.js";
 import { decideUsageError, parseCommand } from "../orchestrator/commands.js";
 import type { DebateSession } from "../orchestrator/session.js";
 import type { EntryOutcome } from "../orchestrator/types.js";
 import type {
   AgentActivity,
+  AgentContextUsage,
   AgentId,
   AutonomyBudget,
   PermissionRequest,
@@ -28,7 +29,7 @@ import {
   type FooterSurfaces,
 } from "./components/DynamicFooter.js";
 import { DEBATE_COMMANDS } from "./components/CommandPalette.js";
-import { INPUT_BAR_MIN_ROWS, InputBar } from "./components/InputBar.js";
+import { INPUT_BAR_MIN_ROWS, inputBarWidth, InputBar } from "./components/InputBar.js";
 import { ModelFooter } from "./components/ModelFooter.js";
 import { ModelPicker } from "./components/ModelPicker.js";
 import { PermissionModal } from "./components/PermissionModal.js";
@@ -39,8 +40,12 @@ import {
   headerFrame,
   type HeaderAnimationId,
 } from "./headerArt.js";
-import { BRAND_COLOR, MAX_DYNAMIC_ROWS, contentWidthFor } from "./theme.js";
+import { BRAND_COLOR, MAX_STANDARD_DYNAMIC_ROWS, contentWidthFor } from "./theme.js";
 import { TranscriptStream, type TailView } from "./stream/transcriptStream.js";
+import { asciiSymbolsForDisplay } from "./stream/asciiSymbols.js";
+import { wrapAll } from "./stream/lineBuffer.js";
+import { sanitizeForDisplay } from "./stream/sanitize.js";
+import { markdownToPlainText } from "./markdown.js";
 
 /**
  * The debate screen.
@@ -92,6 +97,9 @@ export function DebateView(props: {
   const [phase, setPhase] = useState<Phase>(session.phase);
   const [thinkingAgent, setThinkingAgent] = useState<AgentId | null>(null);
   const [activity, setActivity] = useState<AgentActivity | null>(null);
+  const [contextUsage, setContextUsage] = useState<
+    Partial<Record<AgentId, AgentContextUsage>>
+  >({});
   const [pendingPermission, setPendingPermission] = useState<PermissionRequest | null>(null);
   const [consensusReached, setConsensusReached] = useState(false);
   const [implementationSummary, setImplementationSummary] = useState<string | null>(null);
@@ -119,7 +127,7 @@ export function DebateView(props: {
 
   const flash = useCallback((text: string) => {
     if (noticeTimer.current) clearTimeout(noticeTimer.current);
-    setNotice(text);
+    setNotice(asciiSymbolsForDisplay(text));
     noticeTimer.current = setTimeout(() => setNotice(null), 4000);
   }, []);
 
@@ -213,7 +221,7 @@ export function DebateView(props: {
       if (awaitingImplementFor.current === agent) {
         awaitingImplementFor.current = null;
         const label = agent === "claude" ? "Claude" : "Codex";
-        flash(`✅ ${label} a terminé ce tour — vérifie les fichiers modifiés (git status / git diff).`);
+        flash(`[ok] ${label} a terminé ce tour — vérifie les fichiers modifiés (git status / git diff).`);
       }
     };
     const onTurnError = () => {
@@ -221,6 +229,8 @@ export function DebateView(props: {
       setActivity(null);
     };
     const onActivity = (_agent: AgentId, nextActivity: AgentActivity) => setActivity(nextActivity);
+    const onContextUsage = (agent: AgentId, usage: AgentContextUsage) =>
+      setContextUsage((current) => ({ ...current, [agent]: usage }));
     const onPhase = (p: Phase) => setPhase(p);
     const onPausedChanged = (p: boolean) => setPaused(p);
     const onSuspensionChanged = (reason: SuspensionReason | null) => setSuspensionReason(reason);
@@ -248,6 +258,7 @@ export function DebateView(props: {
     session.on("turn-end", onTurnEnd);
     session.on("turn-error", onTurnError);
     session.on("activity", onActivity);
+    session.on("context-usage", onContextUsage);
     session.on("phase", onPhase);
     session.on("paused-changed", onPausedChanged);
     session.on("suspension-changed", onSuspensionChanged);
@@ -270,6 +281,7 @@ export function DebateView(props: {
       session.off("turn-end", onTurnEnd);
       session.off("turn-error", onTurnError);
       session.off("activity", onActivity);
+      session.off("context-usage", onContextUsage);
       session.off("phase", onPhase);
       session.off("paused-changed", onPausedChanged);
       session.off("suspension-changed", onSuspensionChanged);
@@ -303,7 +315,7 @@ export function DebateView(props: {
   // bar, which can't win a race against turns that chain faster than a human
   // can type six characters and hit enter.
   useInput((_input, key) => {
-    if (key.escape && !commandPaletteOpen) {
+    if (key.escape && !commandPaletteOpen && modelPickerAgent === null) {
       if (session.lifecycle !== "open") return;
       session.pause();
       flash("Pause demandée (Échap) — le débat s'arrêtera après le tour en cours.");
@@ -320,7 +332,9 @@ export function DebateView(props: {
       cmd.kind !== "save" &&
       cmd.kind !== "retry" &&
       cmd.kind !== "emergency-exit" &&
-      cmd.kind !== "help"
+      cmd.kind !== "help" &&
+      cmd.kind !== "topic" &&
+      cmd.kind !== "decisions"
     ) {
       flash("Session fermée ou opération de cycle de vie en cours : aucune nouvelle tâche n'est acceptée.");
       return;
@@ -338,10 +352,12 @@ export function DebateView(props: {
         return;
       case "model":
         if (!cmd.model) {
+          setCommandPaletteOpen(false);
           setModelPickerAgent(cmd.agent);
           return;
         }
         session.setModel(cmd.agent, cmd.model);
+        setContextUsage((current) => ({ ...current, [cmd.agent]: undefined }));
         return;
       case "implement": {
         const alreadyImplementing = phase === "implementation";
@@ -368,6 +384,26 @@ export function DebateView(props: {
           flash(`Handoff généré : ${savedTo} — à transmettre à une session claude/codex native.`);
         } catch (err) {
           flash(`Échec de la génération du handoff : ${err instanceof Error ? err.message : String(err)}`);
+        }
+        return;
+      }
+      case "topic":
+        streamRef.current?.raw(documentLines("Sujet complet", topic, contentWidthFor(columns), false));
+        return;
+      case "decisions": {
+        try {
+          const decisions = await readDecisions(cwd);
+          if (!decisions) {
+            flash("Aucune mémoire de décisions n'est disponible pour ce projet.");
+            return;
+          }
+          streamRef.current?.raw(
+            documentLines("Décisions actées", decisions, contentWidthFor(columns), true),
+          );
+        } catch (error) {
+          flash(
+            `Impossible de lire les décisions : ${error instanceof Error ? error.message : String(error)}`,
+          );
         }
         return;
       }
@@ -465,12 +501,13 @@ export function DebateView(props: {
     }
   }
 
-  const modal = pendingPermission ? "permission" : modelPickerAgent ? "model" : null;
-  const paletteVisible = modal === null && commandPaletteOpen;
+  const modal = pendingPermission ? "permission" : null;
+  const modelPaletteVisible = modal === null && modelPickerAgent !== null;
+  const paletteVisible = modal === null && (commandPaletteOpen || modelPaletteVisible);
   const banner = modal ? null : bannerFor(consensusReached, implementationSummary, phase, busy);
   const showNotice = !modal && notice !== null;
   // A notice temporarily takes the single accessory slot and the persistent
-  // banner returns as soon as it expires. This keeps the footer within 7 rows.
+  // banner returns as soon as it expires. This keeps the standard footer within 7 rows.
   const visibleBanner = showNotice ? null : banner;
 
   const footerSurfaces: FooterSurfaces = {
@@ -478,14 +515,14 @@ export function DebateView(props: {
     banner: !paletteVisible && visibleBanner !== null,
     notice: !paletteVisible && showNotice,
     modal,
-    commandPalette: paletteVisible,
+    selectionPalette: paletteVisible,
     inputRows,
   };
   const maxInputRows = inputBarMaxRows(footerSurfaces);
   const rows = footerRows(footerSurfaces);
   const preferredFooterHeight = pinnedOutput
     ? pinnedFooterHeight(terminalRows, permanentRows)
-    : Math.min(MAX_DYNAMIC_ROWS, Math.max(1, terminalRows - 1));
+    : Math.min(MAX_STANDARD_DYNAMIC_ROWS, Math.max(1, terminalRows - 1));
 
   return (
     <>
@@ -538,18 +575,21 @@ export function DebateView(props: {
               setPendingPermission(null);
             }}
           />
-        ) : modelPickerAgent ? (
-          <ModelPicker
-            agent={modelPickerAgent}
-            width={columns}
-            onSelect={(model) => {
-              session.setModel(modelPickerAgent, model);
-              setModelPickerAgent(null);
-            }}
-            onCancel={() => setModelPickerAgent(null)}
-          />
         ) : (
           <>
+            {modelPickerAgent && (
+              <ModelPicker
+                key={modelPickerAgent}
+                agent={modelPickerAgent}
+                width={inputBarWidth(columns)}
+                onSelect={(model) => {
+                  session.setModel(modelPickerAgent, model);
+                  setContextUsage((current) => ({ ...current, [modelPickerAgent]: undefined }));
+                  setModelPickerAgent(null);
+                }}
+                onCancel={() => setModelPickerAgent(null)}
+              />
+            )}
             {!paletteVisible && (
               <StatusBar
                 phase={phase}
@@ -563,6 +603,7 @@ export function DebateView(props: {
             )}
             <InputBar
               disabled={false} // Input is now always active — interventions are queued
+              inputActive={modelPickerAgent === null}
               width={columns}
               maxRows={maxInputRows}
               commands={DEBATE_COMMANDS}
@@ -584,6 +625,7 @@ export function DebateView(props: {
         {!paletteVisible && (
           <ModelFooter
             models={{ claude: session.modelOf("claude"), codex: session.modelOf("codex") }}
+            contextUsage={contextUsage}
           />
         )}
       </DynamicFooter>
@@ -627,7 +669,7 @@ export function staticBlockText(data: string): string {
 }
 
 function pinningThreshold(terminalRows: number): number {
-  return Math.max(0, terminalRows - 1 - MAX_DYNAMIC_ROWS);
+  return Math.max(0, terminalRows - 1 - MAX_STANDARD_DYNAMIC_ROWS);
 }
 
 function bannerFor(
@@ -639,14 +681,14 @@ function bannerFor(
   if (consensusReached && phase === "debate") {
     return summary
       ? {
-          text: "✓ Consensus — /handoff pour générer un prompt d'implémentation (recommandé), ou /implement pour rester dans Claudex",
+          text: "[ok] Consensus — /handoff pour générer un prompt d'implémentation (recommandé), ou /implement pour rester dans Claudex",
           color: "greenBright",
         }
-      : { text: "✓ Consensus — synthèse de ce qui sera implémenté en cours…", color: "greenBright" };
+      : { text: "[ok] Consensus — synthèse de ce qui sera implémenté en cours…", color: "greenBright" };
   }
   if (phase === "implementation" && !busy) {
     return {
-      text: "✎ Implémentation : désigne qui code avec /claude <instruction> ou /codex <instruction> · /new pour repartir",
+      text: "[edit] Implémentation : désigne qui code avec /claude <instruction> ou /codex <instruction> · /new pour repartir",
       color: BRAND_COLOR,
     };
   }
@@ -673,6 +715,8 @@ function helpLines(): string[] {
     `${pad}${key("Échap")} — pause d'urgence, marche même pendant un tour`,
     `${pad}${key("Ctrl+C")} — demande un arrêt quiescent puis archive ; ne force jamais l'abandon`,
     `${pad}${key("texte libre")} — message envoyé aux deux agents`,
+    `${pad}${key("/sujet")} — réaffiche le sujet complet du débat dans le scrollback`,
+    `${pad}${key("/decisions")} — affiche les décisions actées de la mémoire du projet`,
     `${pad}${key("/claude")} ou ${key("/codex")} texte — message ciblé`,
     `${pad}${key("/model claude|codex nom")} — change le modèle en cours de session`,
     `${pad}${key("/handoff")} — après consensus, génère un fichier markdown autoportant (contexte projet +`,
@@ -698,4 +742,17 @@ function helpLines(): string[] {
     `${pad}${key("/help")} — réaffiche cette aide · ${key("/quit")} — arrête, archive et quitte`,
     "",
   ];
+}
+
+function documentLines(
+  title: string,
+  source: string,
+  width: number,
+  markdown: boolean,
+): string[] {
+  const clean = sanitizeForDisplay(
+    markdown ? asciiSymbolsForDisplay(markdownToPlainText(source)) : source,
+  );
+  const body = clean.split("\n").flatMap((line) => wrapAll(line, Math.max(8, width - 2)));
+  return ["", chalk.bold(title), "", ...body, ""];
 }

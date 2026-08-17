@@ -5,6 +5,8 @@ export type Command =
   | { kind: "model"; agent: AgentId; model: string }
   | { kind: "implement"; agent?: AgentId; extra?: string }
   | { kind: "handoff" }
+  | { kind: "topic" }
+  | { kind: "decisions" }
   | { kind: "resume" }
   | { kind: "pause" }
   | { kind: "cancel" }
@@ -72,6 +74,10 @@ export function parseCommand(raw: string): Command {
     }
     case "handoff":
       return { kind: "handoff" };
+    case "sujet":
+      return { kind: "topic" };
+    case "decisions":
+      return { kind: "decisions" };
     case "resume":
       return { kind: "resume" };
     case "pause":

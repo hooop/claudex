@@ -6,6 +6,23 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => {
   let autoComplete = true;
   let autoResponse = "Sujet qualifié\n\n<<CONTINUE>>";
+  // Mutable : la mémoire du projet change sous les pieds de Claudex dès qu'une
+  // session écrit une décision, et l'accueil doit refléter le disque, pas
+  // l'état du lancement.
+  const projectStatus = {
+    decisionsCount: 0,
+    decisionsText: "# Décisions\n\nAucune décision actée.",
+    lastSession: null as string | null,
+    claudeDefaultModel: null as string | null,
+    codexDefaultModel: null as string | null,
+    codexDefaultEffort: null as string | null,
+    // These fakes always answer <<CONTINUE>> from a microtask, so a real debate
+    // between them never ends and would starve the event loop. Nothing here
+    // asserts on how many turns happen, so one automatic start is enough to
+    // exercise the chain and let every test settle. Do not set this back to
+    // null: the bound belongs to the fixture, not to the product's default.
+    autonomyBudget: { kind: "automatic-starts", maximum: 1 } as const,
+  };
   class FakeAgent {
     readonly label: string;
     private resolve:
@@ -55,6 +72,8 @@ const mocks = vi.hoisted(() => {
     setAutoResponse(value: string) {
       autoResponse = value;
     },
+    projectStatus,
+    getProjectStatus: vi.fn(() => ({ ...projectStatus })),
   };
 });
 
@@ -78,6 +97,7 @@ vi.mock("../../memory/store.js", () => ({
   appendDecision: vi.fn(async () => {}),
   appendDevlog: mocks.appendDevlog,
   appendLimit: vi.fn(async () => {}),
+  readDecisions: vi.fn(async () => "# Décisions\n\nAucune décision actée."),
   rememberModel: vi.fn(async () => {}),
   rememberAutonomyBudget: vi.fn(async () => {}),
   saveHandoff: vi.fn(async () => "handoff.md"),
@@ -85,19 +105,7 @@ vi.mock("../../memory/store.js", () => ({
 }));
 
 vi.mock("../../util/projectStatus.js", () => ({
-  getProjectStatus: () => ({
-    decisionsCount: 0,
-    lastSession: null,
-    claudeDefaultModel: null,
-    codexDefaultModel: null,
-    codexDefaultEffort: null,
-    // These fakes always answer <<CONTINUE>> from a microtask, so a real debate
-    // between them never ends and would starve the event loop. Nothing here
-    // asserts on how many turns happen, so one automatic start is enough to
-    // exercise the chain and let every test settle. Do not set this back to
-    // null: the bound belongs to the fixture, not to the product's default.
-    autonomyBudget: { kind: "automatic-starts", maximum: 1 },
-  }),
+  getProjectStatus: mocks.getProjectStatus,
 }));
 
 vi.mock("../components/AnimatedHeader.js", () => ({
@@ -105,9 +113,11 @@ vi.mock("../components/AnimatedHeader.js", () => ({
 }));
 
 import { Root } from "../Root.js";
+import { displayWidth } from "../stream/lineBuffer.js";
 import {
   formatLastSession,
   welcomeDivider,
+  welcomeMemoryLine,
   WELCOME_MEMORY_COLOR,
   WELCOME_MODELS_COLOR,
   WELCOME_TAGLINE,
@@ -163,6 +173,7 @@ describe("Root — cycle de vie du header", () => {
     vi.clearAllMocks();
     mocks.setAutoComplete(true);
     mocks.setAutoResponse("Sujet qualifié\n\n<<CONTINUE>>");
+    mocks.projectStatus.decisionsCount = 0;
     mocks.saveTranscript.mockResolvedValue("trace.md");
   });
 
@@ -200,6 +211,13 @@ describe("Root — cycle de vie du header", () => {
     expect(formattedSession).not.toContain("T11:42:17.288Z");
     expect(welcomeDivider(80)).toBe("·".repeat(80));
     expect(welcomeDivider(200)).toBe("·".repeat(96));
+    const memory = welcomeMemoryLine(
+      { decisionsCount: 3, lastSession: "2026-08-10T11:42:17.288Z" },
+      80,
+    );
+    expect(displayWidth(memory)).toBe(80);
+    expect(memory).toMatch(/^Mémoire : 3 décisions actées/);
+    expect(memory).toMatch(/dernière session : .*10 août 2026.*\d{2}:\d{2}$/);
     expect(initialFrame).not.toContain("Plasma psychédélique");
     expect(initialFrame).toContain(WELCOME_TAGLINE);
     expect(initialFrame).not.toContain("▲ Claudex");
@@ -215,6 +233,63 @@ describe("Root — cycle de vie du header", () => {
     });
     expect(mocks.appendDevlog).not.toHaveBeenCalled();
     app.unmount();
+  });
+
+  it("ouvre les décisions actées depuis l'accueil et les rend sans marqueurs Markdown", async () => {
+    const terminal = fakeTerminal();
+    const app = render(<Root cwd="/projet-test" />, {
+      stdout: terminal.stdout as never,
+      stdin: terminal.stdin as never,
+      stderr: terminal.stderr as never,
+      exitOnCtrlC: false,
+      patchConsole: false,
+    });
+
+    await vi.waitFor(() => expect(terminal.stdin.listenerCount("readable")).toBeGreaterThan(0));
+    terminal.chunks.length = 0;
+    await press(terminal, "/decisions");
+    await press(terminal, "\r");
+
+    await vi.waitFor(() => {
+      const output = terminal.chunks.join("").replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "");
+      expect(output).toContain("Décisions actées");
+      expect(output).toContain("Aucune décision actée.");
+      expect(output).not.toContain("# Décisions");
+      expect(output).toContain("PgUp/PgDn");
+    });
+
+    app.unmount();
+  });
+
+  it("ouvre les modèles au-dessus du prompt d'accueil et choisit avec Tab", async () => {
+    const setModel = vi.spyOn(mocks.FakeAgent.prototype, "setModel");
+    const terminal = fakeTerminal();
+    const app = render(<Root cwd="/projet-test" />, {
+      stdout: terminal.stdout as never,
+      stdin: terminal.stdin as never,
+      stderr: terminal.stderr as never,
+      exitOnCtrlC: false,
+      patchConsole: false,
+    });
+
+    await vi.waitFor(() => expect(terminal.stdin.listenerCount("readable")).toBeGreaterThan(0));
+    await press(terminal, "/model claude");
+    await press(terminal, "\r");
+    await vi.waitFor(() => expect(terminal.chunks.join("")).toContain("Opus 5"));
+
+    const frameChunk = [...terminal.chunks]
+      .reverse()
+      .find((chunk) => chunk.includes("Opus 5") && chunk.includes("Décrivez la problématique"));
+    expect(frameChunk).toBeDefined();
+    const frame = frameChunk!.replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "");
+    expect(frame.indexOf("Opus 5")).toBeLessThan(frame.indexOf("Décrivez la problématique"));
+    expect(frame).toContain("↑↓ 1/4 · Tab ou Entrée choisir · Échap fermer");
+
+    await press(terminal, "\u001b[B");
+    await press(terminal, "\t");
+    expect(setModel).toHaveBeenCalledWith("sonnet");
+    app.unmount();
+    setModel.mockRestore();
   });
 
   it("conserve le preset choisi après un débat puis /new", async () => {
@@ -253,6 +328,41 @@ describe("Root — cycle de vie du header", () => {
       ).toBe(true);
     });
 
+    app.unmount();
+  });
+
+  // Une session peut écrire dans .claudex/memory (/decide, /handoff). Sans
+  // relecture au retour, l'accueil et son /decisions montrent le disque tel
+  // qu'il était au lancement de Claudex.
+  it("relit la mémoire du projet en revenant à l'accueil", async () => {
+    const terminal = fakeTerminal();
+    const app = render(<Root cwd="/projet-test" />, {
+      stdout: terminal.stdout as never,
+      stdin: terminal.stdin as never,
+      stderr: terminal.stderr as never,
+      exitOnCtrlC: false,
+      patchConsole: false,
+    });
+
+    await vi.waitFor(() => expect(terminal.stdin.listenerCount("readable")).toBeGreaterThan(0));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await press(terminal, "Sujet de test");
+    await press(terminal, "\r");
+    await vi.waitFor(() => expect(mocks.appendDevlog).toHaveBeenCalledOnce());
+
+    // Le débat vient d'acter une décision sur le disque.
+    mocks.projectStatus.decisionsCount = 3;
+
+    terminal.chunks.length = 0;
+    await press(terminal, "/new");
+    await press(terminal, "\r");
+    await vi.waitFor(() => expect(mocks.saveTranscript).toHaveBeenCalledOnce());
+
+    await vi.waitFor(() => {
+      expect(terminal.chunks.join("").replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "")).toContain(
+        "3 décisions actées",
+      );
+    });
     app.unmount();
   });
 

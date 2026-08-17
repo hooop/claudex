@@ -278,6 +278,12 @@ export async function readMemorySummary(cwd: string): Promise<string> {
   return parts.join("\n\n");
 }
 
+/** Full decision journal for the interactive /decisions reader. */
+export async function readDecisions(cwd: string): Promise<string | null> {
+  const file = memoryPath(cwd, "decisions.md");
+  return existsSync(file) ? readFile(file, "utf8") : null;
+}
+
 /**
  * Idempotent: creates .claudex/memory/*.md and wires CLAUDE.md / AGENTS.md to
  * point at them, without clobbering existing project instructions.

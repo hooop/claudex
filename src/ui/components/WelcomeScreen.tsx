@@ -10,9 +10,11 @@ import {
   type HeaderAnimationId,
 } from "../headerArt.js";
 import { BRAND_COLOR } from "../theme.js";
+import { displayWidth, truncateEnd } from "../stream/lineBuffer.js";
 import { AnimatedHeader } from "./AnimatedHeader.js";
 import { WELCOME_COMMANDS } from "./CommandPalette.js";
-import { InputBar } from "./InputBar.js";
+import { DecisionViewer } from "./DecisionViewer.js";
+import { inputBarWidth, InputBar } from "./InputBar.js";
 import { MODEL_FOOTER_COLOR, ModelFooter } from "./ModelFooter.js";
 import { ModelPicker } from "./ModelPicker.js";
 
@@ -36,12 +38,36 @@ export function welcomeDivider(width: number): string {
   return "·".repeat(Math.max(1, Math.min(columns, HEADER_MAX_WIDTH)));
 }
 
+export function welcomeMemoryLine(
+  status: Pick<ProjectStatus, "decisionsCount" | "lastSession">,
+  width: number,
+): string {
+  const columns = Math.max(
+    1,
+    Math.min(Number.isFinite(width) ? Math.floor(width) : 80, HEADER_MAX_WIDTH),
+  );
+  const decisions =
+    `Mémoire : ${status.decisionsCount} décision${status.decisionsCount === 1 ? "" : "s"} actée` +
+    (status.decisionsCount === 1 ? "" : "s");
+  const lastSession = status.lastSession
+    ? `dernière session : ${formatLastSession(status.lastSession)}`
+    : "aucune session précédente";
+  const lastSessionWidth = displayWidth(lastSession);
+
+  if (lastSessionWidth >= columns) return truncateEnd(lastSession, columns);
+
+  const visibleDecisions = truncateEnd(decisions, columns - lastSessionWidth - 1);
+  const gap = " ".repeat(columns - displayWidth(visibleDecisions) - lastSessionWidth);
+  return `${visibleDecisions}${gap}${lastSession}`;
+}
+
 const WELCOME_HELP_LINES = [
   "Accueil : texte libre — démarre un débat · /model claude|codex <nom>",
   "Pendant un débat : texte libre · /claude <texte> · /codex <texte>",
   "/pause · /resume · /cancel · /save · /new",
   "/autonomy unbounded|starts N|time 5m [--remember]",
   "/decide <sujet> | <approche> · /limit <texte>",
+  "/decisions — consulter les décisions actées",
   "/handoff · /implement [claude|codex] [précision]",
   "/retry · /help · /quit · Échap — pause · Ctrl+C — arrêt quiescent et archive",
 ] as const;
@@ -57,17 +83,22 @@ export function WelcomeScreen(props: {
   const { exit } = useApp();
   const { stdout } = useStdout();
   const rows = stdout?.rows || 24;
-  const memoryDivider = welcomeDivider(stdout?.columns ?? 80);
+  const memoryWidth = Math.max(1, Math.min(stdout?.columns ?? 80, HEADER_MAX_WIDTH));
+  const memoryDivider = welcomeDivider(memoryWidth);
+  const memoryLine = welcomeMemoryLine(status, memoryWidth);
   const [, bump] = useState(0);
   const [notice, setNotice] = useState<string | null>(null);
   const [showHelp, setShowHelp] = useState(false);
+  const [decisionViewerOpen, setDecisionViewerOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [modelPickerAgent, setModelPickerAgent] = useState<AgentId | null>(null);
+  const selectionPaletteOpen = commandPaletteOpen || modelPickerAgent !== null;
 
   function handleSubmit(value: string) {
     const cmd = parseCommand(value);
 
     if (cmd.kind === "model") {
+      setDecisionViewerOpen(false);
       setShowHelp(false);
       if (!cmd.model) {
         setModelPickerAgent(cmd.agent);
@@ -80,6 +111,7 @@ export function WelcomeScreen(props: {
     }
 
     if (cmd.kind === "help") {
+      setDecisionViewerOpen(false);
       setNotice(null);
       setShowHelp((visible) => !visible);
       return;
@@ -87,6 +119,17 @@ export function WelcomeScreen(props: {
 
     if (cmd.kind === "quit") {
       exit();
+      return;
+    }
+
+    if (cmd.kind === "decisions") {
+      setShowHelp(false);
+      if (!status.decisionsText) {
+        setNotice("Aucune mémoire de décisions n'est disponible pour ce projet.");
+        return;
+      }
+      setNotice(null);
+      setDecisionViewerOpen(true);
       return;
     }
 
@@ -102,50 +145,56 @@ export function WelcomeScreen(props: {
   return (
     <Box flexDirection="column" height={Math.max(1, rows - 1)}>
       <Box flexDirection="column" flexGrow={1}>
-        <AnimatedHeader animation={headerAnimation} />
+        {decisionViewerOpen && status.decisionsText ? (
+          <DecisionViewer
+            markdown={status.decisionsText}
+            width={stdout?.columns ?? 80}
+            height={Math.max(3, rows - 5)}
+            onClose={() => setDecisionViewerOpen(false)}
+          />
+        ) : (
+          <>
+            <AnimatedHeader animation={headerAnimation} />
 
-        <Box flexDirection="column">
-          <Text color={WELCOME_MEMORY_COLOR}>{memoryDivider}</Text>
-          <Text color={WELCOME_MEMORY_COLOR} wrap="truncate-end">
-            Mémoire : {status.decisionsCount} décision{status.decisionsCount === 1 ? "" : "s"} actée
-            {status.decisionsCount === 1 ? "" : "s"}
-            {status.lastSession
-              ? ` · dernière session : ${formatLastSession(status.lastSession)}`
-              : " · aucune session précédente"}
-          </Text>
-          <Text color={WELCOME_MEMORY_COLOR}>{memoryDivider}</Text>
-        </Box>
+            <Box flexDirection="column">
+              <Text color={WELCOME_MEMORY_COLOR}>{memoryDivider}</Text>
+              <Text color={WELCOME_MEMORY_COLOR}>{memoryLine}</Text>
+              <Text color={WELCOME_MEMORY_COLOR}>{memoryDivider}</Text>
+            </Box>
 
-        <Box marginTop={1} marginBottom={1}>
-          <Text color={WELCOME_TAGLINE_COLOR} wrap="truncate-end">
-            {WELCOME_TAGLINE}
-          </Text>
-        </Box>
-
-        {!commandPaletteOpen && notice && (
-          <Box marginTop={1}>
-            <Text color="#f5c542">{notice}</Text>
-          </Box>
-        )}
-
-        {!commandPaletteOpen && showHelp && (
-          <Box flexDirection="column" marginTop={1}>
-            <Text bold color={BRAND_COLOR}>
-              Commandes
-            </Text>
-            {WELCOME_HELP_LINES.map((line) => (
-              <Text key={line} dimColor wrap="truncate-end">
-                {line}
+            <Box marginTop={1} marginBottom={1}>
+              <Text color={WELCOME_TAGLINE_COLOR} wrap="truncate-end">
+                {WELCOME_TAGLINE}
               </Text>
-            ))}
-          </Box>
+            </Box>
+
+            {!selectionPaletteOpen && notice && (
+              <Box marginTop={1}>
+                <Text color="#f5c542">{notice}</Text>
+              </Box>
+            )}
+
+            {!selectionPaletteOpen && showHelp && (
+              <Box flexDirection="column" marginTop={1}>
+                <Text bold color={BRAND_COLOR}>
+                  Commandes
+                </Text>
+                {WELCOME_HELP_LINES.map((line) => (
+                  <Text key={line} dimColor wrap="truncate-end">
+                    {line}
+                  </Text>
+                ))}
+              </Box>
+            )}
+          </>
         )}
       </Box>
 
-      {modelPickerAgent ? (
+      {modelPickerAgent && (
         <ModelPicker
+          key={modelPickerAgent}
           agent={modelPickerAgent}
-          width={stdout?.columns ?? 80}
+          width={inputBarWidth(stdout?.columns ?? 80)}
           onSelect={(model) => {
             agents[modelPickerAgent].setModel(model);
             setModelPickerAgent(null);
@@ -153,41 +202,26 @@ export function WelcomeScreen(props: {
           }}
           onCancel={() => setModelPickerAgent(null)}
         />
-      ) : (
-        <InputBar
-          disabled={false}
-          placeholder="Décrivez la problématique technique"
-          commands={WELCOME_COMMANDS}
-          onCommandPaletteChange={setCommandPaletteOpen}
-          onSubmit={handleSubmit}
-          onNavigate={(direction) =>
-            onHeaderAnimationChange(cycleHeaderAnimation(headerAnimation, direction))
-          }
-        />
       )}
+
+      <InputBar
+        disabled={false}
+        inputActive={modelPickerAgent === null && !decisionViewerOpen}
+        placeholder="Décrivez la problématique technique"
+        commands={WELCOME_COMMANDS}
+        onCommandPaletteChange={setCommandPaletteOpen}
+        onSubmit={handleSubmit}
+        onNavigate={(direction) =>
+          onHeaderAnimationChange(cycleHeaderAnimation(headerAnimation, direction))
+        }
+      />
 
       <ModelFooter
         models={{
-          claude: claudeModelLabel(agents.claude, status),
-          codex: codexModelLabel(agents.codex, status),
+          claude: agents.claude.currentModel(),
+          codex: agents.codex.currentModel(),
         }}
       />
     </Box>
   );
-}
-
-function claudeModelLabel(agent: CodingAgent, status: ProjectStatus): string {
-  if (agent.hasExplicitModel()) return agent.currentModel();
-  if (status.claudeDefaultModel) return status.claudeDefaultModel;
-  return "inconnu — détecté au premier message";
-}
-
-function codexModelLabel(agent: CodingAgent, status: ProjectStatus): string {
-  if (agent.hasExplicitModel()) return agent.currentModel();
-  if (status.codexDefaultModel) {
-    return status.codexDefaultEffort
-      ? `${status.codexDefaultModel}, effort ${status.codexDefaultEffort}`
-      : status.codexDefaultModel;
-  }
-  return "inconnu — détecté au premier message";
 }

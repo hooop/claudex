@@ -73,6 +73,58 @@ export function parseInline(text: string): InlineSpan[] {
   return spans;
 }
 
+/** Textual value of inline markdown, without terminal styling or delimiters. */
+export function inlineToPlainText(text: string): string {
+  return parseInline(text)
+    .map((span) => (span.type === "link" ? `${span.value} (${span.url})` : span.value))
+    .join("");
+}
+
+/**
+ * Convert a small Markdown document to readable terminal text. This follows the
+ * same deliberately narrow dialect as the streaming renderer and is used for
+ * project-memory views, where showing source markers would defeat the purpose.
+ */
+export function markdownToPlainText(markdown: string): string {
+  let inFence = false;
+  const output: string[] = [];
+
+  for (const line of markdown.split(/\r?\n/u)) {
+    const info = classifyLine(line);
+    if (info.kind === "fence") {
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence) {
+      output.push(line);
+      continue;
+    }
+
+    if (info.kind === "heading") {
+      output.push(inlineToPlainText(line.replace(/^\s{0,3}#{1,6}\s+/u, "")));
+    } else if (info.kind === "quote") {
+      output.push(`| ${inlineToPlainText(line.replace(/^\s{0,3}>\s?/u, ""))}`);
+    } else if (info.kind === "list") {
+      output.push(`${info.marker ?? "- "}${inlineToPlainText(info.body ?? "")}`);
+    } else if (info.kind === "table") {
+      if (/^\s*\|?(?:\s*:?-+:?\s*\|)+\s*$/u.test(line)) continue;
+      output.push(
+        line
+          .trim()
+          .replace(/^\|/u, "")
+          .replace(/\|$/u, "")
+          .split("|")
+          .map((cell) => inlineToPlainText(cell.trim()))
+          .join("   "),
+      );
+    } else {
+      output.push(inlineToPlainText(line));
+    }
+  }
+
+  return output.join("\n");
+}
+
 export type LineKind = "fence" | "heading" | "rule" | "list" | "quote" | "table" | "plain";
 
 export interface LineClass {

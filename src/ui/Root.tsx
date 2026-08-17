@@ -47,11 +47,11 @@ export function Root(props: { cwd: string; initialTopic?: string }) {
   const { cwd, initialTopic } = props;
   const { exit } = useApp();
 
-  const agentsRef = useRef<Record<AgentId, CodingAgent>>({
-    claude: new ClaudeAgent(),
-    codex: new CodexAgent(),
-  });
-  const [status] = useState(() => getProjectStatus(cwd));
+  const [status, setStatus] = useState(() => getProjectStatus(cwd));
+  const [agents] = useState<Record<AgentId, CodingAgent>>(() => ({
+    claude: new ClaudeAgent(undefined, status.claudeDefaultModel ?? undefined),
+    codex: new CodexAgent(undefined, codexInitialModelLabel(status)),
+  }));
   const [rememberedAutonomy, setRememberedAutonomy] = useState<AutonomyBudget | undefined>(
     status.autonomyBudget ?? undefined,
   );
@@ -70,12 +70,18 @@ export function Root(props: { cwd: string; initialTopic?: string }) {
       pendingTerminalRef.current = null;
       setCoordinatorState({ kind: "idle" });
       sessionRef.current = null;
-      agentsRef.current.claude.resetSession();
-      agentsRef.current.codex.resetSession();
+      agents.claude.resetSession();
+      agents.codex.resetSession();
       if (pending.destination === "quit") exit();
-      else setSession(null);
+      else {
+        // La session qui vient de se terminer a pu écrire dans la mémoire du
+        // projet (/decide, /handoff). Sans cette relecture, l'écran d'accueil
+        // et son /decisions montrent l'état du disque au lancement de Claudex.
+        setStatus(getProjectStatus(cwd));
+        setSession(null);
+      }
     },
-    [exit],
+    [agents, cwd, exit],
   );
 
   const executeTerminal = useCallback(
@@ -255,9 +261,9 @@ export function Root(props: { cwd: string; initialTopic?: string }) {
     (newTopic: string) => {
       const trimmed = newTopic.trim();
       if (!trimmed || sessionRef.current || pendingTerminalRef.current) return;
-      agentsRef.current.claude.resetSession();
-      agentsRef.current.codex.resetSession();
-      const nextSession = new DebateSession(agentsRef.current, {
+      agents.claude.resetSession();
+      agents.codex.resetSession();
+      const nextSession = new DebateSession(agents, {
         cwd,
         starter: "claude",
         autonomyBudget: rememberedAutonomy,
@@ -279,7 +285,7 @@ export function Root(props: { cwd: string; initialTopic?: string }) {
       sessionRef.current = nextSession;
       setSession(nextSession);
     },
-    [cwd, rememberedAutonomy],
+    [agents, cwd, rememberedAutonomy],
   );
 
   const handleAutonomySelected = useCallback(
@@ -308,7 +314,7 @@ export function Root(props: { cwd: string; initialTopic?: string }) {
   if (!session) {
     return (
       <WelcomeScreen
-        agents={agentsRef.current}
+        agents={agents}
         status={status}
         headerAnimation={headerAnimation}
         onHeaderAnimationChange={setHeaderAnimation}
@@ -329,4 +335,11 @@ export function Root(props: { cwd: string; initialTopic?: string }) {
       onAutonomySelected={handleAutonomySelected}
     />
   );
+}
+
+function codexInitialModelLabel(status: ReturnType<typeof getProjectStatus>): string | undefined {
+  if (!status.codexDefaultModel) return undefined;
+  return status.codexDefaultEffort
+    ? `${status.codexDefaultModel}, effort ${status.codexDefaultEffort}`
+    : status.codexDefaultModel;
 }

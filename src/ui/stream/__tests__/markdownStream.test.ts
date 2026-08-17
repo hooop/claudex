@@ -14,18 +14,42 @@ const line = (text: string, continuation = false) => ({ text, continuation });
 const plain = (styled: string) => styled.replace(/\u001b\[[0-9;]*m/g, "");
 
 describe("MarkdownStreamer", () => {
-  it("ne change jamais la largeur affichée d'une ligne", () => {
+  it("ne dépasse jamais la largeur mesurée avant retrait des marqueurs", () => {
     const s = new MarkdownStreamer();
-    for (const text of ["## Titre", "- un **point** clé", "> citation", "du `code` inline", "| a | b |"]) {
-      expect(displayWidth(s.style(line(text)))).toBe(displayWidth(text));
+    for (const text of ["## Titre", "- un **point** clé", "> citation", ">citation", "du `code` inline", "| a | b |"]) {
+      expect(displayWidth(s.style(line(text)))).toBeLessThanOrEqual(displayWidth(text));
     }
   });
 
   it("stylise une emphase équilibrée sur la ligne", () => {
     const s = new MarkdownStreamer();
     const out = s.style(line("un **gras** ici"));
-    expect(plain(out)).toBe("un **gras** ici");
+    expect(plain(out)).toBe("un gras ici");
     expect(out).not.toBe("un **gras** ici");
+  });
+
+  it("remplace la syntaxe des titres par une hiérarchie visuelle", () => {
+    const s = new MarkdownStreamer();
+    expect(plain(s.style(line("## Titre")))).toBe("Titre");
+  });
+
+  it("retire aussi l'emphase à l'intérieur d'une citation", () => {
+    const s = new MarkdownStreamer();
+    expect(plain(s.style(line("> une **idée**")))).toBe("| une idée");
+  });
+
+  // La barre remplace le chevron, elle ne s'y ajoute pas : LineBuffer a déjà
+  // découpé la ligne à la largeur de la source.
+  it("ne gagne pas une colonne sur une citation écrite sans espace", () => {
+    const s = new MarkdownStreamer();
+    expect(plain(s.style(line(">serré")))).toBe("|serré");
+  });
+
+  it("cache les clôtures de bloc de code", () => {
+    const s = new MarkdownStreamer();
+    expect(s.style(line("```ts"))).toBe("");
+    expect(plain(s.style(line("const answer = 42;")))).toBe("const answer = 42;");
+    expect(s.style(line("```"))).toBe("");
   });
 
   it("laisse littéral un délimiteur non fermé", () => {

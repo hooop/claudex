@@ -15,7 +15,7 @@ import type { AgentSendOptions, CodingAgent } from "../../agents/types.js";
 import { DebateSession } from "../../orchestrator/session.js";
 import type { AgentResult } from "../../orchestrator/types.js";
 import type { AgentId } from "../../types.js";
-import { MAX_DYNAMIC_ROWS } from "../theme.js";
+import { MAX_DYNAMIC_ROWS, MAX_STANDARD_DYNAMIC_ROWS } from "../theme.js";
 import { bannerLines, DebateView, outputRows, staticBlockText } from "../DebateView.js";
 import { getHeaderAnimation, HEADER_ROWS, headerFrame } from "../headerArt.js";
 import { displayWidth } from "../stream/lineBuffer.js";
@@ -59,6 +59,10 @@ class FakeAgent implements CodingAgent {
 
   emit(delta: string): void {
     this.options?.onTextDelta?.(delta);
+  }
+
+  emitContext(usedTokens: number, contextWindow: number): void {
+    this.options?.onContextUsage?.({ usedTokens, contextWindow });
   }
 
   complete(text: string): void {
@@ -186,6 +190,36 @@ describe("DebateView — rendu append-only", () => {
     t.app.unmount();
   });
 
+  it("ouvre les modèles comme les commandes, au-dessus du prompt, et choisit avec Tab", async () => {
+    const t = mount();
+    await vi.waitFor(() => expect(t.agents.claude.pending).toBe(true));
+    const pause = vi.spyOn(t.session, "pause");
+    const setModel = vi.spyOn(t.session, "setModel");
+
+    await press(t, "/model codex");
+    await press(t, "\r");
+    await vi.waitFor(() => expect(t.chunks.join("")).toContain("gpt-5.6-sol"));
+
+    const frameChunk = [...t.chunks]
+      .reverse()
+      .find((chunk) => chunk.includes("gpt-5.6-sol") && chunk.includes("‣"));
+    expect(frameChunk).toBeDefined();
+    const frame = frameChunk!.replace(ANSI_SEQUENCE, "");
+    expect(frame.indexOf("gpt-5.6-sol")).toBeLessThan(frame.indexOf("‣"));
+    expect(frame).toContain("↑↓ 1/2 · Tab ou Entrée choisir · Échap fermer");
+    expect(frame).not.toContain("fake-model + fake-model");
+
+    await press(t, "\u001b[B");
+    await press(t, "\t");
+    expect(setModel).toHaveBeenCalledWith("codex", "gpt-5.5");
+
+    await press(t, "/model claude");
+    await press(t, "\r");
+    await press(t, "\u001b");
+    expect(pause).not.toHaveBeenCalled();
+    t.app.unmount();
+  });
+
   it("fige la phase canonique du preset reçu dans le scrollback", () => {
     const animation = "rule110";
     const expected = headerFrame(40, getHeaderAnimation(animation).staticT, animation).map((row) =>
@@ -243,7 +277,7 @@ describe("DebateView — rendu append-only", () => {
 
     for (const chunk of t.chunks) {
       const erased = (chunk.match(CURSOR_UP) ?? []).length;
-      expect(erased).toBeLessThanOrEqual(MAX_DYNAMIC_ROWS);
+      expect(erased).toBeLessThanOrEqual(MAX_STANDARD_DYNAMIC_ROWS);
     }
 
     t.app.unmount();
@@ -355,7 +389,7 @@ describe("DebateView — rendu append-only", () => {
     await tick();
 
     for (const chunk of t.chunks) {
-      expect((chunk.match(CURSOR_UP) ?? []).length).toBeLessThanOrEqual(MAX_DYNAMIC_ROWS);
+      expect((chunk.match(CURSOR_UP) ?? []).length).toBeLessThanOrEqual(MAX_STANDARD_DYNAMIC_ROWS);
     }
 
     t.app.unmount();
@@ -410,11 +444,47 @@ describe("DebateView — rendu append-only", () => {
 
     const footerFrame = [...t.chunks]
       .reverse()
-      .find((chunk) => chunk.includes("fake-model + fake-model") && chunk.includes("‣"));
+      .find(
+        (chunk) =>
+          chunk.includes("fake-model · ctx — + fake-model · ctx —") &&
+          chunk.includes("‣"),
+      );
     expect(footerFrame).toBeDefined();
     const footer = footerFrame!.replace(ANSI_SEQUENCE, "");
     expect(footer).toContain("/help");
-    expect(footer.indexOf("fake-model + fake-model")).toBeGreaterThan(footer.indexOf("‣"));
+    expect(
+      footer.indexOf("fake-model · ctx — + fake-model · ctx —"),
+    ).toBeGreaterThan(footer.indexOf("‣"));
+    t.app.unmount();
+  });
+
+  it("réaffiche le sujet complet avec /sujet", async () => {
+    const t = mount();
+    await vi.waitFor(() => expect(t.agents.claude.pending).toBe(true));
+    t.chunks.length = 0;
+
+    await press(t, "/sujet");
+    await press(t, "\r");
+
+    await vi.waitFor(() => {
+      const output = t.chunks.join("").replace(ANSI_SEQUENCE, "");
+      expect(output).toContain("Sujet complet");
+      expect(output).toContain("Sujet de test");
+    });
+    t.app.unmount();
+  });
+
+  it("affiche séparément l'occupation de contexte des deux agents", async () => {
+    const t = mount();
+    await vi.waitFor(() => expect(t.agents.claude.pending).toBe(true));
+    t.chunks.length = 0;
+
+    t.agents.claude.emitContext(51_000, 200_000);
+
+    await vi.waitFor(() => {
+      const output = t.chunks.join("").replace(ANSI_SEQUENCE, "");
+      expect(output).toContain("fake-model · ctx 75% libre + fake-model · ctx —");
+    });
     t.app.unmount();
   });
 });
