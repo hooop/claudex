@@ -1,10 +1,20 @@
 import type { AgentResult } from "../orchestrator/types.js";
-import type { AgentActivity, AgentId, PermissionDecision, PermissionRequest } from "../types.js";
+import type {
+  AgentActivity,
+  AgentContextUsage,
+  AgentId,
+  PermissionDecision,
+  PermissionRequest,
+} from "../types.js";
+
+export const AUTO_MODEL_LABEL = "auto (détecté au 1er tour)";
 
 export interface AgentSendOptions {
   cwd: string;
   writeAccess: boolean;
   onTextDelta?: (delta: string) => void;
+  /** Latest occupancy of the resumed conversation's model context. */
+  onContextUsage?: (usage: AgentContextUsage) => void;
   /** Ephemeral tool/command state for the single-line dynamic footer. */
   onActivity?: (activity: AgentActivity) => void;
   /**

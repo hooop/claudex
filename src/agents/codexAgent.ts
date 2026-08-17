@@ -2,7 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import * as readline from "node:readline";
 import type { AgentResult } from "../orchestrator/types.js";
 import type { AgentActivity } from "../types.js";
-import type { AgentSendOptions, CodingAgent } from "./types.js";
+import { AUTO_MODEL_LABEL, type AgentSendOptions, type CodingAgent } from "./types.js";
 
 type RpcId = number | string;
 
@@ -80,17 +80,20 @@ export class CodexAgent implements CodingAgent {
   readonly label = "Codex";
 
   private model: string | undefined;
+  private resolvedModel: string | undefined;
+  private readonly initialDisplayModel: string | undefined;
   private threadId: string | undefined;
   private activeConnection: CodexAppServerConnection | null = null;
   private cancelled = false;
   private activeSend: Promise<AgentResult> | null = null;
 
-  constructor(model?: string) {
+  constructor(model?: string, initialDisplayModel?: string) {
     this.model = model;
+    this.initialDisplayModel = initialDisplayModel;
   }
 
   currentModel(): string {
-    return this.model ?? "(défaut CLI)";
+    return this.resolvedModel ?? this.model ?? this.initialDisplayModel ?? AUTO_MODEL_LABEL;
   }
 
   hasExplicitModel(): boolean {
@@ -99,11 +102,13 @@ export class CodexAgent implements CodingAgent {
 
   setModel(model: string): void {
     this.model = model;
+    this.resolvedModel = undefined;
   }
 
   resetSession(): void {
     if (this.activeSend) throw new Error("Impossible de réinitialiser Codex pendant un tour actif.");
     this.threadId = undefined;
+    this.resolvedModel = undefined;
   }
 
   send(message: string, options: AgentSendOptions): Promise<AgentResult> {
@@ -188,6 +193,37 @@ export class CodexAgent implements CodingAgent {
       const params = asRecord(notification.params);
 
       switch (notification.method) {
+        case "thread/tokenUsage/updated": {
+          const threadId = stringOf(params.threadId);
+          const turnId = stringOf(params.turnId);
+          if (expectedThreadId && threadId && threadId !== expectedThreadId) return;
+          if (expectedTurnId && turnId && turnId !== expectedTurnId) return;
+
+          const tokenUsage = asRecord(params.tokenUsage);
+          const lastUsage = asRecord(tokenUsage.last);
+          const totalTokens = numberOf(lastUsage.totalTokens);
+          const reasoningTokens = numberOf(lastUsage.reasoningOutputTokens) ?? 0;
+          const contextWindow = numberOf(tokenUsage.modelContextWindow);
+          if (
+            totalTokens !== undefined &&
+            Number.isFinite(totalTokens) &&
+            totalTokens >= 0 &&
+            Number.isFinite(reasoningTokens) &&
+            reasoningTokens >= 0 &&
+            contextWindow !== undefined &&
+            Number.isFinite(contextWindow) &&
+            contextWindow > 0
+          ) {
+            // Matches Codex's own context gauge: prior reasoning output is not
+            // retained in the model-visible context window.
+            options.onContextUsage?.({
+              usedTokens: Math.max(0, totalTokens - reasoningTokens),
+              contextWindow,
+            });
+          }
+          return;
+        }
+
         case "item/agentMessage/delta": {
           const delta = stringOf(params.delta);
           const itemId = stringOf(params.itemId);
@@ -302,6 +338,7 @@ export class CodexAgent implements CodingAgent {
       this.threadId = nextThreadId;
       expectedThreadId = nextThreadId;
       resolvedModel = stringOf(threadResponse.model) || undefined;
+      if (resolvedModel) this.resolvedModel = resolvedModel;
 
       const turnResponse = asRecord(await connection.request("turn/start", {
         threadId: nextThreadId,

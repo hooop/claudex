@@ -5,6 +5,7 @@
 
 import type {
   AgentActivity,
+  AgentContextUsage,
   AgentId,
   PermissionRequest,
   Phase,
@@ -201,6 +202,7 @@ export type SessionEvents = {
   "turn-error": [agent: AgentId, error: unknown];
   /** Ephemeral activity; never persisted as a transcript entry. */
   activity: [agent: AgentId, activity: AgentActivity];
+  "context-usage": [agent: AgentId, usage: AgentContextUsage];
   phase: [phase: Phase];
   "paused-changed": [paused: boolean];
   "suspension-changed": [reason: SuspensionReason | null];

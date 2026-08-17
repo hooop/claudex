@@ -60,6 +60,7 @@ export class DebateSession extends TypedEmitter<SessionEvents> {
       onTurnEnd: (agent) => this.emit("turn-end", agent),
       onTurnError: (agent, error) => this.emit("turn-error", agent, error),
       onActivity: (agent, activity) => this.emit("activity", agent, activity),
+      onContextUsage: (agent, usage) => this.emit("context-usage", agent, usage),
       onPhaseChange: (phase) => this.emit("phase", phase),
       onPausedChange: (paused) => this.emit("paused-changed", paused),
       onSuspensionChange: (reason) => this.emit("suspension-changed", reason),

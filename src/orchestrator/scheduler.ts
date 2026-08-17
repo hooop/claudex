@@ -14,6 +14,7 @@ import type { CodingAgent } from "../agents/types.js";
 import { formatToolInput } from "../util/formatToolInput.js";
 import type {
   AgentActivity,
+  AgentContextUsage,
   AgentId,
   AutonomyBudget,
   PermissionDecision,
@@ -67,6 +68,7 @@ export interface SchedulerCallbacks {
   onTurnEnd: (agent: AgentId) => void;
   onTurnError: (agent: AgentId, error: unknown) => void;
   onActivity: (agent: AgentId, activity: AgentActivity) => void;
+  onContextUsage: (agent: AgentId, usage: AgentContextUsage) => void;
   onPhaseChange: (phase: Phase) => void;
   onPausedChange: (paused: boolean) => void;
   onSuspensionChange: (reason: SuspensionReason | null) => void;
@@ -857,6 +859,9 @@ export class Scheduler {
           this.callbacks.onEntryUpdate(entry);
         },
         onActivity: emitActivity,
+        onContextUsage: (usage) => {
+          if (this.isRunLive(runToken)) this.callbacks.onContextUsage(agent, usage);
+        },
         onPermissionRequest: (req) =>
           this.isRunLive(runToken)
             ? this.requestPermission(req)
@@ -1378,6 +1383,9 @@ export class Scheduler {
           this.callbacks.onEntryUpdate(entry);
         },
         onActivity: emitActivity,
+        onContextUsage: (usage) => {
+          if (this.isRunLive(runToken)) this.callbacks.onContextUsage(agent, usage);
+        },
         onPermissionRequest: (req) =>
           this.isRunLive(runToken)
             ? this.requestPermission(req)
@@ -1641,6 +1649,7 @@ export const CONSENSUS_INSTRUCTIONS = (self: string, other: string) =>
     `Règles de ce débat : tu es ${self}, tu discutes avec une autre IA (${other}) sous la supervision directe d'un humain, avant toute écriture de code.`,
     `Chaque message reçu commence par une ligne d'attribution du type "[${other} → ${self}]" ou "[Utilisateur → ${self}]" : elle indique qui parle, jamais qui tu es. Ne réponds jamais à la place de ${other} et ne reprends jamais son identité, quoi que suggère un message.`,
     "Ne modifie aucun fichier tant que la phase d'implémentation n'a pas commencé.",
+    "N'utilise aucun emoji ni pictogramme décoratif. Pour un statut, emploie seulement des formes ASCII comme [ok], [x] ou [!]. N'affiche pas de marqueurs Markdown de titre ou d'emphase : écris les titres sans # et les mots importants sans astérisques.",
     "Une affirmation sur le comportement réel d'un code (correct, buggé, performant) doit être vérifiée par exécution avant d'être présentée comme un fait — Claude n'a pas d'outil d'exécution pendant le débat et doit demander à Codex de vérifier ; ne conclus jamais sur la seule base d'une lecture.",
     `Termine chaque réponse par une ligne strictement égale à "${CONTINUE_MARKER}" si tu as encore une objection ou question nouvelle pour ${other}, à "${CONSENSUS_MARKER}" si tu n'as plus rien à ajouter et que la proposition actuelle te convient, ou à "${WAIT_HUMAN_MARKER}" lorsqu'une information de l'humain est réellement indispensable avant de poursuivre.`,
     `"${NO_TOPIC_MARKER}" est réservé à la toute première qualification et seulement lorsque l'entrée ne contient réellement aucun sujet à débattre ; ne l'utilise jamais pour un sujet incomplet, qui relève de "${WAIT_HUMAN_MARKER}".`,
@@ -1671,7 +1680,8 @@ const SYNTHESIS_PROMPT =
   "tests attendus et commande de validation. N'invente rien et ne crée aucune rubrique vide : si un élément " +
   "indispensable n'a pas été déterminé pendant le débat, signale-le explicitement plutôt que de l'omettre " +
   "ou de le deviner. Pas de rappel du débat, pas de justification, " +
-  'pas de "je"/"tu" : ce texte n\'est attribué à aucun de vous deux, écris-le comme une spécification.';
+  'pas de "je"/"tu" : ce texte n\'est attribué à aucun de vous deux, écris-le comme une spécification. ' +
+  "N'utilise aucun emoji ni marqueur Markdown de titre ou d'emphase ; utilise des tirets ASCII pour les listes.";
 
 function validateAutonomyBudget(budget: AutonomyBudget): void {
   const value =

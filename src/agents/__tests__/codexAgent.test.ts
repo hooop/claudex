@@ -110,6 +110,18 @@ class FakeAppServer extends EventEmitter {
       params: { threadId: "thread-1", turnId: "turn-1", itemId: "message-1", delta: "Bon" },
     });
     this.write({
+      method: "thread/tokenUsage/updated",
+      params: {
+        threadId: "thread-1",
+        turnId: "turn-1",
+        tokenUsage: {
+          total: { totalTokens: 99_000 },
+          last: { totalTokens: 12_500, reasoningOutputTokens: 2_500 },
+          modelContextWindow: 250_000,
+        },
+      },
+    });
+    this.write({
       method: "item/agentMessage/delta",
       params: { threadId: "thread-1", turnId: "turn-1", itemId: "message-1", delta: "jour" },
     });
@@ -157,16 +169,24 @@ describe("CodexAgent app-server streaming", () => {
     spawnMock.mockReturnValue(server);
     const deltas: string[] = [];
     const activities: unknown[] = [];
+    const contexts: unknown[] = [];
 
-    const result = await new CodexAgent().send("Sujet", {
+    const agent = new CodexAgent(undefined, "gpt-configuré, effort max");
+    expect(agent.currentModel()).toBe("gpt-configuré, effort max");
+    expect(agent.hasExplicitModel()).toBe(false);
+
+    const result = await agent.send("Sujet", {
       cwd: "/tmp",
       writeAccess: false,
       onTextDelta: (delta) => deltas.push(delta),
       onActivity: (activity) => activities.push(activity),
+      onContextUsage: (usage) => contexts.push(usage),
     });
 
     expect(result).toMatchObject({ kind: "success", text: "Bonjour", resolvedModel: "codex-test" });
+    expect(agent.currentModel()).toBe("codex-test");
     expect(deltas).toEqual(["Bon", "jour"]);
+    expect(contexts).toEqual([{ usedTokens: 10_000, contextWindow: 250_000 }]);
     expect(activities).toContainEqual({
       kind: "command",
       status: "running",
@@ -189,6 +209,15 @@ describe("CodexAgent app-server streaming", () => {
         sandboxPolicy: { type: "readOnly", networkAccess: false },
       },
     });
+    const threadStart = server.requests.find((request) => request.method === "thread/start");
+    expect(threadStart).not.toHaveProperty("params.model");
+
+    agent.resetSession();
+    expect(agent.currentModel()).toBe("gpt-configuré, effort max");
+  });
+
+  it("explique clairement quand le choix automatique n'est pas encore résolu", () => {
+    expect(new CodexAgent().currentModel()).toBe("auto (détecté au 1er tour)");
   });
 
   it("rend une limite Codex explicite et reprenable", async () => {

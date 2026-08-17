@@ -135,6 +135,7 @@ function createMockCallbacks(): SchedulerCallbacks & { entries: TranscriptEntry[
     onTurnEnd: vi.fn(),
     onTurnError: vi.fn(),
     onActivity: vi.fn(),
+    onContextUsage: vi.fn(),
     onPhaseChange: vi.fn(),
     onPausedChange: vi.fn(),
     onSuspensionChange: vi.fn(),

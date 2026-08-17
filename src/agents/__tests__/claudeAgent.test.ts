@@ -16,7 +16,7 @@ function successResult() {
     subtype: "success",
     is_error: false,
     session_id: "session-1",
-    modelUsage: { "claude-test": {} },
+    modelUsage: { "claude-test": { contextWindow: 200_000 } },
   };
 }
 
@@ -47,22 +47,54 @@ describe("ClaudeAgent streaming", () => {
         {
           type: "assistant",
           session_id: "session-1",
-          message: { content: [{ type: "text", text: "Bonjour" }] },
+          message: {
+            model: "claude-test",
+            usage: {
+              input_tokens: 1_000,
+              cache_creation_input_tokens: 200,
+              cache_read_input_tokens: 2_000,
+              output_tokens: 300,
+            },
+            content: [{ type: "text", text: "Bonjour" }],
+          },
         },
         successResult(),
       ]) as never,
     );
 
     const deltas: string[] = [];
-    const result = await new ClaudeAgent().send("Sujet", {
+    const contexts: unknown[] = [];
+    const agent = new ClaudeAgent(undefined, "Opus 4.5");
+    expect(agent.currentModel()).toBe("Opus 4.5");
+    expect(agent.hasExplicitModel()).toBe(false);
+
+    const result = await agent.send("Sujet", {
       cwd: "/tmp",
       writeAccess: false,
       onTextDelta: (delta) => deltas.push(delta),
+      onContextUsage: (usage) => contexts.push(usage),
     });
 
     expect(deltas).toEqual(["Bon", "jour"]);
+    expect(contexts).toEqual([{ usedTokens: 3_500, contextWindow: 200_000 }]);
     expect(result).toMatchObject({ kind: "success", text: "Bonjour", resolvedModel: "claude-test" });
+    expect(agent.currentModel()).toBe("Test");
+    expect(queryMock.mock.calls[0]?.[0]?.options.model).toBeUndefined();
     expect(queryMock.mock.calls[0]?.[0]?.options.includePartialMessages).toBe(true);
+
+    agent.resetSession();
+    expect(agent.currentModel()).toBe("Opus 4.5");
+  });
+
+  it("affiche le libellé du sélecteur dès qu'un modèle est choisi", () => {
+    const agent = new ClaudeAgent();
+    agent.setModel("sonnet");
+    expect(agent.currentModel()).toBe("Sonnet 5");
+    expect(agent.hasExplicitModel()).toBe(true);
+  });
+
+  it("explique clairement quand le choix automatique n'est pas encore résolu", () => {
+    expect(new ClaudeAgent().currentModel()).toBe("auto (détecté au 1er tour)");
   });
 
   it("conserve le message assistant complet comme fallback", async () => {

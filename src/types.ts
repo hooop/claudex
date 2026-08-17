@@ -1,5 +1,11 @@
 export type AgentId = "claude" | "codex";
 
+/** Occupancy of an agent's current conversation context after its latest model call. */
+export interface AgentContextUsage {
+  usedTokens: number;
+  contextWindow: number;
+}
+
 export type Phase = "debate" | "implementation" | "ended";
 
 /**

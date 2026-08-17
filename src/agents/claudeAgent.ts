@@ -1,7 +1,8 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { AgentResult } from "../orchestrator/types.js";
 import type { AgentActivity } from "../types.js";
-import type { AgentSendOptions, CodingAgent } from "./types.js";
+import { formatClaudeModel } from "../util/projectStatus.js";
+import { AUTO_MODEL_LABEL, type AgentSendOptions, type CodingAgent } from "./types.js";
 
 /**
  * Strictly read-only tools for debate phase.
@@ -20,16 +21,22 @@ export class ClaudeAgent implements CodingAgent {
   readonly label = "Claude Code";
 
   private model: string | undefined;
+  private resolvedModel: string | undefined;
+  private readonly initialDisplayModel: string | undefined;
   private sessionId: string | undefined;
   private abortController: AbortController | null = null;
   private activeSend: Promise<AgentResult> | null = null;
 
-  constructor(model?: string) {
+  constructor(model?: string, initialDisplayModel?: string) {
     this.model = model;
+    this.initialDisplayModel = initialDisplayModel;
   }
 
   currentModel(): string {
-    return this.model ?? "(défaut CLI)";
+    const model = this.resolvedModel ?? this.model;
+    return model
+      ? formatClaudeModel(model)
+      : this.initialDisplayModel ?? AUTO_MODEL_LABEL;
   }
 
   hasExplicitModel(): boolean {
@@ -38,11 +45,13 @@ export class ClaudeAgent implements CodingAgent {
 
   setModel(model: string): void {
     this.model = model;
+    this.resolvedModel = undefined;
   }
 
   resetSession(): void {
     if (this.activeSend) throw new Error("Impossible de réinitialiser Claude pendant un tour actif.");
     this.sessionId = undefined;
+    this.resolvedModel = undefined;
   }
 
   send(message: string, options: AgentSendOptions): Promise<AgentResult> {
@@ -71,6 +80,7 @@ export class ClaudeAgent implements CodingAgent {
 
     let text = "";
     let resolvedModel: string | undefined;
+    let latestAssistantContext: AssistantContext | null = null;
     let streamedSinceAssistant = false;
     let assistantError: string | undefined;
     const activeTools = new Map<string, RunningTool>();
@@ -192,6 +202,7 @@ export class ClaudeAgent implements CodingAgent {
         }
 
         if (msg.type === "assistant") {
+          latestAssistantContext = assistantContextOf(msg) ?? latestAssistantContext;
           const fullText = extractAssistantText(msg);
           if (fullText && !streamedSinceAssistant) {
             text += fullText;
@@ -222,7 +233,18 @@ export class ClaudeAgent implements CodingAgent {
 
           const modelUsage = resultMsg.modelUsage;
           const usedModel = modelUsage && Object.keys(modelUsage)[0];
-          if (usedModel) resolvedModel = usedModel;
+          if (usedModel) {
+            resolvedModel = usedModel;
+            this.resolvedModel = usedModel;
+          }
+
+          const contextWindow = modelContextWindowOf(modelUsage, latestAssistantContext?.model);
+          if (latestAssistantContext && contextWindow !== null) {
+            options.onContextUsage?.({
+              usedTokens: latestAssistantContext.usedTokens,
+              contextWindow,
+            });
+          }
 
           if (resultMsg.is_error === true || resultMsg.subtype?.startsWith("error_")) {
             return {
@@ -279,6 +301,54 @@ interface PendingToolInput {
   id: string;
   name: string;
   json: string;
+}
+
+interface AssistantContext {
+  model?: string;
+  usedTokens: number;
+}
+
+/**
+ * Claude's result-level modelUsage is cumulative across tool calls. The latest
+ * assistant message instead carries the prompt occupancy of the actual model
+ * call, which is the number relevant to context-window pressure.
+ */
+function assistantContextOf(value: unknown): AssistantContext | null {
+  const message = asRecord(asRecord(value).message);
+  const usage = asRecord(message.usage);
+  const fields = [
+    usage.input_tokens,
+    usage.cache_creation_input_tokens,
+    usage.cache_read_input_tokens,
+    usage.output_tokens,
+  ];
+  const numeric = fields.filter((field): field is number =>
+    typeof field === "number" && Number.isFinite(field) && field >= 0,
+  );
+  if (numeric.length === 0) return null;
+  const model = typeof message.model === "string" ? message.model : undefined;
+  return { model, usedTokens: numeric.reduce((total, field) => total + field, 0) };
+}
+
+function modelContextWindowOf(
+  modelUsage: Record<string, unknown> | undefined,
+  preferredModel: string | undefined,
+): number | null {
+  if (!modelUsage) return null;
+  const candidates = preferredModel && preferredModel in modelUsage
+    ? [modelUsage[preferredModel], ...Object.values(modelUsage)]
+    : Object.values(modelUsage);
+  for (const candidate of candidates) {
+    const contextWindow = asRecord(candidate).contextWindow;
+    if (typeof contextWindow === "number" && Number.isFinite(contextWindow) && contextWindow > 0) {
+      return contextWindow;
+    }
+  }
+  return null;
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
 }
 
 interface ClaudeStreamEvent {
