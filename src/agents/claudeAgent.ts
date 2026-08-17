@@ -129,7 +129,16 @@ export class ClaudeAgent implements CodingAgent {
           model: this.model,
           cwd: options.cwd,
           resume: this.sessionId,
-          settingSources: ["project", "user"],
+          // Measured on this machine: loading user settings costs 13 300 tokens
+          // of system prompt per call — plugin and skill catalogues an agent
+          // restricted to Read/Grep/Glob can never use. A debate turn makes
+          // dozens of calls, so it is paid dozens of times. The one field
+          // Claudex needs from those settings is the default model, which it
+          // reads itself and passes as `model` above.
+          //
+          // Project settings stay in both phases: that is where CLAUDE.md and
+          // the pointers to the project memory live.
+          settingSources: options.writeAccess ? ["project", "user"] : ["project"],
           // Deliberately always "default", never "plan": plan mode carries its own
           // built-in ritual (present a plan, call ExitPlanMode) that conflicts with
           // the debate's own instructions and has been observed to confuse the model

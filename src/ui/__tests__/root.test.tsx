@@ -102,6 +102,7 @@ vi.mock("../../memory/store.js", () => ({
   rememberAutonomyBudget: vi.fn(async () => {}),
   saveHandoff: vi.fn(async () => "handoff.md"),
   saveTranscript: mocks.saveTranscript,
+  sessionTitle: (topic: string) => topic,
 }));
 
 vi.mock("../../util/projectStatus.js", () => ({

@@ -136,6 +136,27 @@ export async function appendLimit(cwd: string, limit: string): Promise<void> {
   await appendFile(memoryPath(cwd, "limits.md"), `\n- [${date}] ${limit}\n`, "utf8");
 }
 
+/**
+ * How much of a topic identifies a session. Already the bound used to name its
+ * transcript file, so a devlog line and the file it points at carry the same
+ * amount of the subject.
+ */
+const TITLE_LENGTH = 60;
+
+/**
+ * One-line title for the devlog index.
+ *
+ * The devlog used to record the prompt verbatim, which made it the largest file
+ * in the project memory — and the memory is read at the start of every session.
+ * The full text is preserved in the archived transcript; this file only has to
+ * say which session it was.
+ */
+export function sessionTitle(topic: string): string {
+  const oneLine = topic.trim().replace(/\s+/gu, " ");
+  if (oneLine.length <= TITLE_LENGTH) return oneLine;
+  return `${oneLine.slice(0, TITLE_LENGTH).trimEnd()}…`;
+}
+
 function slugify(topic: string): string {
   return (
     topic
@@ -145,7 +166,7 @@ function slugify(topic: string): string {
       .replace(/[̀-ͯ]/g, "")
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/(^-+|-+$)/g, "")
-      .slice(0, 60) || "sujet"
+      .slice(0, TITLE_LENGTH) || "sujet"
   );
 }
 
@@ -350,15 +371,22 @@ export async function initMemoryScaffold(cwd: string): Promise<{ created: string
   return { created };
 }
 
+/**
+ * Named, not imported. `@fichier` inlines the whole file into Claude's system
+ * prompt on every single call, so the project memory was re-billed at each tool
+ * use of each turn while Codex, pointed at the same files by AGENTS.md, paid
+ * only for what it chose to read. Pointing at them restores the symmetry.
+ */
 function claudeMdMemorySection(): string {
   return [
     "## Mémoire du projet (Claudex)",
     "",
-    "@.claudex/memory/decisions.md",
-    "@.claudex/memory/devlog.md",
-    "@.claudex/memory/limits.md",
+    "Avant de proposer une architecture ou une décision, lis ces fichiers :",
+    "- `.claudex/memory/decisions.md` — décisions déjà actées",
+    "- `.claudex/memory/limits.md` — contraintes et choses explicitement écartées",
+    "- `.claudex/memory/devlog.md` — index des sessions passées",
     "",
-    "Avant de proposer une architecture ou une décision, prends en compte les décisions déjà actées ci-dessus : ne les remets pas en question sans le signaler explicitement et sans raison nouvelle.",
+    "Ne remets pas en question une décision déjà actée sans le signaler explicitement et sans raison nouvelle.",
   ].join("\n");
 }
 

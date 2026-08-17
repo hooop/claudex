@@ -81,6 +81,11 @@ describe("ClaudeAgent streaming", () => {
     expect(agent.currentModel()).toBe("Test");
     expect(queryMock.mock.calls[0]?.[0]?.options.model).toBeUndefined();
     expect(queryMock.mock.calls[0]?.[0]?.options.includePartialMessages).toBe(true);
+    // Mesuré : les réglages utilisateur coûtent 13 300 tokens de prompt système
+    // par appel, en catalogues de plugins qu'un agent limité à Read/Grep/Glob
+    // ne peut pas utiliser. Le seul champ utile, le modèle par défaut, est lu
+    // par Claudex et passé explicitement.
+    expect(queryMock.mock.calls[0]?.[0]?.options.settingSources).toEqual(["project"]);
 
     agent.resetSession();
     expect(agent.currentModel()).toBe("Opus 4.5");
@@ -142,5 +147,32 @@ describe("ClaudeAgent streaming", () => {
       expect(result.message).toContain("/resume");
       expect(result.message).not.toContain("Unknown SDK error");
     }
+  });
+});
+
+describe("ClaudeAgent — réglages par phase", () => {
+  beforeEach(() => queryMock.mockReset());
+
+  /**
+   * Retirer les réglages utilisateur allège le débat, mais les instructions
+   * projet — CLAUDE.md et les pointeurs vers la mémoire — doivent rester dans
+   * les deux phases, et l'implémentation garde l'outillage global.
+   */
+  it("charge les réglages utilisateur seulement pendant l'implémentation", async () => {
+    queryMock.mockReturnValue(messages([successResult()]));
+    const agent = new ClaudeAgent();
+    await agent.send("Applique la spécification", { cwd: "/tmp", writeAccess: true });
+
+    const options = queryMock.mock.calls[0]?.[0]?.options;
+    expect(options.settingSources).toEqual(["project", "user"]);
+    expect(options.tools).toEqual({ type: "preset", preset: "claude_code" });
+  });
+
+  it("transmet au SDK le modèle configuré que Claudex a lu lui-même", async () => {
+    queryMock.mockReturnValue(messages([successResult()]));
+    const agent = new ClaudeAgent("opus");
+    await agent.send("Sujet", { cwd: "/tmp", writeAccess: false });
+
+    expect(queryMock.mock.calls[0]?.[0]?.options.model).toBe("opus");
   });
 });

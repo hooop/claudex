@@ -7,6 +7,7 @@ import {
   appendDevlog,
   rememberAutonomyBudget,
   saveTranscript,
+  sessionTitle,
 } from "../memory/store.js";
 import { DebateSession } from "../orchestrator/session.js";
 import type { AgentId, AutonomyBudget, TranscriptEntry } from "../types.js";
@@ -49,7 +50,10 @@ export function Root(props: { cwd: string; initialTopic?: string }) {
 
   const [status, setStatus] = useState(() => getProjectStatus(cwd));
   const [agents] = useState<Record<AgentId, CodingAgent>>(() => ({
-    claude: new ClaudeAgent(undefined, status.claudeDefaultModel ?? undefined),
+    claude: new ClaudeAgent(
+      status.claudeConfiguredModel ?? undefined,
+      status.claudeDefaultModel ?? undefined,
+    ),
     codex: new CodexAgent(undefined, codexInitialModelLabel(status)),
   }));
   const [rememberedAutonomy, setRememberedAutonomy] = useState<AutonomyBudget | undefined>(
@@ -272,7 +276,7 @@ export function Root(props: { cwd: string; initialTopic?: string }) {
       nextSession.on("topic-accepted", () => {
         if (devlogWritten) return;
         devlogWritten = true;
-        appendDevlog(cwd, `Session démarrée — sujet : ${trimmed}`).then(undefined, (error: unknown) => {
+        appendDevlog(cwd, `Session démarrée — sujet : ${sessionTitle(trimmed)}`).then(undefined, (error: unknown) => {
           setCoordinatorNotice(
             `Sujet validé, mais écriture du devlog impossible : ${
               error instanceof Error ? error.message : String(error)

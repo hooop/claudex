@@ -8,6 +8,7 @@ import {
   rememberModel,
   saveHandoff,
   saveTranscript,
+  sessionTitle,
 } from "../store.js";
 
 describe("saveHandoff", () => {
@@ -170,5 +171,49 @@ describe("transcript snapshots and project policy", () => {
       lastKnownModels: { claude: "claude-test" },
       autonomyBudget: { kind: "automatic-starts", maximum: 4 },
     });
+  });
+});
+
+describe("sessionTitle", () => {
+  it("laisse un sujet court intact", () => {
+    expect(sessionTitle("  Revue du scheduler  ")).toBe("Revue du scheduler");
+  });
+
+  it("réduit un prompt à une ligne", () => {
+    expect(sessionTitle("Premier axe\n\n  puis le second")).toBe("Premier axe puis le second");
+  });
+
+  // Le devlog est lu au démarrage de chaque session : y recopier un prompt
+  // d'audit de plusieurs milliers de mots le faisait grossir sans borne.
+  it("tronque un long prompt et signale la coupe", () => {
+    const title = sessionTitle("mot ".repeat(200));
+    expect(title.length).toBeLessThanOrEqual(61);
+    expect(title.endsWith("…")).toBe(true);
+  });
+});
+
+describe("CLAUDE.md généré", () => {
+  let cwd: string;
+
+  beforeEach(async () => {
+    cwd = await mkdtemp(path.join(os.tmpdir(), "claudex-store-test-"));
+  });
+
+  afterEach(async () => {
+    await rm(cwd, { recursive: true, force: true });
+  });
+
+  // `@fichier` recopie le fichier entier dans le prompt système à chaque appel,
+  // alors qu'AGENTS.md se contente de nommer les mêmes fichiers à Codex.
+  it("nomme la mémoire du projet au lieu de l'importer", async () => {
+    await initMemoryScaffold(cwd);
+    const claudeMd = await readFile(path.join(cwd, "CLAUDE.md"), "utf8");
+    const agentsMd = await readFile(path.join(cwd, "AGENTS.md"), "utf8");
+
+    expect(claudeMd).not.toContain("@.claudex/memory/");
+    for (const file of ["decisions.md", "limits.md", "devlog.md"]) {
+      expect(claudeMd).toContain(`.claudex/memory/${file}`);
+      expect(agentsMd).toContain(`.claudex/memory/${file}`);
+    }
   });
 });

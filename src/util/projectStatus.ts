@@ -7,8 +7,15 @@ export interface ProjectStatus {
   decisionsCount: number;
   decisionsText: string | null;
   lastSession: string | null;
-  /** Explicitly configured Claude model; null means the CLI will resolve its default. */
+  /** Explicitly configured Claude model, formatted for display. */
   claudeDefaultModel: string | null;
+  /**
+   * The same setting, verbatim, to hand to the SDK. The debate no longer loads
+   * user settings — they cost far more in system prompt than the one field
+   * Claudex actually needs from them — so this preference has to be carried
+   * across explicitly rather than resolved by the CLI.
+   */
+  claudeConfiguredModel: string | null;
   /** Codex's configured default model, read from ~/.codex/config.toml — no API call needed. */
   codexDefaultModel: string | null;
   codexDefaultEffort: string | null;
@@ -124,6 +131,7 @@ export function getProjectStatus(cwd: string): ProjectStatus {
     decisionsText,
     lastSession,
     claudeDefaultModel: configuredClaude ? formatClaudeModel(configuredClaude) : null,
+    claudeConfiguredModel: configuredClaude,
     codexDefaultModel: codexDefault.model,
     codexDefaultEffort: codexDefault.effort,
     autonomyBudget: validAutonomyBudget(state.autonomyBudget) ? state.autonomyBudget : null,

@@ -4,8 +4,9 @@ Ce projet est développé avec Claudex : Claude Code et Codex y travaillent en b
 
 ## Mémoire du projet (Claudex)
 
-@.claudex/memory/decisions.md
-@.claudex/memory/devlog.md
-@.claudex/memory/limits.md
+Avant de proposer une architecture ou une décision, lis ces fichiers :
+- `.claudex/memory/decisions.md` — décisions déjà actées
+- `.claudex/memory/limits.md` — contraintes et choses explicitement écartées
+- `.claudex/memory/devlog.md` — index des sessions passées
 
-Avant de proposer une architecture ou une décision, prends en compte les décisions déjà actées ci-dessus : ne les remets pas en question sans le signaler explicitement et sans raison nouvelle.
+Ne remets pas en question une décision déjà actée sans le signaler explicitement et sans raison nouvelle.
