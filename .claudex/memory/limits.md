@@ -142,3 +142,48 @@ la lecture. Réduire le préfixe reste donc rentable même avec un cache qui fon
 mémoire, source de réglages, MCP, plugin), le mesurer par cette méthode. Un chiffre lu dans le
 `.jsonl` de session doit être dédupliqué sur `message.id` : le journal écrit une ligne par bloc de
 contenu, et une somme naïve double les totaux.
+
+## 2026-08-29 — `permissionMode: "plan"` n'est pas une couche d'application, et le défaut du SDK autorise l'écriture
+
+**Constat :** deux faits vérifiés sur `@anthropic-ai/claude-agent-sdk@0.1.77` (version installée),
+en réponse à la question « le mode `plan` documenté pour les subagents peut-il remplacer le sandbox
+comme garantie de lecture seule ? ». Réponse : non.
+
+**1. Le mode `plan` est une consigne de prompt, pas un contrôle.** Dans `cli.js`, la fonction de
+permission des outils d'écriture (`m4A`) ne consulte jamais le mode : elle décide sur les règles
+`allow`/`ask`/`deny`, les répertoires autorisés et `acceptEdits`. Sur les sept comparaisons
+`=== "plan"` du binaire, la seule qui touche la couche permissions *autorise* (`plan` +
+`isBypassPermissionsModeAvailable` → `behavior: "allow"`). Le caractère lecture seule est porté par
+une injection de prompt : « Plan mode is active. The user indicated that they do not want you to
+execute yet — you MUST NOT make any edits, run any non-readonly tools ».
+
+**2. Sans `canUseTool`, le défaut non interactif est d'autoriser.** `permissionMode: "default"`
+seul ne fait pas échouer une écriture : il n'y a personne pour répondre au `ask`, et l'appel passe.
+
+**Test empirique** (`query()` isolé, `tools: ["Bash"]`, consigne d'écrire un fichier dans `cwd`,
+présence du fichier vérifiée sur disque) :
+
+| Cas | `permissionMode` | `allowedTools` | Bash appelé | Fichier écrit |
+| --- | --- | --- | --- | --- |
+| A | `plan` | — | non | non |
+| B | `default` | — | oui | **oui** |
+| C | `plan` | `["Bash"]` | oui | **oui** |
+| D | `default` | `["Bash"]` | oui | **oui** |
+
+Le cas A ne prouve rien : le modèle a *obéi* à la consigne, il n'a pas été *empêché*. Le cas C le
+démontre — mode `plan` actif, fichier écrit quand même.
+
+**Conséquence :** la limite du 2026-08-07 (le sandbox du SDK ne peut pas rendre `cwd`
+non-inscriptible) **tient inchangée**. Le mode `plan` n'en est pas une alternative. La lecture seule
+du débat repose sur deux choses, et seulement deux : `tools: DEBATE_TOOLS` dans `claudeAgent.ts`
+(vraie restriction de disponibilité — l'outil n'existe pas pour le modèle) et `canUseTool` (arbitrage
+humain sur chaque appel).
+
+**Piège associé :** `allowedTools: []` ne restreint rien. C'est une liste d'auto-approbation, pas un
+filtre — la doc du SDK le dit explicitement (« To restrict which tools are available, use the `tools`
+option instead »). Le champ qui restreint est `tools`.
+
+**Comment appliquer :** ne jamais traiter `permissionMode` comme une frontière de sécurité, quelle
+que soit la valeur. Pour restreindre, passer par `tools`. Pour arbitrer, passer par `canUseTool`.
+Revérifier empiriquement à chaque montée de version du SDK, avec les quatre cas ci-dessus : le
+critère est la présence du fichier sur disque, pas le message rendu par le modèle.

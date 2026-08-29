@@ -17,3 +17,8 @@ dist/
 
 # Exports bruts de débats, conservés en local.
 debat.md/
+
+# Configuration Claude Code. Même logique que ci-dessus : ce qui est écrit à
+# dessein et profite à quelqu'un qui clone le dépôt est versionné (les agents),
+# ce qui est propre à une machine ne l'est pas.
+.claude/settings.local.json
