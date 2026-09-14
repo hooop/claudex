@@ -1,76 +1,68 @@
 # Claudex
 
-Claudex fait débattre Claude Code et Codex sur une question de conception, dans un seul terminal et sous arbitrage humain. Il remplace le copier-coller manuel des réponses d'un outil vers l'autre.
+Claudex runs a structured debate between Claude Code and Codex on a design question, inside a single terminal, with a human arbitrating. It replaces the manual copy-paste of one tool's answer into the other.
 
-![Écran d'accueil de Claudex : en-tête animé, état de la mémoire du projet, et une question de conception saisie dans le champ du sujet](docs/accueil.png)
+<img src="docs/accueil.png" alt="Claudex welcome screen: animated header, project memory status, and a design question typed into the topic field" width="600">
 
-## Principe
+## How it works
 
-Une session suit toujours le même cycle :
+*The application's own interface and messages are in French.*
 
-1. Une question de conception est posée.
-2. Claude répond. Sa réponse est transmise à Codex.
-3. Codex répond. Sa réponse est transmise à Claude.
-4. Le cycle se répète jusqu'à ce que les deux agents soient explicitement d'accord.
-5. Claudex affiche une synthèse de ce qui a été décidé.
-6. La commande `/handoff` écrit cette décision dans un fichier markdown, prêt à être donné à une session `claude` ou `codex` pour l'implémentation.
+A session always follows the same cycle:
 
-Pendant tout le débat, les deux agents sont en lecture seule : ils lisent le code, ils ne le modifient pas.
+1. A design question is asked.
+2. Claude answers. The answer is forwarded to Codex.
+3. Codex answers. The answer is forwarded to Claude.
+4. The cycle repeats until both agents explicitly agree.
+5. Claudex prints a summary of what was decided.
+6. `/handoff` writes that decision to a standalone markdown file, ready to hand to a `claude` or `codex` session for implementation.
 
-## Points notables
+Throughout the debate, both agents are read-only. They read the code, they do not modify it.
 
-**Transmission intégrale.** Aucune réponse n'est résumée avant d'être transmise à l'autre agent. Le texte passe verbatim.
+## Notable points
 
-**Pas de limite de tours.** Le débat s'enchaîne jusqu'au consensus. La touche `Échap` met en pause à tout moment, y compris pendant qu'un agent écrit.
+**Verbatim forwarding.** No answer is summarised before reaching the other agent. The text is passed on in full.
 
-**Intervention possible à tout moment.** Un message peut être adressé aux deux agents, ou à un seul.
+**No turn limit.** The debate runs until consensus is reached. `Esc` pauses it at any moment, including while an agent is writing.
 
-**Qualification du sujet.** Le premier message est évalué avant de devenir le sujet officiel. Une demande hors sujet ou incomplète reçoit une réponse et attend une précision. Rien n'est écrit dans la mémoire du projet tant qu'aucun sujet n'est accepté.
+**Human intervention at any point.** A message can be addressed to both agents, or to a single one.
 
-**Mémoire de projet.** Les décisions et les contraintes sont enregistrées dans `.claudex/memory/`, puis relues automatiquement au début de chaque session par Claude via `CLAUDE.md` et par Codex via `AGENTS.md`.
+**Topic qualification.** The first message is assessed before it becomes the official topic. An off-topic or incomplete request receives an answer and waits for clarification. Nothing is written to project memory until a topic has been accepted.
 
-**Sortie terminal classique.** Le débat s'écrit comme une sortie normale. Le défilement, la sélection et le copier-coller restent ceux du terminal, et rien de déjà affiché n'est redessiné.
+**Persistent project memory.** Decisions and constraints are stored in `.claudex/memory/`, then read again automatically at the start of every session by Claude through `CLAUDE.md` and by Codex through `AGENTS.md`.
 
-## Autorisations
+**Plain terminal output.** The debate is written like ordinary output. Scrolling, selection and copy-paste remain those of the terminal, and nothing already displayed is ever redrawn.
 
-Les deux agents ne gèrent pas les autorisations de la même façon.
+## What leaves the machine
 
-**Claude Code** demande une autorisation avant d'utiliser un outil. La demande s'affiche dans Claudex et attend une décision.
+Worth reading before pointing Claudex at a repository owned by someone else, or using it in a professional setting.
 
-**Codex** ne demande rien. Son niveau d'accès est fixé au démarrage de chaque tour, en lecture seule pendant le débat. Une action qui sortirait de ce cadre échoue, au lieu d'ouvrir une demande d'autorisation.
+**The code is sent to two providers.** Claudex drives Claude Code (Anthropic) and Codex (OpenAI). Everything the agents read, whether files, excerpts or search results, is sent to both, and each answer from one is forwarded to the other.
 
-Le détail technique est consigné dans `.claudex/memory/limits.md`.
+**Codex runs commands, Claude Code does not.** During a debate, Codex can execute shell commands inside an operating system sandbox that prevents it from writing to the repository or reaching the network. Claude Code has no execution tool at all during a debate: it is restricted to reading and searching files.
 
-## Ce qui sort de la machine
+**Read-only means "cannot modify anything", not "only sees the repository".** In the current version of Codex, nothing restricts what a command may read. It can open any file the current account has access to and copy its contents into the transcript, which is then sent to both models and written to disk. Without network access a command cannot exfiltrate anything by itself, but it can still copy. Claudex should therefore not be used to analyse untrusted code.
 
-Section à lire avant d'utiliser Claudex sur un dépôt appartenant à un tiers, ou dans un contexte professionnel.
+**Debates are written inside the repository.** Claudex creates a `.claudex/` directory at the root of the folder it is launched from, and stores transcripts there. On first launch it also installs a `.gitignore` so those transcripts never reach a commit. Decisions and limits stay committable on purpose: they are short, and both `CLAUDE.md` and `AGENTS.md` point to them.
 
-**Le code est envoyé à deux fournisseurs.** Claudex pilote Claude Code (Anthropic) et Codex (OpenAI). Tout ce que les agents lisent, fichiers, extraits et résultats de recherche, est envoyé aux deux, et chaque réponse de l'un est transmise à l'autre.
+## Requirements
 
-**Codex exécute des commandes sans les soumettre à validation.** Pendant le débat, il tourne dans un bac à sable du système d'exploitation qui l'empêche d'écrire dans le dépôt et d'accéder au réseau.
-
-**Lecture seule signifie « ne peut rien modifier », pas « ne voit que le dépôt ».** Dans la version actuelle de Codex, rien ne permet de restreindre ce qu'une commande peut lire. Elle peut ouvrir n'importe quel fichier accessible au compte courant et en recopier le contenu dans le transcript, qui est ensuite envoyé aux deux modèles et écrit sur disque. Sans réseau, une commande ne peut rien exfiltrer par elle-même, mais elle peut recopier. Claudex ne doit donc pas être utilisé pour analyser du code non fiable.
-
-**Les débats sont écrits dans le dépôt.** Claudex crée un dossier `.claudex/` à la racine du répertoire de lancement et y enregistre les transcripts. Au premier lancement, il y installe aussi un `.gitignore` pour que ces transcripts ne partent pas dans un commit. Les décisions et les limites restent versionnables : elles sont courtes, et `CLAUDE.md` comme `AGENTS.md` y renvoient.
-
-## Prérequis
-
-| Requis | Rôle |
+| Required | Purpose |
 |---|---|
-| Node.js 22 ou plus récent | Exécute Claudex |
-| Abonnement Claude (Pro, Max ou Team) | Fait fonctionner l'agent Claude Code |
-| Abonnement ChatGPT (Plus, Pro ou Business) | Fait fonctionner l'agent Codex |
-| Un terminal interactif | Claudex refuse de démarrer dans un script ou un pipe |
+| Node.js 22 or newer | Runs Claudex |
+| A Claude subscription (Pro, Max or Team) | Powers the Claude Code agent |
+| A ChatGPT subscription (Plus, Pro or Business) | Powers the Codex agent |
+| An interactive terminal | Claudex refuses to start inside a script or a pipe |
 
-Les deux abonnements sont nécessaires simultanément : un débat consomme des jetons des deux côtés en même temps. Avec un seul des deux, Claudex démarre mais le débat échoue au premier tour.
+Both subscriptions are required at the same time, because a debate consumes tokens on both sides simultaneously. With only one of them, Claudex starts but the debate fails on the first turn.
 
-### Aucune clé API n'est nécessaire
+### No API key is needed
 
-Claudex ne demande aucune clé API, n'en stocke aucune et n'en lit aucune. Il n'y a pas de fichier `.env` à créer ni de variable d'environnement à définir.
+Claudex asks for no API key, stores none and reads none. There is no `.env` file to create and no environment variable to set.
 
-L'authentification se fait une seule fois, dans Claude Code et dans Codex, avec les comptes habituels. Claudex réutilise ensuite ces connexions. La seule information qu'il lit dans la configuration est le modèle par défaut, afin de l'afficher sur son tableau de bord.
+Authentication happens once, inside Claude Code and inside Codex, using the usual accounts. Claudex then reuses those sessions. The only thing it reads from the configuration is the default model, so that it can display it on the dashboard.
 
-Une exception mérite d'être connue : si la variable d'environnement `ANTHROPIC_API_KEY` est définie, Claude Code peut l'utiliser à la place de l'abonnement, ce qui déclenche une facturation à l'usage. Pour rester sur l'abonnement, `echo $ANTHROPIC_API_KEY` ne doit rien afficher.
+One exception is worth knowing about. If the `ANTHROPIC_API_KEY` environment variable is set, Claude Code may use it instead of the subscription, which means per-token billing. To stay on the subscription, `echo $ANTHROPIC_API_KEY` should print nothing.
 
 ## Installation
 
@@ -80,7 +72,7 @@ Une exception mérite d'être connue : si la variable d'environnement `ANTHROPIC
 node --version
 ```
 
-Si la version affichée est inférieure à `v22`, installer Node.js depuis [nodejs.org](https://nodejs.org) en choisissant la version LTS, puis rouvrir le terminal.
+If the reported version is below `v22`, install Node.js from [nodejs.org](https://nodejs.org), choosing the LTS release, then open a new terminal.
 
 ### 2. Claude Code
 
@@ -89,7 +81,7 @@ npm install -g @anthropic-ai/claude-code
 claude
 ```
 
-Se connecter au premier lancement, puis quitter avec `/quit`. Vérifier ensuite avec `claude --version`.
+Sign in on first launch, then quit with `/quit`. Confirm with `claude --version`.
 
 ### 3. Codex
 
@@ -98,7 +90,7 @@ npm install -g @openai/codex
 codex
 ```
 
-Se connecter au premier lancement, puis quitter. Vérifier ensuite avec `codex --version`.
+Sign in on first launch, then quit. Confirm with `codex --version`.
 
 ### 4. Claudex
 
@@ -109,108 +101,108 @@ npm install
 npm link
 ```
 
-`npm link` rend la commande `claudex` disponible depuis n'importe quel dossier. Il crée un lien vers ce répertoire, qui ne doit donc pas être déplacé ensuite. Pour retirer la commande : `npm unlink -g claudex`.
+`npm link` makes the `claudex` command available from any directory. It creates a link to this folder, which must therefore not be moved afterwards. To remove the command later: `npm unlink -g claudex`.
 
-### 5. Vérification
+### 5. Verification
 
 ```bash
 npm run check
 ```
 
-Cette commande enchaîne le typecheck TypeScript strict, ESLint et 283 tests. Tout doit être au vert.
+This runs the strict TypeScript typecheck, ESLint, then 283 tests. Everything should pass.
 
-### Problèmes courants
+### Common problems
 
-| Message | Cause et correction |
+| Message | Cause and fix |
 |---|---|
-| `command not found: claudex` | L'étape 4 n'a pas abouti. Relancer `npm link` depuis le dossier `claudex`. |
-| `Claudex a besoin d'un vrai terminal interactif (TTY)` | Claudex a été lancé dans un script ou un pipe. Le lancer directement dans un terminal. |
-| `command not found: claude` ou `codex` | Reprendre l'étape 2 ou l'étape 3. |
-| Le débat échoue dès le premier tour | Un des deux comptes n'est pas connecté. Lancer `claude` puis `codex` séparément pour vérifier. |
-| `EACCES` pendant un `npm install -g` | Droits insuffisants sur le dossier npm global. Voir [la documentation npm](https://docs.npmjs.com/resolving-eacces-permissions-errors-when-installing-packages-globally). |
+| `command not found: claudex` | Step 4 did not complete. Run `npm link` again from the `claudex` folder. |
+| `Claudex a besoin d'un vrai terminal interactif (TTY)` | Claudex was started inside a script or a pipe. Start it directly in a terminal. |
+| `command not found: claude` or `codex` | Repeat step 2 or step 3. |
+| The debate fails on the first turn | One of the two accounts is not signed in. Run `claude` and `codex` separately to check. |
+| `EACCES` during `npm install -g` | Insufficient permissions on the global npm directory. See [the npm documentation](https://docs.npmjs.com/resolving-eacces-permissions-errors-when-installing-packages-globally). |
 
-## Utilisation
+## Usage
 
 ```bash
 claudex
 ```
 
-L'écran d'accueil affiche les modèles configurés et l'état de la mémoire du projet, puis attend le sujet à débattre.
+The welcome screen shows the configured models and the state of the project memory, then waits for a topic.
 
-Pour démarrer directement sur un sujet :
+To start straight on a topic:
 
 ```bash
-claudex "Quelle architecture pour la timeline vidéo ?"
+claudex "What architecture should the video timeline use?"
 ```
 
-### Déroulé d'une session
+### Walkthrough of a session
 
-1. Se placer dans le dossier du projet concerné. Claudex lit ce dossier et y écrit sa mémoire.
-2. Lancer `claudex`.
-3. Saisir la question, en langage naturel.
-4. Laisser le débat s'enchaîner. `Échap` met en pause, un message libre recadre les deux agents.
-5. Au consensus, la synthèse s'affiche automatiquement.
-6. `/handoff` écrit la décision dans un fichier markdown autonome.
-7. `/quit` archive la session et quitte.
+1. Move into the directory of the project concerned. Claudex reads that directory and writes its memory there.
+2. Run `claudex`.
+3. Type the question, in plain language.
+4. Let the debate run. `Esc` pauses it, and a plain message redirects both agents.
+5. Once consensus is reached, the summary appears automatically.
+6. `/handoff` writes the decision to a standalone markdown file.
+7. `/quit` archives the session and exits.
 
-Aucune modification n'est apportée au code pendant ce parcours : une session produit une décision et un fichier markdown.
+No code is modified anywhere along this path. A session produces a decision and a markdown file.
 
-### Commandes
+### Commands
 
-Parler aux agents :
+Talking to the agents:
 
-| Commande | Effet |
+| Command | Effect |
 |---|---|
-| texte libre | Message envoyé aux deux agents. Sur l'écran d'accueil, démarre le débat sur ce sujet. |
-| `/claude <texte>` | Message adressé à Claude uniquement |
-| `/codex <texte>` | Message adressé à Codex uniquement |
-| `/model claude\|codex <nom>` | Change le modèle d'un agent, y compris avant le démarrage |
+| plain text | Message sent to both agents. On the welcome screen, starts the debate on that topic. |
+| `/claude <text>` | Message addressed to Claude only |
+| `/codex <text>` | Message addressed to Codex only |
+| `/model claude\|codex <name>` | Changes an agent's model, including before the debate starts |
 
-Enregistrer :
+Recording:
 
-| Commande | Effet |
+| Command | Effect |
 |---|---|
-| `/handoff` | Après consensus, écrit un fichier markdown autonome dans `.claudex/memory/handoffs/`, à donner tel quel à une session `claude` ou `codex` pour l'implémentation |
-| `/save` | Écrit un instantané de la session en cours, identifié comme partiel, sans la fermer |
-| `/decide <sujet> \| <approche>` | Enregistre une décision dans la mémoire du projet |
-| `/limit <texte>` | Enregistre une contrainte connue |
-| `/decisions` | Affiche les décisions déjà enregistrées |
+| `/handoff` | After consensus, writes a standalone markdown file into `.claudex/memory/handoffs/`, ready to hand to a `claude` or `codex` session for implementation |
+| `/save` | Writes a snapshot of the running session, marked as partial, without closing it |
+| `/decide <topic> \| <approach>` | Records a decision in the project memory |
+| `/limit <text>` | Records a known constraint |
+| `/decisions` | Displays the decisions recorded so far |
 
-Contrôler le rythme :
+Controlling the pace:
 
-| Commande | Effet |
+| Command | Effect |
 |---|---|
-| `/pause` | Arrête l'enchaînement automatique après le tour en cours |
-| `/resume` | Relance un tour en échec, ou ouvre une nouvelle fenêtre d'autonomie |
-| `/cancel` | Annule le tour en cours en conservant le texte déjà reçu |
-| `/autonomy starts <N>` | Limite le débat à N démarrages automatiques |
-| `/autonomy time <durée>` | Limite les démarrages automatiques dans le temps (`ms`, `s`, `m`, `h`) |
-| `/autonomy unbounded` | Retire la limite. C'est le comportement par défaut. |
-| `--remember` | Ajouté à une commande `/autonomy`, mémorise la politique pour le projet |
+| `/pause` | Stops the automatic chaining after the current turn |
+| `/resume` | Retries a failed turn, or opens a new autonomy window |
+| `/cancel` | Cancels the current turn, keeping the text already received |
+| `/autonomy starts <N>` | Limits the debate to N automatic starts |
+| `/autonomy time <duration>` | Limits automatic starts over time (`ms`, `s`, `m`, `h`) |
+| `/autonomy unbounded` | Removes the limit. This is the default behaviour. |
+| `--remember` | Appended to an `/autonomy` command, stores the policy for the project |
 
-Terminer :
+Finishing:
 
-| Commande | Effet |
+| Command | Effect |
 |---|---|
-| `/new` | Archive la session, réinitialise les deux agents et revient à l'écran d'accueil |
-| `/quit` | Archive la session et quitte |
-| `/retry` | Relance l'étape d'arrêt ou d'archivage qui a échoué |
-| `/help` | Affiche l'aide dans le fil du débat |
+| `/new` | Archives the session, resets both agents and returns to the welcome screen |
+| `/quit` | Archives the session and exits |
+| `/retry` | Retries whichever shutdown or archiving step failed |
+| `/help` | Prints the help inside the debate log |
 
-`Ctrl+C` suit le même chemin que `/quit` et n'abandonne jamais une archive sans confirmation explicite. L'aide intégrée `/help` liste l'ensemble des commandes, y compris celles réservées aux cas de dernier recours.
+`Ctrl+C` follows the same path as `/quit` and never silently discards an archive. The built-in `/help` lists every command, including those reserved for last-resort situations.
 
 ## Architecture
 
 ```
 src/
-  agents/         adaptateurs vers le Claude Agent SDK et Codex app-server
-  orchestrator/   machine à états du débat (tours, consensus, interventions)
-  memory/         lecture et écriture de .claudex/memory/
-  ui/             écran d'accueil, vue de débat, pipeline de rendu du flux
+  agents/         adapters for the Claude Agent SDK and Codex app-server
+  orchestrator/   debate state machine (turns, consensus, interventions)
+  memory/         reads and writes .claudex/memory/
+  ui/             welcome screen, debate view, output rendering pipeline
 ```
 
-## Statut
+## Status
 
-Fonctionnel : boucle de débat, autorisations d'outil côté Claude, mémoire de projet, écran d'accueil avec tableau de bord, réinitialisation propre du contexte entre deux sujets.
+Working: the debate loop, tool permission prompts on the Claude side, project memory, welcome screen with dashboard, clean context reset between two topics.
 
-Prévu : affichage de la consommation de jetons en temps réel.
+Planned: live display of token consumption.
