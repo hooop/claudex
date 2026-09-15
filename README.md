@@ -1,8 +1,8 @@
 # Claudex
 
-Claudex runs a structured debate between Claude Code and Codex on a design question, inside a single terminal, with a human arbitrating. It replaces the manual copy-paste of one tool's answer into the other.
+Claudex runs a structured debate between Claude Code and Codex on a technical question, inside a single terminal, with a human arbitrating. It replaces the manual copy-paste of one tool's answer into the other.
 
-<img src="docs/accueil.png" alt="Claudex welcome screen: animated header, project memory status, and a design question typed into the topic field" width="600">
+<img src="docs/accueil.png" alt="Claudex welcome screen: animated header, project memory status, and a technical question typed into the topic field" width="600">
 
 ## How it works
 
@@ -10,7 +10,7 @@ Claudex runs a structured debate between Claude Code and Codex on a design quest
 
 A session always follows the same cycle:
 
-1. A design question is asked.
+1. A technical question is asked.
 2. Claude answers. The answer is forwarded to Codex.
 3. Codex answers. The answer is forwarded to Claude.
 4. The cycle repeats until both agents explicitly agree.
@@ -18,6 +18,8 @@ A session always follows the same cycle:
 6. `/handoff` writes that decision to a standalone markdown file, ready to hand to a `claude` or `codex` session for implementation.
 
 Throughout the debate, both agents are read-only. They read the code, they do not modify it.
+
+The topic is not restricted to architecture. Anything settled before code gets written fits: choosing between two approaches, reviewing existing code, diagnosing an observed bug, weighing a trade-off.
 
 ## Notable points
 
