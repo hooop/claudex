@@ -2,7 +2,7 @@
 
 Claudex runs a structured debate between Claude Code and Codex on a technical question, inside a single terminal, with a human arbitrating. It replaces the manual copy-paste of one tool's answer into the other.
 
-<img src="docs/accueil.png" alt="Claudex welcome screen: animated header, project memory status, and a technical question typed into the topic field" width="600">
+<img src="docs/accueil.png" alt="Claudex welcome screen: animated header, project memory status, and a code audit question typed into the topic field" width="600">
 
 ## How it works
 
