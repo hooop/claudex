@@ -1,8 +1,8 @@
 # Claudex
 
-Claudex runs a structured debate between Claude Code and Codex on a technical question, inside a single terminal, with a human arbitrating. It replaces the manual copy-paste of one tool's answer into the other.
+Claudex runs a structured debate between Claude Code and Codex on a technical question, inside a single terminal, with a human in control. It replaces the manual copy-paste of one agent's answer into the other and keeps the discussion attached to the project.
 
-<img src="docs/accueil.png" alt="Claudex welcome screen: animated header, project memory status, and a code audit question typed into the topic field" width="600">
+<img src="docs/demo/claudex.gif" alt="Claudex demo: animated header, a topic typed into the prompt, then Claude and Codex debating an authentication migration" width="660">
 
 ## How it works
 
@@ -16,8 +16,9 @@ A session always follows the same cycle:
 4. The cycle repeats until both agents explicitly agree.
 5. Claudex prints a summary of what was decided.
 6. `/handoff` writes that decision to a standalone markdown file, ready to hand to a `claude` or `codex` session for implementation.
+7. Alternatively, `/implement claude` or `/implement codex` lets the chosen agent implement the agreed plan without leaving Claudex.
 
-Throughout the debate, both agents are read-only. They read the code, they do not modify it.
+The debate phase is strictly read-only: both agents can inspect the code, but neither can modify it. Write access is enabled only after an explicit `/implement` command.
 
 The topic is not restricted to architecture. Anything settled before code gets written fits: choosing between two approaches, reviewing existing code, diagnosing an observed bug, weighing a trade-off.
 
@@ -25,7 +26,7 @@ The topic is not restricted to architecture. Anything settled before code gets w
 
 **Verbatim forwarding.** No answer is summarised before reaching the other agent. The text is passed on in full.
 
-**No turn limit.** The debate runs until consensus is reached. `Esc` pauses it at any moment, including while an agent is writing.
+**No turn limit by default.** The debate runs until consensus is reached. `Esc` pauses it at any moment, including while an agent is answering. Optional autonomy limits can cap the number of turns or the elapsed time.
 
 **Human intervention at any point.** A message can be addressed to both agents, or to a single one.
 
@@ -33,7 +34,7 @@ The topic is not restricted to architecture. Anything settled before code gets w
 
 **Persistent project memory.** Decisions and constraints are stored in `.claudex/memory/`, then read again automatically at the start of every session by Claude through `CLAUDE.md` and by Codex through `AGENTS.md`.
 
-**Plain terminal output.** The debate is written like ordinary output. Scrolling, selection and copy-paste remain those of the terminal, and nothing already displayed is ever redrawn.
+**Full-screen terminal interface.** The header and input stay fixed while the transcript scrolls independently. Use the wheel or `↑`/`↓`, `Page Up`/`Page Down`, and `Home`/`End` to navigate; the complete transcript is archived in `.claudex/memory/transcripts/`.
 
 ## What leaves the machine
 
@@ -41,9 +42,11 @@ Worth reading before pointing Claudex at a repository owned by someone else, or 
 
 **The code is sent to two providers.** Claudex drives Claude Code (Anthropic) and Codex (OpenAI). Everything the agents read, whether files, excerpts or search results, is sent to both, and each answer from one is forwarded to the other.
 
-**Codex runs commands, Claude Code does not.** During a debate, Codex can execute shell commands inside an operating system sandbox that prevents it from writing to the repository or reaching the network. Claude Code has no execution tool at all during a debate: it is restricted to reading and searching files.
+**Debate permissions are deliberately narrow.** During a debate, Codex can execute shell commands inside a read-only, network-disabled operating system sandbox. Claude Code has no shell tool during this phase and is restricted to reading and searching files.
 
 **Read-only means "cannot modify anything", not "only sees the repository".** In the current version of Codex, nothing restricts what a command may read. It can open any file the current account has access to and copy its contents into the transcript, which is then sent to both models and written to disk. Without network access a command cannot exfiltrate anything by itself, but it can still copy. Claudex should therefore not be used to analyse untrusted code.
+
+**Implementation is a separate, explicit phase.** `/implement` gives the agents write-capable tools. Codex remains sandboxed to the current project and temporary directories, with network access disabled. Claude Code uses its normal implementation tools and may ask for permission before sensitive actions. Review the agreed plan before enabling this phase.
 
 **Debates are written inside the repository.** Claudex creates a `.claudex/` directory at the root of the folder it is launched from, and stores transcripts there. On first launch it also installs a `.gitignore` so those transcripts never reach a commit. Decisions and limits stay committable on purpose: they are short, and both `CLAUDE.md` and `AGENTS.md` point to them.
 
@@ -52,17 +55,17 @@ Worth reading before pointing Claudex at a repository owned by someone else, or 
 | Required | Purpose |
 |---|---|
 | Node.js 22 or newer | Runs Claudex |
-| A Claude subscription (Pro, Max or Team) | Powers the Claude Code agent |
-| A ChatGPT subscription (Plus, Pro or Business) | Powers the Codex agent |
+| A Claude Code account | A supported Claude plan or Anthropic Console account, already signed in |
+| A Codex account | A ChatGPT plan that includes Codex, already signed in |
 | An interactive terminal | Claudex refuses to start inside a script or a pipe |
 
-Both subscriptions are required at the same time, because a debate consumes tokens on both sides simultaneously. With only one of them, Claudex starts but the debate fails on the first turn.
+Access to both agents is required at the same time because a debate consumes usage on both sides. Plan availability and limits can change; check the current [Claude Code setup documentation](https://docs.anthropic.com/en/docs/claude-code/getting-started) and [Codex plan documentation](https://help.openai.com/en/articles/11369540-using-codex-with-your-chatgpt-plan).
 
 ### No API key is needed
 
 Claudex asks for no API key, stores none and reads none. There is no `.env` file to create and no environment variable to set.
 
-Authentication happens once, inside Claude Code and inside Codex, using the usual accounts. Claudex then reuses those sessions. The only thing it reads from the configuration is the default model, so that it can display it on the dashboard.
+Authentication happens once, inside Claude Code and inside Codex, using the usual accounts. Claudex then reuses those sessions. The only account configuration it reads is the default model, so that it can display it in the interface.
 
 One exception is worth knowing about. If the `ANTHROPIC_API_KEY` environment variable is set, Claude Code may use it instead of the subscription, which means per-token billing. To stay on the subscription, `echo $ANTHROPIC_API_KEY` should print nothing.
 
@@ -105,13 +108,15 @@ npm link
 
 `npm link` makes the `claudex` command available from any directory. It creates a link to this folder, which must therefore not be moved afterwards. To remove the command later: `npm unlink -g claudex`.
 
+Claudex is currently installed from source; it is not published as an npm package.
+
 ### 5. Verification
 
 ```bash
 npm run check
 ```
 
-This runs the strict TypeScript typecheck, ESLint, then 283 tests. Everything should pass.
+This runs the strict TypeScript typecheck, ESLint, then the complete test suite. Everything should pass.
 
 ### Common problems
 
@@ -147,7 +152,7 @@ claudex "What architecture should the video timeline use?"
 6. `/handoff` writes the decision to a standalone markdown file.
 7. `/quit` archives the session and exits.
 
-No code is modified anywhere along this path. A session produces a decision and a markdown file.
+No code is modified along this recommended path. To implement inside Claudex instead, use `/implement claude` or `/implement codex` after reviewing the consensus summary.
 
 ### Commands
 
@@ -159,12 +164,14 @@ Talking to the agents:
 | `/claude <text>` | Message addressed to Claude only |
 | `/codex <text>` | Message addressed to Codex only |
 | `/model claude\|codex <name>` | Changes an agent's model, including before the debate starts |
+| `/sujet` | Prints the complete accepted topic in the transcript |
 
 Recording:
 
 | Command | Effect |
 |---|---|
 | `/handoff` | After consensus, writes a standalone markdown file into `.claudex/memory/handoffs/`, ready to hand to a `claude` or `codex` session for implementation |
+| `/implement [claude\|codex] [instruction]` | Enables the implementation phase and optionally starts the chosen agent on the agreed plan |
 | `/save` | Writes a snapshot of the running session, marked as partial, without closing it |
 | `/decide <topic> \| <approach>` | Records a decision in the project memory |
 | `/limit <text>` | Records a known constraint |
@@ -177,6 +184,7 @@ Controlling the pace:
 | `/pause` | Stops the automatic chaining after the current turn |
 | `/resume` | Retries a failed turn, or opens a new autonomy window |
 | `/cancel` | Cancels the current turn, keeping the text already received |
+| `/accept-topic` | Manually accepts a topic after a qualification protocol error |
 | `/autonomy starts <N>` | Limits the debate to N automatic starts |
 | `/autonomy time <duration>` | Limits automatic starts over time (`ms`, `s`, `m`, `h`) |
 | `/autonomy unbounded` | Removes the limit. This is the default behaviour. |
@@ -205,6 +213,8 @@ src/
 
 ## Status
 
-Working: the debate loop, tool permission prompts on the Claude side, project memory, welcome screen with dashboard, clean context reset between two topics.
+Claudex is usable today and under active development. The current release includes topic qualification, the autonomous debate loop, human interventions, project memory, transcript archives, context-usage indicators, model selection, handoffs, and an optional implementation phase.
 
-Planned: live display of token consumption.
+## License
+
+Claudex is available under the [MIT License](LICENSE). You may use, copy, modify, distribute, sublicense, or sell it, including for commercial purposes, provided that the copyright and license notice are retained.
