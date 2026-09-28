@@ -140,8 +140,8 @@ describe("headerArt — galerie d'équations", () => {
       const row = headerFrame(80, frame * 1.6, "plasma", CLAUDE_FLASH_COLOR)[0]!;
       row.forEach((band, index) => {
         if (band.color === CLAUDE_FLASH_COLOR) {
-          counts[index]++;
-          currentRuns[index]++;
+          counts[index] = counts[index]! + 1;
+          currentRuns[index] = currentRuns[index]! + 1;
           longestRuns[index] = Math.max(longestRuns[index]!, currentRuns[index]!);
         } else {
           currentRuns[index] = 0;
