@@ -205,13 +205,13 @@ describe("Root — cycle de vie du header", () => {
     expect(lines[modelsLine]).toContain("/help");
     expect(WELCOME_MODELS_COLOR).toBe("ansi256(66)");
     expect(WELCOME_TAGLINE_COLOR).toBe("ansi256(138)");
-    expect(WELCOME_MEMORY_COLOR).toBe("ansi256(59)");
+    expect(WELCOME_MEMORY_COLOR).toBe("ansi256(102)");
     const formattedSession = formatLastSession("2026-08-10T11:42:17.288Z");
     expect(formattedSession).toContain("10 août 2026");
     expect(formattedSession).toMatch(/\d{2}:\d{2}$/);
     expect(formattedSession).not.toContain("T11:42:17.288Z");
-    expect(welcomeDivider(80)).toBe("·".repeat(80));
-    expect(welcomeDivider(200)).toBe("·".repeat(96));
+    expect(welcomeDivider(80)).toBe("-".repeat(80));
+    expect(welcomeDivider(200)).toBe("-".repeat(96));
     const memory = welcomeMemoryLine(
       { decisionsCount: 3, lastSession: "2026-08-10T11:42:17.288Z" },
       80,

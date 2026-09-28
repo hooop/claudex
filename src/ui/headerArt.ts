@@ -2,9 +2,8 @@
  * The Claudex header gallery.
  *
  * Pure geometry and colour, no rendering: the welcome screen animates the
- * selected equation with Ink, while a debate writes one canonical frame into
- * the terminal scrollback. Keeping both uses here prevents the animated and
- * frozen versions from drifting apart.
+ * selected equation with Ink, while a debate displays a one-row variant in its
+ * fixed viewport. Keeping both uses here prevents them from drifting apart.
  */
 
 export const HEADER_ROWS = 5;
@@ -14,10 +13,24 @@ const RAMP = " ░▒▓█";
 const TAU = Math.PI * 2;
 const PLASMA_SPEED = 1.25;
 
-// Default gradient for equation presets; the plasma uses an evolving, saturated
-// full-spectrum palette while keeping every colour visible on black.
-const COLOR_A: [number, number, number] = [0x6d, 0x5d, 0xfc];
-const COLOR_B: [number, number, number] = [0xf4, 0x72, 0xb6];
+// Default gradient for equation presets. It stays monochrome so the animation
+// feels like signal and depth, not decoration.
+const COLOR_A: [number, number, number] = [0x78, 0x78, 0x78];
+const COLOR_B: [number, number, number] = [0xf2, 0xf2, 0xf2];
+const PLASMA_PALETTE: readonly [number, number, number][] = [
+  [0x76, 0x76, 0x76],
+  [0x92, 0x92, 0x92],
+  [0xb0, 0xb0, 0xb0],
+  [0xce, 0xce, 0xce],
+  [0xe8, 0xe8, 0xe8],
+];
+const FLASH_COLORS = ["#2b55f7", "#5dd7c3", "#fdbabf", "#2b55f7", "#ef3240"] as const;
+export const CLAUDE_FLASH_COLOR = "#fdbabf";
+export const CODEX_FLASH_COLOR = "#79b8ff";
+const FLASH_CYCLE = 1;
+const FLASH_DRIFT_SPEED = 0.008;
+const FLASH_WINDOW = 0.12;
+const FLASH_DENSITY = 0.8;
 
 export const HEADER_ANIMATIONS = [
   { id: "plasma", label: "Plasma psychédélique", staticT: 0 },
@@ -76,28 +89,6 @@ function lerpColor(t: number): string {
   return `#${[r, g, b].map((value) => value.toString(16).padStart(2, "0")).join("")}`;
 }
 
-function hslToHex(hue: number, saturation: number, lightness: number): string {
-  const chroma = (1 - Math.abs(2 * lightness - 1)) * saturation;
-  const sector = (((hue % 360) + 360) % 360) / 60;
-  const secondary = chroma * (1 - Math.abs((sector % 2) - 1));
-  const [red, green, blue] =
-    sector < 1
-      ? [chroma, secondary, 0]
-      : sector < 2
-        ? [secondary, chroma, 0]
-        : sector < 3
-          ? [0, chroma, secondary]
-          : sector < 4
-            ? [0, secondary, chroma]
-            : sector < 5
-              ? [secondary, 0, chroma]
-              : [chroma, 0, secondary];
-  const offset = lightness - chroma / 2;
-  return `#${[red, green, blue]
-    .map((channel) => Math.round((channel + offset) * 255).toString(16).padStart(2, "0"))
-    .join("")}`;
-}
-
 function clamp(value: number, min = 0, max = 1): number {
   return Math.max(min, Math.min(max, value));
 }
@@ -142,19 +133,41 @@ function colorize(
   });
 }
 
+function interpolateRgb(
+  from: readonly [number, number, number],
+  to: readonly [number, number, number],
+  progress: number,
+): string {
+  return `#${from
+    .map((channel, index) =>
+      Math.round(channel + (to[index]! - channel) * progress)
+        .toString(16)
+        .padStart(2, "0"),
+    )
+    .join("")}`;
+}
+
 function psychedelicColorTarget(band: number, row: number, epoch: number) {
   const epochX = epoch * 101;
   const epochY = epoch * 59;
+  const base = hash2d(band * 2 + 17 + epochX, row * 2 + 41 + epochY) % PLASMA_PALETTE.length;
+  const progress = hash2d(band * 5 + 13 + epochX, row * 5 + 97 + epochY) / 0xffff_ffff;
   return {
-    hue: (hash2d(band * 2 + 17 + epochX, row * 2 + 41 + epochY) / 0xffff_ffff) * 360,
-    saturation:
-      0.76 + (hash2d(band * 3 + 71 + epochX, row * 3 + 23 + epochY) / 0xffff_ffff) * 0.18,
-    lightness:
-      0.58 + (hash2d(band * 5 + 13 + epochX, row * 5 + 97 + epochY) / 0xffff_ffff) * 0.1,
+    from: PLASMA_PALETTE[base]!,
+    to: PLASMA_PALETTE[(base + 1) % PLASMA_PALETTE.length]!,
+    progress,
   };
 }
 
-function psychedelicColor(band: number, row: number, t: number): string {
+function psychedelicColor(
+  band: number,
+  row: number,
+  t: number,
+  flashColor: string | null | undefined,
+): string {
+  const flash = plasmaFlashColor(band, row, t, flashColor);
+  if (flash) return flash;
+
   const phaseOffset = hash2d(band + 131, row + 197) / 0xffff_ffff;
   const colorTime = t / 12 + phaseOffset;
   const epoch = Math.floor(colorTime);
@@ -162,13 +175,39 @@ function psychedelicColor(band: number, row: number, t: number): string {
   const blend = progress * progress * (3 - 2 * progress);
   const from = psychedelicColorTarget(band, row, epoch);
   const to = psychedelicColorTarget(band, row, epoch + 1);
-  const hueDelta = ((to.hue - from.hue + 540) % 360) - 180;
+  const fromColor = from.from.map((channel, index) => channel + (from.to[index]! - channel) * from.progress) as [
+    number,
+    number,
+    number,
+  ];
+  const toColor = to.from.map((channel, index) => channel + (to.to[index]! - channel) * to.progress) as [
+    number,
+    number,
+    number,
+  ];
 
-  return hslToHex(
-    from.hue + hueDelta * blend,
-    from.saturation + (to.saturation - from.saturation) * blend,
-    from.lightness + (to.lightness - from.lightness) * blend,
-  );
+  return interpolateRgb(fromColor, toColor, blend);
+}
+
+function plasmaFlashColor(
+  band: number,
+  row: number,
+  t: number,
+  flashColor: string | null | undefined,
+): string | null {
+  if (t <= 0 || flashColor === null) return null;
+
+  const offset = hash2d(band * 43 + 11, row * 71 + 19) / 0xffff_ffff;
+  // The fast integer cycle changes the colour at the same location for a short
+  // burst; this slower phase drift then moves that hot spot across the line.
+  const flashTime = t / FLASH_CYCLE + offset + t * FLASH_DRIFT_SPEED;
+  const cycle = Math.floor(flashTime);
+  const phase = flashTime - cycle;
+  const seed = hash2d(band * 17 + cycle * 101, row * 29 + cycle * 53);
+
+  if (phase > FLASH_WINDOW || seed / 0xffff_ffff > FLASH_DENSITY) return null;
+
+  return flashColor ?? FLASH_COLORS[seed % FLASH_COLORS.length]!;
 }
 
 function scalarFrame(columns: number, sample: (x: number, y: number) => number): string[] {
@@ -467,12 +506,14 @@ export function headerFrame(
   width: number,
   t: number,
   animation: HeaderAnimationId = DEFAULT_HEADER_ANIMATION,
+  flashColor?: string | null,
 ): HeaderBand[][] {
   const columns = safeColumns(width);
   const frameT = animation === "plasma" ? t * PLASMA_SPEED : t;
   const colorAt =
     animation === "plasma"
-      ? (_position: number, band: number, row: number) => psychedelicColor(band, row, frameT)
+      ? (_position: number, band: number, row: number) =>
+          psychedelicColor(band, row, frameT, flashColor)
       : lerpColor;
   return colorize(rawFrame(columns, frameT, animation), columns, colorAt);
 }

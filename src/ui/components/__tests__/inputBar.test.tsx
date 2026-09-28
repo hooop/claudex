@@ -151,7 +151,7 @@ describe("InputBar — navigation contextuelle", () => {
 
   it("utilise l'index ANSI 195 pour le texte et 237 pour le placeholder", () => {
     expect(INPUT_TEXT_COLOR).toBe("ansi256(195)");
-    expect(INPUT_PLACEHOLDER_COLOR).toBe("ansi256(237)");
+    expect(INPUT_PLACEHOLDER_COLOR).toBe("ansi256(240)");
   });
 
   it("revient à la ligne deux colonnes avant le bord droit", async () => {

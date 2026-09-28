@@ -14,7 +14,7 @@ export const SELECTION_PALETTE_ROWS = SELECTION_PALETTE_VISIBLE_ITEMS + 2;
 const SELECTED_RAIL_COLOR = "ansi256(220)";
 const SELECTED_LABEL_COLOR = "ansi256(195)";
 const LABEL_COLOR = "ansi256(66)";
-const MUTED_COLOR = "ansi256(237)";
+const MUTED_COLOR = "ansi256(240)";
 
 /** Shared keyboard palette used by commands and model selection. */
 export function SelectionPalette(props: {

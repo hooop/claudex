@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  CLAUDE_FLASH_COLOR,
+  CODEX_FLASH_COLOR,
   cycleHeaderAnimation,
   DEFAULT_HEADER_ANIMATION,
   getHeaderAnimation,
@@ -67,21 +69,88 @@ describe("headerArt — galerie d'équations", () => {
     }
   });
 
-  it("fait évoluer le spectre saturé du plasma de façon pseudo-aléatoire et déterministe", () => {
+  it("fait évoluer le plasma monochrome de façon pseudo-aléatoire et déterministe", () => {
     const first = headerFrame(80, 0, "plasma").map((row) => row.map(({ color }) => color));
     const later = headerFrame(80, 8, "plasma").map((row) => row.map(({ color }) => color));
-    const dominantChannels = new Set(
-      first.flat().map((color) => {
-        const channels = [1, 3, 5].map((offset) => Number.parseInt(color.slice(offset, offset + 2), 16));
-        return channels.indexOf(Math.max(...channels));
-      }),
-    );
+    const channels = first
+      .flat()
+      .map((color) => [1, 3, 5].map((offset) => Number.parseInt(color.slice(offset, offset + 2), 16)));
 
     expect(new Set(first.flat()).size).toBeGreaterThan(20);
-    expect(dominantChannels).toEqual(new Set([0, 1, 2]));
+    expect(channels.every(([red, green, blue]) => red === green && green === blue)).toBe(true);
     expect(first[0]).not.toEqual(first[1]);
     expect(later).not.toEqual(first);
     expect(headerFrame(80, 8, "plasma").map((row) => row.map(({ color }) => color))).toEqual(later);
+  });
+
+  it("garde des impulsions colorées perceptibles même après une longue animation", () => {
+    const flashColors = new Set(["#2b55f7", "#5dd7c3", "#fdbabf", "#ef3240"]);
+
+    for (const start of [0, 800, 2400, 6400]) {
+      const frames = Array.from({ length: 12 }, (_, index) =>
+        headerFrame(80, start + index * 2, "plasma"),
+      );
+      const flashes = frames
+        .flat(2)
+        .filter((band) => flashColors.has(band.color));
+
+      expect(flashes.length).toBeGreaterThan(0);
+    }
+  });
+
+  it.each([
+    ["claude", CLAUDE_FLASH_COLOR],
+    ["codex", CODEX_FLASH_COLOR],
+  ])("utilise uniquement la couleur de %s pendant sa réflexion", (_agent, flashColor) => {
+    const colors = Array.from({ length: 16 }, (_, index) =>
+      headerFrame(80, index * 2, "plasma", flashColor),
+    ).flat(3) as unknown as Array<{ color: string }>;
+    const values = colors.map(({ color }) => color);
+
+    expect(values).toContain(flashColor);
+    expect(
+      values.every((color) => {
+        if (color === flashColor) return true;
+        const [red, green, blue] = [1, 3, 5].map((offset) =>
+          Number.parseInt(color.slice(offset, offset + 2), 16),
+        );
+        return red === green && green === blue;
+      }),
+    ).toBe(true);
+  });
+
+  it("reste entièrement gris entre deux réflexions", () => {
+    const colors = headerFrame(80, 24, "plasma", null).flat().map(({ color }) => color);
+    expect(
+      colors.every((color) => {
+        const [red, green, blue] = [1, 3, 5].map((offset) =>
+          Number.parseInt(color.slice(offset, offset + 2), 16),
+        );
+        return red === green && green === blue;
+      }),
+    ).toBe(true);
+  });
+
+  it("enchaîne une rafale au même endroit puis fait dériver les points chauds", () => {
+    const counts = Array.from({ length: 10 }, () => 0);
+    const currentRuns = Array.from({ length: 10 }, () => 0);
+    const longestRuns = Array.from({ length: 10 }, () => 0);
+
+    for (let frame = 1; frame <= 300; frame++) {
+      const row = headerFrame(80, frame * 1.6, "plasma", CLAUDE_FLASH_COLOR)[0]!;
+      row.forEach((band, index) => {
+        if (band.color === CLAUDE_FLASH_COLOR) {
+          counts[index]++;
+          currentRuns[index]++;
+          longestRuns[index] = Math.max(longestRuns[index]!, currentRuns[index]!);
+        } else {
+          currentRuns[index] = 0;
+        }
+      });
+    }
+
+    expect(counts.every((count) => count > 0)).toBe(true);
+    expect(longestRuns.every((run) => run >= 4)).toBe(true);
   });
 
   it("n'utilise que les glyphes prévus et garde les autres couleurs immobiles", () => {
@@ -97,8 +166,8 @@ describe("headerArt — galerie d'équations", () => {
 
       for (const row of first) {
         if (id !== "plasma") {
-          expect(row[0]?.color).toBe("#6d5dfc");
-          expect(row.at(-1)?.color).toBe("#f472b6");
+          expect(row[0]?.color).toBe("#787878");
+          expect(row.at(-1)?.color).toBe("#f2f2f2");
         }
         for (const band of row) {
           expect(band.color).toMatch(/^#[0-9a-f]{6}$/);

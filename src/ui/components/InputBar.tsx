@@ -15,7 +15,7 @@ const PROMPT = " ‣ ";
 const INPUT_CURSOR_COLOR_INDEX = 236;
 export const INPUT_PROMPT_COLOR = "ansi256(220)";
 export const INPUT_CURSOR_COLOR = `ansi256(${INPUT_CURSOR_COLOR_INDEX})`;
-export const INPUT_PLACEHOLDER_COLOR = "ansi256(237)";
+export const INPUT_PLACEHOLDER_COLOR = "ansi256(240)";
 export const INPUT_TEXT_COLOR = "ansi256(195)";
 export const INPUT_CURSOR_BLINK_MS = 500;
 

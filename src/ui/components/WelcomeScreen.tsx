@@ -21,7 +21,7 @@ import { ModelPicker } from "./ModelPicker.js";
 export const WELCOME_MODELS_COLOR = MODEL_FOOTER_COLOR;
 export const WELCOME_TAGLINE = "Argue first, ship better!";
 export const WELCOME_TAGLINE_COLOR = "ansi256(138)";
-export const WELCOME_MEMORY_COLOR = "ansi256(59)";
+export const WELCOME_MEMORY_COLOR = "ansi256(102)";
 
 const FRENCH_SESSION_FORMATTER = new Intl.DateTimeFormat("fr-FR", {
   dateStyle: "long",
@@ -35,7 +35,7 @@ export function formatLastSession(timestamp: string): string {
 
 export function welcomeDivider(width: number): string {
   const columns = Number.isFinite(width) ? Math.floor(width) : 80;
-  return "·".repeat(Math.max(1, Math.min(columns, HEADER_MAX_WIDTH)));
+  return "-".repeat(Math.max(1, Math.min(columns, HEADER_MAX_WIDTH)));
 }
 
 export function welcomeMemoryLine(
