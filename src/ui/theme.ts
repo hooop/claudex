@@ -29,15 +29,12 @@ export const MAX_CONTENT_WIDTH = 84;
 export const RAIL_WIDTH = 2;
 
 /**
- * Ceiling for the continuously redrawn debate footer. Keeping this at seven
- * preserves the append-only renderer's steady-state cost during streaming.
+ * Ceiling for the controls below the transcript viewport.
  */
 export const MAX_STANDARD_DYNAMIC_ROWS = 7;
 
 /**
- * Absolute ceiling for Ink output. A user-opened selection palette may borrow
- * one extra row for visual separation; every continuously changing surface
- * remains bounded by `MAX_STANDARD_DYNAMIC_ROWS`.
+ * A user-opened selection palette may borrow one extra row for visual separation.
  */
 export const MAX_DYNAMIC_ROWS = MAX_STANDARD_DYNAMIC_ROWS + 1;
 /** Below these, the footer can't be drawn honestly, so it isn't drawn at all. */

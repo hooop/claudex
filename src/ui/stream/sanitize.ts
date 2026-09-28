@@ -1,11 +1,9 @@
 /**
  * Strips terminal control sequences out of agent output before it is displayed.
  *
- * Claudex writes agent text straight into the terminal buffer, so anything an
- * agent emits is executed by the emulator unless it is removed here: a stray
- * erase-screen sequence from a quoted log line would wipe the transcript, and a
- * carriage return would overwrite the line just printed. Both would break the
- * "never redraw committed output" guarantee the append-only renderer rests on.
+ * Agent text reaches Ink as ANSI-bearing strings, so control sequences must be
+ * removed before rendering: a quoted erase-screen sequence or carriage return
+ * must never be interpreted as terminal control.
  *
  * Colour is re-applied afterwards, but only by Claudex itself.
  */

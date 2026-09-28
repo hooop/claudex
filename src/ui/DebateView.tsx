@@ -1,7 +1,6 @@
-import { Box, Static, Text, useInput, useStdout } from "ink";
+import { Box, Text, useInput, useStdout } from "ink";
 import chalk from "chalk";
 import { useCallback, useEffect, useRef, useState } from "react";
-import wrapAnsi from "wrap-ansi";
 import { appendDecision, appendLimit, readDecisions, saveHandoff } from "../memory/store.js";
 import { decideUsageError, parseCommand } from "../orchestrator/commands.js";
 import type { DebateSession } from "../orchestrator/session.js";
@@ -25,7 +24,6 @@ import {
   DynamicFooter,
   footerRows,
   inputBarMaxRows,
-  pinnedFooterHeight,
   type FooterSurfaces,
 } from "./components/DynamicFooter.js";
 import { DEBATE_COMMANDS } from "./components/CommandPalette.js";
@@ -35,37 +33,41 @@ import { ModelPicker } from "./components/ModelPicker.js";
 import { PermissionModal } from "./components/PermissionModal.js";
 import { StatusBar } from "./components/StatusBar.js";
 import {
+  welcomeDivider,
+  welcomeMemoryLine,
+} from "./components/WelcomeScreen.js";
+import {
+  CLAUDE_FLASH_COLOR,
+  CODEX_FLASH_COLOR,
   DEFAULT_HEADER_ANIMATION,
+  HEADER_MAX_WIDTH,
   getHeaderAnimation,
   headerFrame,
   type HeaderAnimationId,
 } from "./headerArt.js";
-import { BRAND_COLOR, MAX_STANDARD_DYNAMIC_ROWS, contentWidthFor } from "./theme.js";
+import { BRAND_COLOR, contentWidthFor } from "./theme.js";
 import { TranscriptStream, type TailView } from "./stream/transcriptStream.js";
 import { asciiSymbolsForDisplay } from "./stream/asciiSymbols.js";
 import { wrapAll } from "./stream/lineBuffer.js";
 import { sanitizeForDisplay } from "./stream/sanitize.js";
 import { markdownToPlainText } from "./markdown.js";
+import type { ProjectStatus } from "../util/projectStatus.js";
+
+const INITIAL_TRANSCRIPT_LINES = [""];
 
 /**
  * The debate screen.
  *
- * Everything permanent — the header, every message, every intervention, notes,
- * permissions, errors, the help panel, the consensus synthesis — is written once
- * into the terminal's own scrollback by `TranscriptStream` and never touched
- * again. What React renders here is only the handful of lines that genuinely
- * change: the incomplete line of the answer being typed out, one status line, the
- * bounded growing prompt, and whichever transient notice or modal is up.
- *
- * That split is the whole design. Scrolling, selection and copy stay the
- * terminal's, and a fifty-round debate costs no more to render than the first
- * one. Only the empty space before the first screen fills is temporarily part
- * of Ink's frame; afterwards the live area is seven rows again.
+ * The debate owns one full-screen viewport: a fixed animated header, a bounded
+ * scrollable transcript, and a fixed input footer. Nothing is written behind
+ * that frame while the session is open, so a long answer cannot collide with
+ * the footer and scrolling the transcript never moves the header.
  */
 export function DebateView(props: {
   session: DebateSession;
   topic: string;
   cwd: string;
+  status: ProjectStatus;
   headerAnimation?: HeaderAnimationId;
   coordinatorState: CoordinatorState;
   coordinatorNotice: string | null;
@@ -76,23 +78,21 @@ export function DebateView(props: {
     session,
     topic,
     cwd,
+    status,
     headerAnimation = DEFAULT_HEADER_ANIMATION,
     coordinatorState,
     coordinatorNotice,
     onLifecycleRequest,
     onAutonomySelected,
   } = props;
-  const { stdout, write } = useStdout();
+  const { stdout } = useStdout();
 
   const [{ columns, terminalRows }, setTerminalSize] = useState(() => ({
     columns: stdout?.columns ?? 80,
     terminalRows: stdout?.rows ?? 24,
   }));
-  const [{ permanentRows, staticBlocks }, setPinnedFrame] = useState<PinnedFrame>(() => ({
-    permanentRows: 0,
-    staticBlocks: [],
-  }));
-  const [pinnedOutput, setPinnedOutput] = useState(true);
+  const [transcriptLines, setTranscriptLines] = useState<string[]>(INITIAL_TRANSCRIPT_LINES);
+  const [scrollOffset, setScrollOffset] = useState(0);
   const [tail, setTail] = useState<TailView | null>(null);
   const [phase, setPhase] = useState<Phase>(session.phase);
   const [thinkingAgent, setThinkingAgent] = useState<AgentId | null>(null);
@@ -114,10 +114,8 @@ export function DebateView(props: {
   );
 
   const streamRef = useRef<TranscriptStream | null>(null);
-  const permanentRowsRef = useRef(0);
-  const pinnedOutputRef = useRef(true);
-  const staticBlockIdRef = useRef(0);
-  const disposingRef = useRef(false);
+  const transcriptLinesRef = useRef<string[]>(INITIAL_TRANSCRIPT_LINES);
+  const transcriptRowsRef = useRef(1);
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Set right before sending an /implement instruction to a specific agent,
   // so we can flag clearly when THAT turn (not just any turn) finishes —
@@ -131,39 +129,17 @@ export function DebateView(props: {
     noticeTimer.current = setTimeout(() => setNotice(null), 4000);
   }, []);
 
-  /**
-   * Ink's Static output is used only while the transcript is shorter than the
-   * viewport. It lets permanent lines advance from the top while the shrinking
-   * live area keeps the prompt at the bottom. Once the first screen is full,
-   * writes go straight back to Ink's stdout bridge and retain the original
-   * append-only, six-row renderer.
-   */
-  const writePermanent = useCallback(
+  const appendTranscript = useCallback(
     (data: string) => {
-      const addedRows = outputRows(data, stdout?.columns ?? 80);
-      if (addedRows === 0) return;
+      const incoming = transcriptBlockLines(data);
+      if (incoming.length === 0) return;
 
-      const wasPinned = pinnedOutputRef.current && !disposingRef.current;
-      const nextRows = permanentRowsRef.current + addedRows;
-      permanentRowsRef.current = nextRows;
-
-      if (wasPinned) {
-        const block = {
-          id: staticBlockIdRef.current++,
-          text: staticBlockText(data),
-        };
-        // One state update keeps the new Static block and the matching spacer
-        // retraction in the same Ink commit.
-        setPinnedFrame((frame) => ({
-          permanentRows: nextRows,
-          staticBlocks: [...frame.staticBlocks, block],
-        }));
-        return;
-      }
-
-      write(data);
+      const next = [...transcriptLinesRef.current, ...incoming];
+      transcriptLinesRef.current = next;
+      setTranscriptLines(next);
+      setScrollOffset((current) => (current === 0 ? 0 : current + incoming.length));
     },
-    [stdout, write],
+    [],
   );
 
   useEffect(() => {
@@ -176,9 +152,7 @@ export function DebateView(props: {
     };
 
     // Ink registered its own listener before this component mounted. Running
-    // ours first lets React synchronously shrink the legacy Ink tree before
-    // Ink measures it; otherwise a resize during the tall startup frame can
-    // enter Ink's `clearTerminal` path, whose 3J sequence erases scrollback.
+    // ours first lets React resize the viewport before Ink measures its frame.
     stdout.prependListener("resize", onResize);
     return () => {
       stdout.off("resize", onResize);
@@ -186,28 +160,18 @@ export function DebateView(props: {
   }, [stdout]);
 
   useEffect(() => {
-    if (!pinnedOutput || permanentRows < pinningThreshold(terminalRows)) return;
-
-    // Static children are flushed synchronously by Ink during the commit which
-    // triggered this effect. Switching the writer afterwards preserves ordering
-    // between the last bootstrapped block and the first direct append.
-    pinnedOutputRef.current = false;
-    setPinnedOutput(false);
-  }, [permanentRows, pinnedOutput, terminalRows]);
-
-  useEffect(() => {
-    disposingRef.current = false;
     // The width getter is read per line, so a resize applies to new output
     // immediately without ever reflowing what has already been written.
     const stream = new TranscriptStream({
-      write: writePermanent,
+      write: appendTranscript,
       width: () => contentWidthFor(stdout?.columns ?? 80),
       onTail: setTail,
     });
     streamRef.current = stream;
-    stream.raw(bannerLines(stdout?.columns ?? 80, headerAnimation));
 
-    const onEntry = (entry: TranscriptEntry) => stream.entry(entry);
+    const onEntry = (entry: TranscriptEntry) => {
+      if (!isTopicEntry(entry)) stream.entry(entry);
+    };
     const onEntryStarted = (entry: TranscriptEntry) => stream.entryStarted(entry);
     const onChunk = (id: string, delta: string) => stream.chunk(id, delta);
     const onEntryCompleted = (id: string, outcome: EntryOutcome) => stream.entryCompleted(id, outcome);
@@ -291,13 +255,12 @@ export function DebateView(props: {
       session.off("consensus-invalidated", onConsensusInvalidated);
       session.off("synthesis-ready", onSynthesisReady);
       if (noticeTimer.current) clearTimeout(noticeTimer.current);
-      disposingRef.current = true;
       stream.dispose();
       streamRef.current = null;
     };
     // `write` and `stdout` are stable for the lifetime of the Ink instance.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session, topic, headerAnimation, writePermanent]);
+  }, [session, topic, appendTranscript]);
 
   useEffect(() => {
     if (coordinatorNotice) flash(coordinatorNotice);
@@ -311,10 +274,28 @@ export function DebateView(props: {
 
   const busy = thinkingAgent !== null;
 
-  // A single keypress, always caught — unlike /pause typed into the input
-  // bar, which can't win a race against turns that chain faster than a human
-  // can type six characters and hit enter.
   useInput((_input, key) => {
+    if (!commandPaletteOpen && modelPickerAgent === null && pendingPermission === null) {
+      const page = Math.max(1, transcriptRowsRef.current - 1);
+      const maximum = Math.max(0, transcriptLinesRef.current.length - transcriptRowsRef.current);
+
+      if (key.upArrow || key.pageUp || key.home) {
+        setScrollOffset((current) =>
+          Math.min(maximum, key.home ? maximum : current + (key.pageUp ? page : 1)),
+        );
+        return;
+      }
+      if (key.downArrow || key.pageDown || key.end) {
+        setScrollOffset((current) =>
+          key.end ? 0 : Math.max(0, current - (key.pageDown ? page : 1)),
+        );
+        return;
+      }
+    }
+
+    // A single keypress, always caught — unlike /pause typed into the input
+    // bar, which can't win a race against turns that chain faster than a human
+    // can type six characters and hit enter.
     if (key.escape && !commandPaletteOpen && modelPickerAgent === null) {
       if (session.lifecycle !== "open") return;
       session.pause();
@@ -486,8 +467,6 @@ export function DebateView(props: {
         await onLifecycleRequest({ kind: "emergency-exit" });
         return;
       case "help":
-        // Long, and it never changes: it belongs in the scrollback with
-        // everything else, not in a panel Ink has to keep redrawing.
         streamRef.current?.raw(helpLines());
         return;
       case "quit":
@@ -509,9 +488,10 @@ export function DebateView(props: {
   // A notice temporarily takes the single accessory slot and the persistent
   // banner returns as soon as it expires. This keeps the standard footer within 7 rows.
   const visibleBanner = showNotice ? null : banner;
+  const showTail = !paletteVisible && scrollOffset === 0 && tail !== null;
 
   const footerSurfaces: FooterSurfaces = {
-    tail: !paletteVisible && tail !== null,
+    tail: showTail,
     banner: !paletteVisible && visibleBanner !== null,
     notice: !paletteVisible && showNotice,
     modal,
@@ -520,23 +500,40 @@ export function DebateView(props: {
   };
   const maxInputRows = inputBarMaxRows(footerSurfaces);
   const rows = footerRows(footerSurfaces);
-  const preferredFooterHeight = pinnedOutput
-    ? pinnedFooterHeight(terminalRows, permanentRows)
-    : Math.min(MAX_STANDARD_DYNAMIC_ROWS, Math.max(1, terminalRows - 1));
+  const preferredFooterHeight = Math.max(1, terminalRows - 1);
+  const introRows =
+    4 + wrapAll(`Sujet : ${topic}`, Math.max(1, Math.min(columns, HEADER_MAX_WIDTH))).length;
+  const transcriptRows = Math.max(0, preferredFooterHeight - 1 - introRows - rows);
+  transcriptRowsRef.current = transcriptRows;
+  const maximumScrollOffset = Math.max(0, transcriptLines.length - transcriptRows);
+  const visibleScrollOffset = Math.min(scrollOffset, maximumScrollOffset);
+
+  useEffect(() => {
+    setScrollOffset((current) => Math.min(current, maximumScrollOffset));
+  }, [maximumScrollOffset]);
 
   return (
-    <>
-      <Static items={staticBlocks}>
-        {(block) => <Text key={block.id}>{block.text}</Text>}
-      </Static>
-
-      <DynamicFooter
+    <DynamicFooter
         columns={columns}
         terminalRows={terminalRows}
         rows={rows}
         preferredHeight={preferredFooterHeight}
       >
-        {!paletteVisible && tail && (
+        <AnimatedHeaderLine
+          columns={columns}
+          animation={headerAnimation}
+          thinkingAgent={thinkingAgent}
+        />
+        <IntroPanel columns={columns} topic={topic} status={status} />
+
+        <TranscriptViewport
+          lines={transcriptLines}
+          height={transcriptRows}
+          columns={columns}
+          scrollOffset={visibleScrollOffset}
+        />
+
+        {showTail && tail && (
           <Box width={columns}>
             <Text wrap="truncate-end">
               {tail.rail ? <Text color={tail.color}>{"│ "}</Text> : null}
@@ -628,48 +625,26 @@ export function DebateView(props: {
             contextUsage={contextUsage}
           />
         )}
-      </DynamicFooter>
-    </>
+    </DynamicFooter>
   );
 }
 
-interface StaticBlock {
-  id: number;
-  text: string;
-}
-
-interface PinnedFrame {
-  permanentRows: number;
-  staticBlocks: StaticBlock[];
-}
-
-/** Number of physical terminal rows represented by a writer block. */
-export function outputRows(data: string, columns: number): number {
-  if (data === "") return 0;
-  const body = data.endsWith("\n") ? data.slice(0, -1) : data;
-  const safeColumns = Math.max(1, columns);
-
-  return body
-    .split("\n")
-    .reduce(
-      (rows, line) =>
-        rows + Math.max(1, wrapAnsi(line, safeColumns, { hard: true, trim: false }).split("\n").length),
-      0,
-    );
-}
-
-const ZERO_WIDTH_SPACE = "\u200b";
-
-/** Text handed to Ink Static, preserving even a block containing one blank row. */
-export function staticBlockText(data: string): string {
+export function transcriptBlockLines(data: string): string[] {
+  if (data === "") return [];
   const withoutFinalNewline = data.endsWith("\n") ? data.slice(0, -1) : data;
-  // Ink trims spaces from every rendered row and deliberately ignores a Static
-  // output equal to "\n". U+200B survives that trim without occupying a column.
-  return withoutFinalNewline === "" ? ZERO_WIDTH_SPACE : withoutFinalNewline;
+  return withoutFinalNewline.split("\n");
 }
 
-function pinningThreshold(terminalRows: number): number {
-  return Math.max(0, terminalRows - 1 - MAX_STANDARD_DYNAMIC_ROWS);
+export function transcriptWindow(
+  lines: readonly string[],
+  height: number,
+  scrollOffset: number,
+): readonly string[] {
+  const safeHeight = Math.max(0, height);
+  const maximumOffset = Math.max(0, lines.length - safeHeight);
+  const safeOffset = Math.max(0, Math.min(scrollOffset, maximumOffset));
+  const start = Math.max(0, lines.length - safeHeight - safeOffset);
+  return lines.slice(start, start + safeHeight);
 }
 
 function bannerFor(
@@ -695,15 +670,125 @@ function bannerFor(
   return null;
 }
 
-/** The frozen header, written once. It scrolls away like any other content. */
+/** One canonical header line, used by snapshots and tests. */
 export function bannerLines(
   columns: number,
   animation: HeaderAnimationId = DEFAULT_HEADER_ANIMATION,
 ): string[] {
-  const art = headerFrame(columns, getHeaderAnimation(animation).staticT, animation).map((bands) =>
-    bands.map((band) => chalk.hex(band.color)(band.chars)).join(""),
+  const [topLine] = headerFrame(columns, getHeaderAnimation(animation).staticT, animation);
+  if (!topLine) return [""];
+  return [topLine.map((band) => chalk.hex(band.color)(band.chars)).join(""), ""];
+}
+
+export function introLines(
+  columns: number,
+  topic: string,
+  status: Pick<ProjectStatus, "decisionsCount" | "lastSession">,
+): string[] {
+  const width = Math.max(1, Math.min(columns, HEADER_MAX_WIDTH));
+  const memoryColor = chalk.ansi256(102);
+  const divider = memoryColor(welcomeDivider(width));
+  const topicLines = wrapAll(`Sujet : ${topic}`, width);
+
+  return [
+    divider,
+    memoryColor(welcomeMemoryLine(status, width)),
+    divider,
+    ...topicLines.map((line) => memoryColor(line)),
+    divider,
+    "",
+  ];
+}
+
+function AnimatedHeaderLine(props: {
+  columns: number;
+  animation: HeaderAnimationId;
+  thinkingAgent: AgentId | null;
+}) {
+  const { columns, animation, thinkingAgent } = props;
+  const [t, setT] = useState(0);
+
+  useEffect(() => {
+    setT(0);
+    const id = setInterval(() => setT((current) => current + 1.6), 90);
+    return () => clearInterval(id);
+  }, [animation]);
+
+  const flashColor =
+    thinkingAgent === "claude"
+      ? CLAUDE_FLASH_COLOR
+      : thinkingAgent === "codex"
+        ? CODEX_FLASH_COLOR
+        : null;
+  const [line] = headerFrame(
+    Math.min(columns, HEADER_MAX_WIDTH),
+    t,
+    animation,
+    flashColor,
   );
-  return [...art, ""];
+  if (!line) return null;
+
+  return (
+    <Box width={columns}>
+      <Text>
+        {line.map((band, index) => (
+          <Text key={index} color={band.color}>
+            {band.chars}
+          </Text>
+        ))}
+      </Text>
+    </Box>
+  );
+}
+
+function isTopicEntry(entry: TranscriptEntry): boolean {
+  return entry.from === "system" && entry.kind === "system" && entry.text.startsWith("Sujet :");
+}
+
+function IntroPanel(props: {
+  columns: number;
+  topic: string;
+  status: Pick<ProjectStatus, "decisionsCount" | "lastSession">;
+}) {
+  const { columns, topic, status } = props;
+  const width = Math.max(1, Math.min(columns, HEADER_MAX_WIDTH));
+  const divider = welcomeDivider(width);
+  const topicLines = wrapAll(`Sujet : ${topic}`, width);
+
+  return (
+    <Box flexDirection="column" width={columns}>
+      <Text color="ansi256(102)">{divider}</Text>
+      <Text color="ansi256(102)">{welcomeMemoryLine(status, width)}</Text>
+      <Text color="ansi256(102)">{divider}</Text>
+      {topicLines.map((line, index) => (
+        <Text key={index} color="ansi256(102)">
+          {line}
+        </Text>
+      ))}
+      <Text color="ansi256(102)">{divider}</Text>
+    </Box>
+  );
+}
+
+function TranscriptViewport(props: {
+  lines: readonly string[];
+  height: number;
+  columns: number;
+  scrollOffset: number;
+}) {
+  const { lines, height, columns, scrollOffset } = props;
+  if (height <= 0) return null;
+
+  const visible = transcriptWindow(lines, height, scrollOffset);
+  return (
+    <Box flexDirection="column" width={columns} height={height} overflow="hidden">
+      {Array.from({ length: height }, (_, index) => (
+        <Text key={index} wrap="truncate-end">
+          {visible[index] === "" ? " " : (visible[index] ?? " ")}
+        </Text>
+      ))}
+    </Box>
+  );
 }
 
 function helpLines(): string[] {
@@ -712,10 +797,11 @@ function helpLines(): string[] {
   return [
     "",
     chalk.bold("Commandes"),
+    `${pad}${key("↑/↓")} — parcourir le transcript · ${key("PgUp/PgDn")} — une page · ${key("Home/End")} — début/fin`,
     `${pad}${key("Échap")} — pause d'urgence, marche même pendant un tour`,
     `${pad}${key("Ctrl+C")} — demande un arrêt quiescent puis archive ; ne force jamais l'abandon`,
     `${pad}${key("texte libre")} — message envoyé aux deux agents`,
-    `${pad}${key("/sujet")} — réaffiche le sujet complet du débat dans le scrollback`,
+    `${pad}${key("/sujet")} — réaffiche le sujet complet dans le transcript`,
     `${pad}${key("/decisions")} — affiche les décisions actées de la mémoire du projet`,
     `${pad}${key("/claude")} ou ${key("/codex")} texte — message ciblé`,
     `${pad}${key("/model claude|codex nom")} — change le modèle en cours de session`,

@@ -1,15 +1,13 @@
 /**
  * Turns a stream of text deltas into whole physical lines.
  *
- * Two constraints shape this. First, the append-only writer must only ever hand
- * the terminal blocks that end in a newline: a fragment without one would leave
- * the dynamic footer starting mid-line, and the next footer redraw would erase
- * the fragment along with it. Second, wrapping has to be Claudex's own, because
+ * Two constraints shape this. First, the formatter only receives complete
+ * physical lines; the incomplete remainder stays in `tail` until more text
+ * arrives. Second, wrapping has to be Claudex's own, because
  * every committed line carries the author's coloured rail in its first columns —
  * letting the emulator wrap would put continuation text under the rail.
  *
- * So the incomplete remainder is never written: it lives in `tail`, shown in the
- * (redrawable) footer, and is committed only once it is known to be complete.
+ * The tail is shown separately and joins the transcript only once complete.
  *
  * Widths are display widths, not code-unit counts: emoji, CJK and combining
  * marks are measured as the terminal will actually render them.

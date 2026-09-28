@@ -10,7 +10,6 @@ import {
   footerMode,
   footerRows,
   inputBarMaxRows,
-  pinnedFooterHeight,
   type FooterSurfaces,
 } from "../DynamicFooter.js";
 import { INPUT_BAR_MAX_ROWS } from "../InputBar.js";
@@ -113,21 +112,5 @@ describe("footerMode", () => {
   it("autorise un espace initial sans jamais atteindre la hauteur du terminal", () => {
     expect(footerMode(100, 30, 2, 29)).toEqual({ kind: "box", height: 29 });
     expect(footerMode(100, 30, 2, 99)).toEqual({ kind: "box", height: 29 });
-  });
-});
-
-describe("pinnedFooterHeight", () => {
-  it("se rétracte monotonement jusqu'à la zone dynamique bornée", () => {
-    const heights = Array.from({ length: 40 }, (_, permanentRows) =>
-      pinnedFooterHeight(30, permanentRows),
-    );
-
-    expect(heights[0]).toBe(29);
-    expect(heights.at(-1)).toBe(MAX_STANDARD_DYNAMIC_ROWS);
-    for (let i = 1; i < heights.length; i++) {
-      expect(heights[i]).toBeLessThanOrEqual(heights[i - 1]!);
-      expect(heights[i]).toBeGreaterThanOrEqual(MAX_STANDARD_DYNAMIC_ROWS);
-      expect(heights[i]).toBeLessThan(30);
-    }
   });
 });

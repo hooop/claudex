@@ -2,6 +2,16 @@
 
 Contraintes, boundaries et choses explicitement écartées.
 
+## 2026-09-28 — La limite de redimensionnement du 2026-08-11 est levée
+
+Le renderer append-only décrit plus bas a été remplacé par un viewport possédé par Claudex dans
+l'alternate screen d'Ink 7. Il n'existe plus de trame plein écran combinée à des blocs `Static` ou
+à des écritures concurrentes dans le scrollback. La duplication au redimensionnement et le
+chevauchement du footer ne sont donc plus des limites acceptées.
+
+La contrepartie est explicite : pendant la session, la navigation se fait dans le transcript de
+Claudex et non dans le scrollback natif du terminal. La trace durable est l'archive canonique.
+
 ## 2026-08-07 — Le sandbox du SDK ne peut pas rendre `cwd` non-inscriptible
 
 **Constat :** dans `@anthropic-ai/claude-agent-sdk@0.1.77` (version installée), `sandbox.filesystem.denyWrite`

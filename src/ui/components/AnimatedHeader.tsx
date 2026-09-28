@@ -7,11 +7,8 @@ const FRAME_MS = 90;
 /**
  * The animated band on the welcome screen.
  *
- * `active` is false during a debate — and there the header isn't rendered by Ink
- * at all: it is written once into the scrollback like any other permanent
- * content (see ui/stream/transcriptStream.ts). Anything Ink keeps in its tree is
- * redrawn on every update, and the header has nothing to say after the first
- * frame, so it doesn't belong there once a debate starts.
+ * This five-row version belongs to the welcome screen. DebateView renders its
+ * own single-row variant with agent-specific flashes.
  */
 export function AnimatedHeader(props: { active?: boolean; animation: HeaderAnimationId }) {
   const { active = true, animation } = props;

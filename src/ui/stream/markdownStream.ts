@@ -2,9 +2,8 @@
  * Colours one physical line at a time, with no way to revise the last one.
  *
  * The old renderer re-parsed the whole entry on every token, so a `**` could
- * start out literal and become bold once its partner arrived. Append-only output
- * has no such luxury: by the time the closing delimiter shows up, the opening one
- * is already in the terminal's scrollback. So the rule here is that a construct is
+ * start out literal and become bold once its partner arrived. Incremental line
+ * formatting deliberately does not revise completed lines. A construct is
  * styled only when it is complete *within the line being committed*, and anything
  * that straddles a line boundary stays literal — permanently, and identically for
  * every reader.

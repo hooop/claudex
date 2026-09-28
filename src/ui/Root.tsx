@@ -332,6 +332,7 @@ export function Root(props: { cwd: string; initialTopic?: string }) {
       session={session}
       topic={topic}
       cwd={cwd}
+      status={status}
       headerAnimation={headerAnimation}
       coordinatorState={coordinatorState}
       coordinatorNotice={coordinatorNotice}

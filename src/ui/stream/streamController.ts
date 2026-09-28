@@ -1,17 +1,9 @@
 /**
- * The only thing in Claudex allowed to put permanent text on the terminal.
+ * The ordered batching layer between transcript formatting and the UI viewport.
  *
- * Everything funnels through one queue so there is never a second writer racing
- * the first, and so ordering is whatever order the events happened in. The write
- * itself goes through Ink's `useStdout().write`, which erases the dynamic footer,
- * appends the block, and redraws the footer underneath it — the append lands in
- * the terminal's own scrollback, where selection and copy work normally, and is
- * never touched again.
- *
- * Two rules hold the whole scheme together:
- *
- *  - every block ends in a newline, so the footer always starts on a fresh line;
- *  - nothing already written is ever rewritten.
+ * Everything funnels through one queue so ordering remains exactly the order of
+ * session events. Each block ends in a newline and is appended atomically to the
+ * transcript state owned by `DebateView`.
  *
  * Lines are grouped at the renderer's own cadence rather than written per token:
  * a burst of deltas becomes one write instead of forty, and the cost of a write
@@ -40,7 +32,7 @@ export class StreamController {
     this.intervalMs = options.intervalMs ?? FLUSH_INTERVAL_MS;
   }
 
-  /** Queue permanent lines. They must not contain newlines — one entry, one line. */
+  /** Queue complete physical lines. They must not contain embedded newlines. */
   push(lines: readonly string[]): void {
     if (this.disposed || lines.length === 0) return;
     for (const line of lines) this.queue.push(line);

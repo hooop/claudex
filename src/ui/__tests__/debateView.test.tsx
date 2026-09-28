@@ -1,11 +1,10 @@
 /**
- * End-to-end acceptance test for the append-only renderer.
+ * End-to-end acceptance test for the full-screen debate renderer.
  *
  * It mounts the real debate view on a fake terminal, drives a real scheduler with
- * fake agents, and inspects the bytes that reach stdout. That is the only place
- * the properties that matter are actually observable: whether Ink ever clears the
- * screen, how many lines it erases per frame, and whether committed text is ever
- * written twice.
+ * fake agents, and inspects the bytes that reach stdout. It verifies that long
+ * output stays inside the transcript viewport and that navigation does not move
+ * the fixed header or footer.
  */
 
 import { Box, Text, render } from "ink";
@@ -15,10 +14,13 @@ import type { AgentSendOptions, CodingAgent } from "../../agents/types.js";
 import { DebateSession } from "../../orchestrator/session.js";
 import type { AgentResult } from "../../orchestrator/types.js";
 import type { AgentId } from "../../types.js";
-import { MAX_DYNAMIC_ROWS, MAX_STANDARD_DYNAMIC_ROWS } from "../theme.js";
-import { bannerLines, DebateView, outputRows, staticBlockText } from "../DebateView.js";
-import { getHeaderAnimation, HEADER_ROWS, headerFrame } from "../headerArt.js";
-import { displayWidth } from "../stream/lineBuffer.js";
+import {
+  bannerLines,
+  DebateView,
+  transcriptBlockLines,
+  transcriptWindow,
+} from "../DebateView.js";
+import { getHeaderAnimation, headerFrame } from "../headerArt.js";
 
 const CLEAR_SCREEN = /\u001b\[[23]J/;
 const CURSOR_UP = /\u001b\[1A/g;
@@ -133,6 +135,16 @@ function mount(options: { fromFullScreen?: boolean } = {}) {
       session={session}
       topic="Sujet de test"
       cwd="/tmp"
+      status={{
+        decisionsCount: 2,
+        decisionsText: null,
+        lastSession: "2026-08-10T11:42:17.288Z",
+        autonomyBudget: null,
+        claudeConfiguredModel: null,
+        claudeDefaultModel: null,
+        codexDefaultModel: null,
+        codexDefaultEffort: null,
+      }}
       coordinatorState={{ kind: "idle" }}
       coordinatorNotice={null}
       onLifecycleRequest={async () => ({ ok: true, message: "ok" })}
@@ -162,7 +174,7 @@ function mount(options: { fromFullScreen?: boolean } = {}) {
   return { ...terminal, agents, session, app, startDebate: () => app.rerender(debate) };
 }
 
-describe("DebateView — rendu append-only", () => {
+describe("DebateView — viewport plein écran", () => {
   it("ouvre la palette sans déclencher la pause d'urgence avec Échap", async () => {
     const t = mount();
     await vi.waitFor(() => expect(t.agents.claude.pending).toBe(true));
@@ -184,7 +196,7 @@ describe("DebateView — rendu append-only", () => {
     await press(t, "\u001b");
     expect(pause).toHaveBeenCalledOnce();
     for (const chunk of t.chunks) {
-      expect((chunk.match(CURSOR_UP) ?? []).length).toBeLessThanOrEqual(MAX_DYNAMIC_ROWS);
+      expect((chunk.match(CURSOR_UP) ?? []).length).toBeLessThan(t.stdout.rows);
     }
 
     t.app.unmount();
@@ -222,17 +234,18 @@ describe("DebateView — rendu append-only", () => {
 
   it("fige la phase canonique du preset reçu dans le scrollback", () => {
     const animation = "rule110";
-    const expected = headerFrame(40, getHeaderAnimation(animation).staticT, animation).map((row) =>
-      row.map((band) => band.chars).join(""),
-    );
+    const expected = headerFrame(40, getHeaderAnimation(animation).staticT, animation)[0]!.map((band) =>
+      band.chars,
+    ).join("");
     const frozen = bannerLines(40, animation)
-      .slice(0, HEADER_ROWS)
+      .slice(0, 1)
       .map((line) => line.replace(ANSI_SEQUENCE, ""));
 
-    expect(frozen).toEqual(expected);
+    expect(frozen).toEqual([expected]);
+    expect(bannerLines(40, animation)).toHaveLength(2);
     expect(frozen).not.toEqual(
       bannerLines(40, "plasma")
-        .slice(0, HEADER_ROWS)
+        .slice(0, 1)
         .map((line) => line.replace(ANSI_SEQUENCE, "")),
     );
   });
@@ -256,7 +269,7 @@ describe("DebateView — rendu append-only", () => {
     t.app.unmount();
   });
 
-  it("revient à six lignes dynamiques au plus une fois le premier écran rempli", async () => {
+  it("garde la trame dynamique strictement sous la hauteur du terminal", async () => {
     const t = mount();
     await vi.waitFor(() => expect(t.agents.claude.pending).toBe(true));
 
@@ -268,7 +281,7 @@ describe("DebateView — rendu append-only", () => {
     await tick();
     t.chunks.length = 0;
 
-    // En régime établi, l'invariant historique reste strictement inchangé.
+    // En régime établi, la trame plein écran garde le header fixé en haut.
     for (let i = 30; i < 70; i++) {
       t.agents.claude.emit(`ligne établie ${i}\n`);
       await tick(2);
@@ -277,7 +290,7 @@ describe("DebateView — rendu append-only", () => {
 
     for (const chunk of t.chunks) {
       const erased = (chunk.match(CURSOR_UP) ?? []).length;
-      expect(erased).toBeLessThanOrEqual(MAX_STANDARD_DYNAMIC_ROWS);
+      expect(erased).toBeLessThan(t.stdout.rows);
     }
 
     t.app.unmount();
@@ -300,7 +313,7 @@ describe("DebateView — rendu append-only", () => {
     const promptRow = lines.findIndex((line) => line.includes("‣"));
 
     expect(interventionRow).toBeGreaterThanOrEqual(0);
-    expect(promptRow).toBeGreaterThan(interventionRow + 10);
+    expect(promptRow).toBeGreaterThan(interventionRow);
     expect(frame).not.toMatch(CLEAR_SCREEN);
     expect(t.chunks.join("")).not.toContain("ANCIEN PROMPT");
 
@@ -350,32 +363,25 @@ describe("DebateView — rendu append-only", () => {
     t.app.unmount();
   });
 
-  it("préserve l'ordre et l'unicité au basculement Static vers stdout", async () => {
+  it("permet de remonter dans un long transcript sans déplacer le footer", async () => {
     const t = mount();
     await vi.waitFor(() => expect(t.agents.claude.pending).toBe(true));
 
-    // Le bandeau (7 lignes) et l'en-tête d'intervention (2 lignes) en
-    // occupent déjà 9 ; 13 lignes placent le compteur juste avant le seuil 23.
-    t.agents.claude.emit(Array.from({ length: 13 }, (_, i) => `remplissage ${i}\n`).join(""));
+    t.agents.claude.emit(Array.from({ length: 50 }, (_, i) => `ligne historique ${i}\n`).join(""));
     await tick();
     t.chunks.length = 0;
 
-    t.agents.claude.emit("JUSTE_AVANT_LE_SEUIL\n");
-    await tick();
-    t.agents.claude.emit("JUSTE_APRES_LE_SEUIL\n");
+    await press(t, "\u001b[5~");
     await tick();
 
     const output = t.chunks.join("");
-    expect(output.split("JUSTE_AVANT_LE_SEUIL").length - 1).toBe(1);
-    expect(output.split("JUSTE_APRES_LE_SEUIL").length - 1).toBe(1);
-    expect(output.indexOf("JUSTE_AVANT_LE_SEUIL")).toBeLessThan(
-      output.indexOf("JUSTE_APRES_LE_SEUIL"),
-    );
+    expect(output).toContain("ligne historique");
+    expect(output).toContain("‣");
 
     t.app.unmount();
   });
 
-  it("ne réépingle pas le footer après l'avoir stabilisé", async () => {
+  it("garde le header fixé après un agrandissement du terminal", async () => {
     const t = mount();
     await vi.waitFor(() => expect(t.agents.claude.pending).toBe(true));
     t.agents.claude.emit(Array.from({ length: 35 }, (_, i) => `ligne ${i}\n`).join(""));
@@ -389,13 +395,13 @@ describe("DebateView — rendu append-only", () => {
     await tick();
 
     for (const chunk of t.chunks) {
-      expect((chunk.match(CURSOR_UP) ?? []).length).toBeLessThanOrEqual(MAX_STANDARD_DYNAMIC_ROWS);
+      expect((chunk.match(CURSOR_UP) ?? []).length).toBeLessThan(t.stdout.rows);
     }
 
     t.app.unmount();
   });
 
-  it("n'écrit chaque ligne du transcript qu'une seule fois", async () => {
+  it("garde chaque ligne du transcript visible dans la trame", async () => {
     const t = mount();
     await vi.waitFor(() => expect(t.agents.claude.pending).toBe(true));
 
@@ -406,8 +412,7 @@ describe("DebateView — rendu append-only", () => {
     await tick();
 
     const output = t.chunks.join("");
-    const occurrences = output.split("une phrase parfaitement reconnaissable").length - 1;
-    expect(occurrences).toBe(1);
+    expect(output).toContain("une phrase parfaitement reconnaissable");
 
     t.app.unmount();
   });
@@ -440,7 +445,8 @@ describe("DebateView — rendu append-only", () => {
     await tick();
     const output = t.chunks.join("");
     expect(output.split("\u25b2 Claudex").length - 1).toBe(0);
-    expect(output.split("Sujet : Sujet de test").length - 1).toBe(1);
+    expect(output).toContain("Sujet : Sujet de test");
+    expect(output).not.toContain(":: Sujet : Sujet de test");
 
     const footerFrame = [...t.chunks]
       .reverse()
@@ -490,18 +496,14 @@ describe("DebateView — rendu append-only", () => {
 });
 
 describe("helpers d'amorçage", () => {
-  it("compte les replis physiques et les lignes vides", () => {
-    expect(outputRows("123456\n", 5)).toBe(2);
-    expect(outputRows("123456 123456 123456\n", 10)).toBe(3);
-    expect(outputRows("\n", 80)).toBe(1);
-    expect(outputRows("a\n\n", 80)).toBe(2);
-    expect(outputRows("\u001b[31m123456\u001b[39m\n", 5)).toBe(2);
+  it("découpe les blocs du renderer sans perdre les lignes vides", () => {
+    expect(transcriptBlockLines("ligne 1\n\nligne 3\n")).toEqual(["ligne 1", "", "ligne 3"]);
   });
 
-  it("préserve un bloc composé d'une seule ligne vide pour Ink Static", () => {
-    const text = staticBlockText("\n");
-    expect(text).not.toBe("");
-    expect(displayWidth(text)).toBe(0);
-    expect(text.trim()).toBe(text);
+  it("sélectionne une fenêtre depuis le bas du transcript", () => {
+    const lines = Array.from({ length: 10 }, (_, index) => `ligne ${index}`);
+    expect(transcriptWindow(lines, 3, 0)).toEqual(["ligne 7", "ligne 8", "ligne 9"]);
+    expect(transcriptWindow(lines, 3, 2)).toEqual(["ligne 5", "ligne 6", "ligne 7"]);
+    expect(transcriptWindow(lines, 3, 99)).toEqual(["ligne 0", "ligne 1", "ligne 2"]);
   });
 });

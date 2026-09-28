@@ -7,8 +7,8 @@
  * stream/markdownStream.ts stay separate from the recognition rules, and so this
  * file can be tested directly.
  *
- * It works one line at a time, on purpose. The transcript is written append-only
- * as lines complete, so nothing here may depend on text that hasn't arrived yet:
+ * It works one line at a time, on purpose. Lines are formatted as they complete,
+ * so nothing here may depend on text that hasn't arrived yet:
  * a construct is either recognisable from the line in front of us or it stays
  * literal text forever.
  */

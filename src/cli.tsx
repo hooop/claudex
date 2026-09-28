@@ -19,10 +19,20 @@ async function main() {
     console.log(`Mémoire de projet initialisée : ${created.join(", ")}`);
   }
 
-  // exitOnCtrlC: false — Root handles Ctrl+C itself so it can save the
-  // transcript to disk before exiting, instead of Ink just killing the
-  // process outright.
-  render(<Root cwd={cwd} initialTopic={topic || undefined} />, { exitOnCtrlC: false });
+  // The alternate screen gives Claudex a real viewport: header and footer stay
+  // fixed while the app scrolls only the transcript. Mode 1007 asks compatible
+  // terminals to translate the wheel into arrow keys in that screen.
+  const app = render(<Root cwd={cwd} initialTopic={topic || undefined} />, {
+    exitOnCtrlC: false,
+    alternateScreen: true,
+    incrementalRendering: true,
+  });
+  if (process.stdout.isTTY) process.stdout.write("\u001b[?1007h");
+  try {
+    await app.waitUntilExit();
+  } finally {
+    if (process.stdout.isTTY) process.stdout.write("\u001b[?1007l");
+  }
 }
 
 main().catch((err) => {

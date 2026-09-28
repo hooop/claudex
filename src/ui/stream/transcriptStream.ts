@@ -1,5 +1,5 @@
 /**
- * The renderer: session events in, permanent terminal lines out.
+ * The renderer: session events in, formatted physical lines out.
  *
  * It owns one pipeline per entry —
  *
@@ -10,10 +10,9 @@
  *       -> MarkdownStreamer(style what is complete on this line, forever)
  *       -> StreamController(one writer, one order, append-only)
  *
- * — and holds nothing else. There is no model of the transcript here: the
- * scheduler already owns the canonical one, and the terminal's own scrollback
- * owns the visible one. That is what keeps the cost of an update proportional to
- * the new text rather than to the length of the debate.
+ * — and holds nothing else. The scheduler owns the canonical transcript and
+ * `DebateView` owns the scrollable presentation; this class only formats the new
+ * text incrementally.
  *
  * Events are rendered in the order they happened. A human intervention or a tool
  * permission arriving mid-answer therefore interrupts that answer visually — the

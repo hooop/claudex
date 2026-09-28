@@ -2,6 +2,28 @@
 
 Journal des décisions validées à l'issue d'un débat Claude ↔ Codex.
 
+## 2026-09-28 — Le débat utilise un viewport plein écran géré par Claudex
+
+**Nature :** arbitrage humain direct après essais visuels du header animé.
+
+**Constat :** le scrollback natif du terminal déplace nécessairement tout l'écran ; il ne peut pas
+conserver un header et un footer fixes. Mélanger une trame Ink plein écran avec des écritures dans
+ce scrollback masquait les réponses courtes, dupliquait certaines lignes et faisait empiéter les
+réponses longues sur le footer.
+
+**Décisions :**
+- Claudex utilise l'alternate screen fourni par Ink 7, comme `vim`, `less` ou `htop` ; une
+  réécriture avec curses est inutile.
+- Pendant une session, `DebateView` possède l'intégralité des lignes formatées et n'écrit rien
+  derrière sa trame. Header, transcript et footer ont chacun une zone bornée.
+- Le transcript se parcourt avec la molette (mode terminal 1007 quand il est supporté), les flèches,
+  Page Up/Page Down et Home/End. Le header et le footer ne bougent jamais.
+- Le scrollback natif n'est pas disponible dans l'alternate screen. La trace durable reste le
+  transcript canonique archivé dans `.claudex/memory/transcripts/` lors de la fermeture normale.
+
+**Fichiers concernés :** `src/cli.tsx`, `src/ui/DebateView.tsx`,
+`src/ui/components/DynamicFooter.tsx`, `src/ui/stream/`, `README.md`.
+
 ## 2026-08-04 — Architecture C (file de livraisons)
 
 **Approche retenue :** Architecture C, validée par les deux agents.
