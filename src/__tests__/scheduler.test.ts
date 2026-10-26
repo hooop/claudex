@@ -1065,6 +1065,16 @@ describe("règles du débat", () => {
     expect(claudeSide).toContain("examiné au moins une alternative sérieuse");
   });
 
+  // Claudex n'écrit plus dans CLAUDE.md ni AGENTS.md : ces règles sont le seul
+  // chemin par lequel les deux agents apprennent que la mémoire existe. Elle est
+  // nommée, pas recopiée, pour ne pas la refacturer à chaque appel.
+  it("nomme la mémoire versionnée du projet sans l'importer", () => {
+    expect(claudeSide).toContain(".claudex/memory/decisions.md");
+    expect(claudeSide).toContain(".claudex/memory/limits.md");
+    expect(claudeSide).not.toContain("@.claudex");
+    expect(claudeSide).not.toContain("devlog.md");
+  });
+
   // Contrainte d'affichage appliquée par le renderer : l'imposer au modèle
   // dégrade les handoffs, qui sont des documents Markdown autoportants.
   it("n'impose aucune contrainte Markdown aux agents", () => {
