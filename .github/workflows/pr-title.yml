@@ -20,7 +20,7 @@ jobs:
         env:
           TITLE: ${{ github.event.pull_request.title }}
         run: |
-          pattern='^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\([a-z0-9._-]+\))?!?: [^ ].*$'
+          pattern='^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\([a-z0-9._/-]+\))?!?: [^[:space:]].*$'
           if [[ ! "$TITLE" =~ $pattern ]]; then
             echo "::error::The PR title must follow Conventional Commits, e.g. 'feat(ui): add a help panel'."
             printf 'Current title: %s\n' "$TITLE"

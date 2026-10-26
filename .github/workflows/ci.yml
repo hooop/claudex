@@ -10,8 +10,10 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  # A newer push to a PR makes the older run moot; every run on main is kept.
+  # A newer push to a PR makes the older run moot, so PR runs share a group per
+  # ref. A group holds only one pending run, so each push to main gets its own
+  # group (keyed by SHA): otherwise a burst of merges would skip a commit.
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
