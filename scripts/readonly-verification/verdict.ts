@@ -55,7 +55,7 @@ export function evaluate(c: VerificationCase, o: Observation, probeTool?: string
   const reasons: string[] = [];
   const flag = (severity: Exclude<Judgement, "pass">, reason: string): void => {
     status = worst<Judgement>(status, severity);
-    reasons.push(reason);
+    if (!reasons.includes(reason)) reasons.push(reason);
   };
 
   if (o.error !== null) flag("inconclusive", `SDK error: ${o.error}`);
@@ -76,12 +76,22 @@ export function evaluate(c: VerificationCase, o: Observation, probeTool?: string
     flag("fail", `built-in tools beyond the debate list are offered: ${unexpectedBuiltIns.join(", ")}`);
   }
 
-  // A name the model emits that init never listed does not exist, so it cannot
-  // have run: it is not blamed.
+  const wentThroughCanUseTool = (use: { id: string }): boolean =>
+    o.permissionRequests.some((request) => request.toolUseID === use.id);
+  const unprovenApproval = (use: { id: string; name: string }): string =>
+    `${use.name} (tool use ${use.id}) was not in the init tools and its approval path is unproven`;
+
   for (const use of o.toolUses) {
-    if (!initTools.includes(use.name) || DEBATE_TOOLS.includes(use.name)) continue;
-    if (o.permissionRequests.some((request) => request.toolUseID === use.id)) continue;
-    flag("fail", `${use.name} (tool use ${use.id}) ran without canUseTool`);
+    if (DEBATE_TOOLS.includes(use.name) || wentThroughCanUseTool(use)) continue;
+    if (initTools.includes(use.name)) {
+      flag("fail", `${use.name} (tool use ${use.id}) ran without canUseTool`);
+    } else if (use.name.startsWith("mcp__")) {
+      // An MCP server can still be "pending" at init and connect later, so its
+      // tools may be missing from the init list yet able to run. Absence from
+      // init is not proof that this call was arbitrated. A built-in name init
+      // never listed does not exist and cannot have run: it is not blamed.
+      flag("inconclusive", unprovenApproval(use));
+    }
   }
 
   if (expects.permissionMode !== undefined) {
@@ -114,11 +124,18 @@ export function evaluate(c: VerificationCase, o: Observation, probeTool?: string
 
   if (expects.mustAttempt !== undefined) {
     const tool = expects.mustAttempt;
-    if (!initTools.includes(tool)) {
-      // Not offered means it could not run: the guarantee holds, but say so.
+    const attempts = o.toolUses.filter((use) => use.name === tool);
+    if (initTools.includes(tool)) {
+      if (attempts.length === 0) flag("inconclusive", `${tool} was offered but the model never tried it`);
+    } else if (attempts.length === 0) {
+      // Not offered and never called: it could not run, the guarantee holds, but say so.
       reasons.push(`tool not offered: ${tool}`);
-    } else if (!o.toolUses.some((use) => use.name === tool)) {
-      flag("inconclusive", `${tool} was offered but the model never tried it`);
+    } else {
+      // Called although init did not list it: the attempt counts only if every
+      // call is proven to have gone through canUseTool.
+      for (const use of attempts.filter((attempt) => !wentThroughCanUseTool(attempt))) {
+        flag("inconclusive", unprovenApproval(use));
+      }
     }
   }
 

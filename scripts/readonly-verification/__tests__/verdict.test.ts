@@ -308,6 +308,73 @@ describe("evaluate — MCP server and attempted tool", () => {
   });
 });
 
+// An MCP server can be "pending" at init and connect later: its tools are then
+// absent from the init list yet can run, so absence from init is not proof.
+describe("evaluate — MCP tool absent from init but used", () => {
+  const probe = "mcp__github__get_me";
+  const pendingGithub = [{ name: "github", status: "pending" }];
+
+  it("is inconclusive when it was used without a permission request", () => {
+    const verdict = evaluate(
+      caseOf("I"),
+      baseObservation({
+        initTools: ["Read"],
+        mcpServers: pendingGithub,
+        toolUses: [{ id: "t1", name: probe }],
+      }),
+      probe,
+    );
+    expect(verdict.status).toBe("inconclusive");
+    expect(verdict.reasons.join("\n")).toContain("not in the init tools");
+    expect(verdict.reasons.join("\n")).toContain("approval path");
+  });
+
+  it("passes when the use went through canUseTool", () => {
+    const verdict = evaluate(
+      caseOf("I"),
+      baseObservation({
+        initTools: ["Read"],
+        mcpServers: pendingGithub,
+        toolUses: [{ id: "t1", name: probe }],
+        permissionRequests: [{ toolUseID: "t1", toolName: probe, decision: "deny" }],
+      }),
+      probe,
+    );
+    expect(verdict.status).toBe("pass");
+  });
+
+  it("is inconclusive when the permission request belongs to another tool use", () => {
+    const verdict = evaluate(
+      caseOf("I"),
+      baseObservation({
+        initTools: ["Read"],
+        toolUses: [{ id: "t1", name: probe }],
+        permissionRequests: [{ toolUseID: "t2", toolName: probe, decision: "deny" }],
+      }),
+      probe,
+    );
+    expect(verdict.status).toBe("inconclusive");
+  });
+
+  it("is inconclusive for the evil tool in case H when it was used without a request", () => {
+    const verdict = evaluate(caseOf("H"), baseObservation({ toolUses: [{ id: "t1", name: EVIL_TOOL }] }));
+    expect(verdict.status).toBe("inconclusive");
+  });
+
+  it("is inconclusive for an unrelated MCP tool in a case that attempts nothing", () => {
+    const verdict = evaluate(caseOf("E"), baseObservation({ toolUses: [{ id: "t1", name: "mcp__x__y" }] }));
+    expect(verdict.status).toBe("inconclusive");
+  });
+
+  it("lets a fail beat the inconclusive", () => {
+    const verdict = evaluate(
+      caseOf("E"),
+      baseObservation({ markerWritten: true, toolUses: [{ id: "t1", name: "mcp__x__y" }] }),
+    );
+    expect(verdict.status).toBe("fail");
+  });
+});
+
 describe("evaluate — severity", () => {
   it("lets fail beat inconclusive and keeps every reason", () => {
     const verdict = evaluate(
