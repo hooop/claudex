@@ -51,6 +51,11 @@ function fakeTerminal() {
       inputQueue.push(input);
       stdin.emit("readable");
     },
+    /** Several stdin chunks read in one `readable` event, as a long raw paste arrives. */
+    pushBurst(chunks: readonly string[]) {
+      inputQueue.push(...chunks);
+      stdin.emit("readable");
+    },
   };
 }
 
@@ -91,6 +96,11 @@ async function press(terminal: ReturnType<typeof fakeTerminal>, input: string): 
     // n'est plus écrite dans le même tour de boucle que la frappe.
     await new Promise((resolve) => setTimeout(resolve, 60));
   });
+}
+
+/** A paste as a terminal in bracketed paste mode delivers it. */
+async function paste(terminal: ReturnType<typeof fakeTerminal>, text: string): Promise<void> {
+  await press(terminal, `\u001b[200~${text}\u001b[201~`);
 }
 
 async function ready(terminal: ReturnType<typeof fakeTerminal>): Promise<void> {
@@ -261,6 +271,175 @@ describe("InputBar — navigation contextuelle", () => {
     await press(terminal, "\r");
 
     expect(terminal.onSubmit).toHaveBeenCalledWith("ba");
+    terminal.app.unmount();
+  });
+});
+
+describe("InputBar — collage", () => {
+  it("garde chaque morceau d'un collage brut arrivé d'un seul bloc", async () => {
+    const terminal = mount();
+    await ready(terminal);
+
+    const chunks = ["a".repeat(4000), "b".repeat(4000), "c".repeat(4000)];
+    await act(async () => {
+      terminal.pushBurst(chunks);
+      await new Promise((resolve) => setTimeout(resolve, 60));
+    });
+    await press(terminal, "\r");
+
+    expect(terminal.onSubmit).toHaveBeenCalledWith(chunks.join(""));
+    terminal.app.unmount();
+  });
+
+  it("remplace un long collage par une étiquette et envoie le texte complet", async () => {
+    const terminal = mount();
+    await ready(terminal);
+
+    const pasted = "x".repeat(30000);
+    terminal.output.length = 0;
+    await paste(terminal, pasted);
+
+    const frame = terminal.output.join("").replace(ANSI_SEQUENCE, "");
+    expect(frame).toContain("[Texte collé · 30 000 caractères]");
+    expect(frame).not.toContain("xxx");
+    await press(terminal, "\r");
+    expect(terminal.onSubmit).toHaveBeenCalledWith(pasted, { literal: true });
+    terminal.app.unmount();
+  });
+
+  it("conserve les retours à la ligne d'un collage multiligne", async () => {
+    const terminal = mount();
+    await ready(terminal);
+
+    terminal.output.length = 0;
+    await paste(terminal, "a\r\nb\rc");
+
+    expect(terminal.output.join("").replace(ANSI_SEQUENCE, "")).toContain(
+      "[Texte collé · 5 caractères]",
+    );
+    await press(terminal, "\r");
+    expect(terminal.onSubmit).toHaveBeenCalledWith("a\nb\nc", { literal: true });
+    terminal.app.unmount();
+  });
+
+  it("insère tel quel un collage d'une ligne de 500 caractères", async () => {
+    const terminal = mount();
+    await ready(terminal);
+
+    const pasted = "y".repeat(500);
+    terminal.output.length = 0;
+    await paste(terminal, pasted);
+
+    const frame = terminal.output.join("").replace(ANSI_SEQUENCE, "");
+    expect(frame).not.toContain("Texte collé");
+    expect(frame).toContain("yyy");
+    await press(terminal, "\r");
+    expect(terminal.onSubmit).toHaveBeenCalledWith(pasted);
+    terminal.app.unmount();
+  });
+
+  it("étiquette un collage d'une ligne de 501 caractères", async () => {
+    const terminal = mount();
+    await ready(terminal);
+
+    terminal.output.length = 0;
+    await paste(terminal, "y".repeat(501));
+
+    expect(terminal.output.join("").replace(ANSI_SEQUENCE, "")).toContain(
+      "[Texte collé · 501 caractères]",
+    );
+    terminal.app.unmount();
+  });
+
+  it("garde le texte tapé avant et après une étiquette", async () => {
+    const terminal = mount();
+    await ready(terminal);
+
+    const pasted = "line one\nline two";
+    await press(terminal, "avant ");
+    await paste(terminal, pasted);
+    await press(terminal, " après");
+    await press(terminal, "\r");
+
+    expect(terminal.onSubmit).toHaveBeenCalledWith(`avant ${pasted} après`);
+    terminal.app.unmount();
+  });
+
+  it("efface une étiquette entière d'un seul retour arrière", async () => {
+    const terminal = mount();
+    await ready(terminal);
+
+    await press(terminal, "x");
+    await paste(terminal, "z".repeat(600));
+    await press(terminal, "\u007f");
+    await press(terminal, "\r");
+
+    expect(terminal.onSubmit).toHaveBeenCalledWith("x");
+    terminal.app.unmount();
+  });
+
+  it("numérote les étiquettes quand le brouillon en contient plusieurs", async () => {
+    const terminal = mount();
+    await ready(terminal);
+
+    terminal.output.length = 0;
+    await paste(terminal, "first\npaste");
+    await paste(terminal, "second\npaste");
+
+    const frame = terminal.output.join("").replace(ANSI_SEQUENCE, "");
+    expect(frame).toContain("[Texte collé #1 · 11 caractères]");
+    expect(frame).toContain("[Texte collé #2 · 12 caractères]");
+    await press(terminal, "\r");
+    expect(terminal.onSubmit).toHaveBeenCalledWith("first\npastesecond\npaste", { literal: true });
+    terminal.app.unmount();
+  });
+
+  it("oublie les collages effacés par Ctrl+U", async () => {
+    const terminal = mount();
+    await ready(terminal);
+
+    await paste(terminal, "old\npaste");
+    await press(terminal, "\u0015");
+    await press(terminal, "new");
+    await press(terminal, "\r");
+
+    expect(terminal.onSubmit).toHaveBeenCalledWith("new");
+    terminal.app.unmount();
+  });
+
+  it("signale qu'un brouillon ouvert par un collage n'est pas une commande", async () => {
+    const terminal = mount();
+    await ready(terminal);
+
+    await paste(terminal, "// helper\nconst x = 1;");
+    await press(terminal, "\r");
+
+    expect(terminal.onSubmit).toHaveBeenCalledWith("// helper\nconst x = 1;", { literal: true });
+    terminal.app.unmount();
+  });
+
+  it("ignore un collage vide", async () => {
+    const terminal = mount();
+    await ready(terminal);
+
+    await press(terminal, "a");
+    await paste(terminal, "");
+    await press(terminal, "\r");
+
+    expect(terminal.onSubmit).toHaveBeenCalledWith("a");
+    terminal.app.unmount();
+  });
+
+  it("ne laisse pas un caractère saisi se faire passer pour une étiquette", async () => {
+    const terminal = mount();
+    await ready(terminal);
+
+    await paste(terminal, "real\npaste");
+    await press(terminal, "\u{100000}z");
+    await paste(terminal, "\u{100000}w");
+    await press(terminal, "\r");
+
+    expect(terminal.onSubmit).toHaveBeenCalledWith("real\npastezw", { literal: true });
     terminal.app.unmount();
   });
 });

@@ -1,4 +1,4 @@
-import { Box, Text, useInput, useStdout } from "ink";
+import { Box, Text, useInput, usePaste, useStdout } from "ink";
 import chalk from "chalk";
 import { useEffect, useRef, useState } from "react";
 import { displayWidth } from "../stream/lineBuffer.js";
@@ -18,6 +18,39 @@ export const INPUT_CURSOR_COLOR = `ansi256(${INPUT_CURSOR_COLOR_INDEX})`;
 export const INPUT_PLACEHOLDER_COLOR = "ansi256(240)";
 export const INPUT_TEXT_COLOR = "ansi256(195)";
 export const INPUT_CURSOR_BLINK_MS = 500;
+/** A paste longer than this, or spanning several lines, shows as a label. */
+export const PASTE_LABEL_THRESHOLD = 500;
+
+// Each labelled paste stands in the draft as one code point of Supplementary
+// Private Use Area-B, so cursor moves and Backspace treat the label as a single
+// character. Nothing else in a prompt plausibly uses that plane, and typed text
+// is stripped of it so it can never forge a label.
+const PASTE_TOKEN_BASE = 0x100000;
+const PASTE_TOKEN_LAST = 0x10fffd;
+const PASTE_TOKEN_PATTERN = /[\u{100000}-\u{10FFFD}]/gu;
+const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f]/g;
+
+function pasteIndex(char: string): number | null {
+  const code = char.codePointAt(0);
+  return code !== undefined && code >= PASTE_TOKEN_BASE && code <= PASTE_TOKEN_LAST
+    ? code - PASTE_TOKEN_BASE
+    : null;
+}
+
+function groupThousands(count: number): string {
+  return String(count).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+}
+
+function pasteLabel(text: string, number: number | null): string {
+  const count = [...text].length;
+  const unit = count > 1 ? "caractères" : "caractère";
+  const suffix = number === null ? "" : ` #${number}`;
+  return `[Texte collé${suffix} · ${groupThousands(count)} ${unit}]`;
+}
+
+function expandPastes(value: string, pastes: readonly string[]): string {
+  return value.replace(PASTE_TOKEN_PATTERN, (char) => pastes[pasteIndex(char) ?? -1] ?? "");
+}
 
 function renderCursor(text: string, visible: boolean): string {
   return visible ? chalk.bgAnsi256(INPUT_CURSOR_COLOR_INDEX)(text) : text;
@@ -58,6 +91,15 @@ function nextIndex(text: string, index: number): number {
   return next ? index + next.length : text.length;
 }
 
+interface Draft {
+  value: string;
+  cursor: number;
+  /** Full text of each labelled paste, indexed by its token's offset. */
+  pastes: readonly string[];
+}
+
+const EMPTY_DRAFT: Draft = { value: "", cursor: 0, pastes: [] };
+
 interface InputGlyph {
   text: string;
   width: number;
@@ -71,18 +113,18 @@ interface WrappedLine {
 }
 
 /** Wraps editable text before adding ANSI cursor styling. */
-function wrapInput(
-  value: string,
-  cursor: number,
-  width: number,
-  cursorVisible: boolean,
-): WrappedLine[] {
+function wrapInput(draft: Draft, width: number, cursorVisible: boolean): WrappedLine[] {
+  const { value, cursor, pastes } = draft;
+  const numbered = (value.match(PASTE_TOKEN_PATTERN) ?? []).length > 1;
   const glyphs: InputGlyph[] = [];
   let index = 0;
 
-  for (const text of value) {
+  for (const char of value) {
+    const paste = pasteIndex(char);
+    const text =
+      paste === null ? char : pasteLabel(pastes[paste] ?? "", numbered ? paste + 1 : null);
     glyphs.push({ text, width: displayWidth(text), cursor: index === cursor });
-    index += text.length;
+    index += char.length;
   }
   if (cursor === value.length) glyphs.push({ text: " ", width: 1, cursor: true });
 
@@ -121,7 +163,11 @@ function wrapInput(
 export function InputBar(props: {
   disabled: boolean;
   placeholder: string;
-  onSubmit: (value: string) => void | Promise<void>;
+  /**
+   * `literal` is set when the draft opens with a labelled paste: the user typed
+   * no leading "/", so the text must not be read as a command.
+   */
+  onSubmit: (value: string, options?: { literal: true }) => void | Promise<void>;
   onSubmitError?: (error: unknown) => void;
   width?: number;
   /** Total rows, including the empty row above and below the editable text. */
@@ -135,8 +181,22 @@ export function InputBar(props: {
   inputActive?: boolean;
 }) {
   const { onCommandPaletteChange, onRowsChange } = props;
-  const [value, setValue] = useState("");
-  const [cursor, setCursor] = useState(0);
+  const [draft, setDraftState] = useState<Draft>(EMPTY_DRAFT);
+  // Ink can deliver several stdin chunks before React re-renders; reading the
+  // draft from the last render would let each chunk overwrite the previous one.
+  const latestDraft = useRef<Draft>(EMPTY_DRAFT);
+  const setDraft = (next: Draft) => {
+    latestDraft.current = next;
+    setDraftState(next);
+  };
+  const { value, cursor } = draft;
+
+  const insert = (text: string, pastes: readonly string[] = latestDraft.current.pastes) => {
+    const { value, cursor } = latestDraft.current;
+    const nextValue = value.slice(0, cursor) + text + value.slice(cursor);
+    setDraft({ value: nextValue, cursor: cursor + text.length, pastes });
+    if (!nextValue.startsWith("/")) setPaletteDismissed(false);
+  };
   const [cursorVisible, setCursorVisible] = useState(true);
   const [selectedCommand, setSelectedCommand] = useState(0);
   const [paletteDismissed, setPaletteDismissed] = useState(false);
@@ -162,6 +222,7 @@ export function InputBar(props: {
 
   useInput(
     (input, key) => {
+      const { value, cursor, pastes } = latestDraft.current;
       if (paletteOpen) {
         if (key.upArrow || key.downArrow) {
           if (commandMatches.length > 0) {
@@ -175,8 +236,7 @@ export function InputBar(props: {
         if (key.tab) {
           const command = commandMatches[safeSelectedCommand];
           if (command) {
-            setValue(command.completion);
-            setCursor(command.completion.length);
+            setDraft({ value: command.completion, cursor: command.completion.length, pastes: [] });
             setPaletteDismissed(true);
           }
           return;
@@ -192,14 +252,16 @@ export function InputBar(props: {
       setCursorVisible(true);
 
       if (key.return) {
-        const submitted = value;
-        if (!submitted.trim()) return;
-        setValue("");
-        setCursor(0);
+        if (!value.trim()) return;
+        const submitted = expandPastes(value, pastes);
+        setDraft(EMPTY_DRAFT);
         setPaletteDismissed(false);
         onCommandPaletteChange?.(false);
         try {
-          const result = props.onSubmit(submitted);
+          const result =
+            pasteIndex(value) === null
+              ? props.onSubmit(submitted)
+              : props.onSubmit(submitted, { literal: true });
           if (result) {
             latestSubmission.current = result.catch((error: unknown) => {
               props.onSubmitError?.(error);
@@ -216,7 +278,7 @@ export function InputBar(props: {
           props.onNavigate(-1);
           return;
         }
-        setCursor((c) => previousIndex(value, c));
+        setDraft({ value, cursor: previousIndex(value, cursor), pastes });
         return;
       }
       if (key.rightArrow) {
@@ -224,20 +286,19 @@ export function InputBar(props: {
           props.onNavigate(1);
           return;
         }
-        setCursor((c) => nextIndex(value, c));
+        setDraft({ value, cursor: nextIndex(value, cursor), pastes });
         return;
       }
       if (key.ctrl && input === "a") {
-        setCursor(0);
+        setDraft({ value, cursor: 0, pastes });
         return;
       }
       if (key.ctrl && input === "e") {
-        setCursor(value.length);
+        setDraft({ value, cursor: value.length, pastes });
         return;
       }
       if (key.ctrl && input === "u") {
-        setValue("");
-        setCursor(0);
+        setDraft(EMPTY_DRAFT);
         setPaletteDismissed(false);
         return;
       }
@@ -245,20 +306,34 @@ export function InputBar(props: {
         if (cursor === 0) return;
         const previous = previousIndex(value, cursor);
         const nextValue = value.slice(0, previous) + value.slice(cursor);
-        setValue(nextValue);
-        setCursor(previous);
+        setDraft({ value: nextValue, cursor: previous, pastes });
         if (!nextValue.startsWith("/")) setPaletteDismissed(false);
         return;
       }
 
       // Enter submits, so pasted control characters must not become explicit
       // line breaks; visual lines are produced solely by width-aware wrapping.
-      const clean = input.replace(/[\u0000-\u001f\u007f]/g, "");
+      const clean = input.replace(CONTROL_CHARACTERS, "").replace(PASTE_TOKEN_PATTERN, "");
       if (clean === "") return;
-      const nextValue = value.slice(0, cursor) + clean + value.slice(cursor);
-      setValue(nextValue);
-      setCursor(cursor + clean.length);
-      if (!nextValue.startsWith("/")) setPaletteDismissed(false);
+      insert(clean);
+    },
+    { isActive: inputActive },
+  );
+
+  // Bracketed paste delivers the whole paste at once, line breaks included,
+  // instead of a stream of keystrokes in which Enter would submit.
+  usePaste(
+    (text) => {
+      const normalized = text.replace(/\r\n?/g, "\n").replace(PASTE_TOKEN_PATTERN, "");
+      if (normalized === "") return;
+      setCursorVisible(true);
+      if (!normalized.includes("\n") && [...normalized].length <= PASTE_LABEL_THRESHOLD) {
+        const clean = normalized.replace(CONTROL_CHARACTERS, "");
+        if (clean !== "") insert(clean);
+        return;
+      }
+      const { pastes } = latestDraft.current;
+      insert(String.fromCodePoint(PASTE_TOKEN_BASE + pastes.length), [...pastes, normalized]);
     },
     { isActive: inputActive },
   );
@@ -296,7 +371,7 @@ export function InputBar(props: {
     const body = props.disabled ? hint : renderCursor(" ", cursorVisible) + " " + hint;
     lines = [{ body, width: displayWidth(body), cursor: true }];
   } else {
-    lines = wrapInput(value, cursor, inner, cursorVisible);
+    lines = wrapInput(draft, inner, cursorVisible);
   }
 
   const contentRows = maxRows - 2;

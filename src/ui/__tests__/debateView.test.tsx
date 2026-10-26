@@ -17,9 +17,11 @@ import type { AgentId } from "../../types.js";
 import {
   bannerLines,
   DebateView,
+  topicHeaderLines,
   transcriptBlockLines,
   transcriptWindow,
 } from "../DebateView.js";
+import { displayWidth } from "../stream/lineBuffer.js";
 import { getHeaderAnimation, headerFrame } from "../headerArt.js";
 
 const CLEAR_SCREEN = /\u001b\[[23]J/;
@@ -122,7 +124,7 @@ async function press(terminal: ReturnType<typeof fakeTerminal>, input: string) {
   await tick(20);
 }
 
-function mount(options: { fromFullScreen?: boolean } = {}) {
+function mount(options: { fromFullScreen?: boolean; topic?: string } = {}) {
   const terminal = fakeTerminal();
   const agents = { claude: new FakeAgent("claude"), codex: new FakeAgent("codex") };
   const session = new DebateSession(agents, {
@@ -133,7 +135,7 @@ function mount(options: { fromFullScreen?: boolean } = {}) {
   const debate = (
     <DebateView
       session={session}
-      topic="Sujet de test"
+      topic={options.topic ?? "Sujet de test"}
       cwd="/tmp"
       status={{
         decisionsCount: 2,
@@ -464,6 +466,36 @@ describe("DebateView — viewport plein écran", () => {
     t.app.unmount();
   });
 
+  it("garde le transcript visible quand le sujet collé est très long", async () => {
+    const t = mount({ topic: "un sujet collé très long ".repeat(400) });
+    await vi.waitFor(() => expect(t.agents.claude.pending).toBe(true));
+
+    t.agents.claude.emit("PREMIÈRE INTERVENTION\n");
+    await tick();
+
+    const frame = [...t.chunks].reverse().find((chunk) => chunk.includes("PREMIÈRE INTERVENTION"));
+    expect(frame).toBeDefined();
+    expect(frame!.replace(ANSI_SEQUENCE, "")).toContain("/sujet pour le voir en entier");
+    for (const chunk of t.chunks) {
+      expect((chunk.match(CURSOR_UP) ?? []).length).toBeLessThan(t.stdout.rows);
+    }
+    t.app.unmount();
+  });
+
+  it("transmet aux agents un collage qui commence par une barre oblique", async () => {
+    const t = mount();
+    await vi.waitFor(() => expect(t.agents.claude.pending).toBe(true));
+    t.chunks.length = 0;
+
+    await press(t, "\u001b[200~// remarque collée\nsuite du code\u001b[201~");
+    await press(t, "\r");
+
+    await vi.waitFor(() => {
+      expect(t.chunks.join("").replace(ANSI_SEQUENCE, "")).toContain("// remarque collée");
+    });
+    t.app.unmount();
+  });
+
   it("réaffiche le sujet complet avec /sujet", async () => {
     const t = mount();
     await vi.waitFor(() => expect(t.agents.claude.pending).toBe(true));
@@ -505,5 +537,32 @@ describe("helpers d'amorçage", () => {
     expect(transcriptWindow(lines, 3, 0)).toEqual(["ligne 7", "ligne 8", "ligne 9"]);
     expect(transcriptWindow(lines, 3, 2)).toEqual(["ligne 5", "ligne 6", "ligne 7"]);
     expect(transcriptWindow(lines, 3, 99)).toEqual(["ligne 0", "ligne 1", "ligne 2"]);
+  });
+});
+
+describe("sujet dans le header", () => {
+  it("laisse un sujet court tel quel", () => {
+    expect(topicHeaderLines("Sujet de test", 60)).toEqual(["Sujet : Sujet de test"]);
+  });
+
+  it("borne un long sujet à trois lignes qui renvoient vers /sujet", () => {
+    const lines = topicHeaderLines("mot ".repeat(500), 60);
+
+    expect(lines).toHaveLength(3);
+    expect(lines[2]).toMatch(/… \/sujet pour le voir en entier$/);
+    for (const line of lines) expect(displayWidth(line)).toBeLessThanOrEqual(60);
+  });
+
+  it("garde un sujet d'exactement trois lignes sans renvoi", () => {
+    const lines = topicHeaderLines("x".repeat(60 * 3 - "Sujet : ".length), 60);
+
+    expect(lines).toHaveLength(3);
+    expect(lines.join("")).not.toContain("/sujet");
+  });
+
+  it("affiche un sujet multiligne sur une seule ligne logique", () => {
+    expect(topicHeaderLines("première\nseconde\r\n\ttroisième", 60)).toEqual([
+      "Sujet : première seconde troisième",
+    ]);
   });
 });
