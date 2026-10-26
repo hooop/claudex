@@ -183,7 +183,7 @@ describe("CodexAgent app-server streaming", () => {
       onContextUsage: (usage) => contexts.push(usage),
     });
 
-    expect(result).toMatchObject({ kind: "success", text: "Bonjour", resolvedModel: "codex-test" });
+    expect(result).toMatchObject({ kind: "success", text: "Bonjour" });
     expect(agent.currentModel()).toBe("codex-test");
     expect(deltas).toEqual(["Bon", "jour"]);
     expect(contexts).toEqual([{ usedTokens: 10_000, contextWindow: 250_000 }]);

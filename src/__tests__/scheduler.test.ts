@@ -150,7 +150,6 @@ function createMockCallbacks(): SchedulerCallbacks & { entries: TranscriptEntry[
     onConsensusReached: vi.fn(),
     onConsensusInvalidated: vi.fn(),
     onSynthesisReady: vi.fn(),
-    onModelResolved: vi.fn(),
   };
 }
 

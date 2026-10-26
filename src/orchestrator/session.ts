@@ -4,11 +4,9 @@
  * This is a thin adapter that:
  * - Provides backward-compatible event API using TypedEmitter
  * - Delegates all scheduling logic to the Scheduler
- * - Manages model persistence
  */
 
 import type { CodingAgent } from "../agents/types.js";
-import { rememberModel } from "../memory/store.js";
 import type {
   AgentId,
   AutonomyBudget,
@@ -40,14 +38,12 @@ interface SessionOptions {
  */
 export class DebateSession extends TypedEmitter<SessionEvents> {
   private scheduler: Scheduler;
-  private readonly cwd: string;
 
   constructor(
     agents: Record<AgentId, CodingAgent>,
     options: SessionOptions,
   ) {
     super();
-    this.cwd = options.cwd;
 
     // Create scheduler with callbacks that emit events
     this.scheduler = new Scheduler(agents, options, {
@@ -71,9 +67,6 @@ export class DebateSession extends TypedEmitter<SessionEvents> {
       onConsensusReached: () => this.emit("consensus-reached"),
       onConsensusInvalidated: () => this.emit("consensus-invalidated"),
       onSynthesisReady: (summary) => this.emit("synthesis-ready", summary),
-      onModelResolved: (agent, model) => {
-        rememberModel(this.cwd, agent, model).then(undefined, () => undefined);
-      },
     });
   }
 

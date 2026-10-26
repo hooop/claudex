@@ -79,7 +79,6 @@ export class ClaudeAgent implements CodingAgent {
     }
 
     let text = "";
-    let resolvedModel: string | undefined;
     let latestAssistantContext: AssistantContext | null = null;
     let streamedSinceAssistant = false;
     let assistantError: string | undefined;
@@ -242,10 +241,7 @@ export class ClaudeAgent implements CodingAgent {
 
           const modelUsage = resultMsg.modelUsage;
           const usedModel = modelUsage && Object.keys(modelUsage)[0];
-          if (usedModel) {
-            resolvedModel = usedModel;
-            this.resolvedModel = usedModel;
-          }
+          if (usedModel) this.resolvedModel = usedModel;
 
           const contextWindow = modelContextWindowOf(modelUsage, latestAssistantContext?.model);
           if (latestAssistantContext && contextWindow !== null) {
@@ -266,7 +262,7 @@ export class ClaudeAgent implements CodingAgent {
       }
 
       // Success: complete text with no errors
-      return { kind: "success", text, resolvedModel };
+      return { kind: "success", text };
     } catch (err) {
       if (abortController.signal.aborted) {
         return { kind: "cancelled", partialText: text || undefined };
