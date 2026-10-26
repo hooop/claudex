@@ -48,7 +48,7 @@ import {
 import { BRAND_COLOR, contentWidthFor } from "./theme.js";
 import { TranscriptStream, type TailView } from "./stream/transcriptStream.js";
 import { asciiSymbolsForDisplay } from "./stream/asciiSymbols.js";
-import { wrapAll } from "./stream/lineBuffer.js";
+import { truncateEnd, wrapAll } from "./stream/lineBuffer.js";
 import { sanitizeForDisplay } from "./stream/sanitize.js";
 import { markdownToPlainText } from "./markdown.js";
 import type { ProjectStatus } from "../util/projectStatus.js";
@@ -502,7 +502,7 @@ export function DebateView(props: {
   const rows = footerRows(footerSurfaces);
   const preferredFooterHeight = Math.max(1, terminalRows - 1);
   const introRows =
-    4 + wrapAll(`Sujet : ${topic}`, Math.max(1, Math.min(columns, HEADER_MAX_WIDTH))).length;
+    4 + topicHeaderLines(topic, Math.max(1, Math.min(columns, HEADER_MAX_WIDTH))).length;
   const transcriptRows = Math.max(0, preferredFooterHeight - 1 - introRows - rows);
   transcriptRowsRef.current = transcriptRows;
   const maximumScrollOffset = Math.max(0, transcriptLines.length - transcriptRows);
@@ -745,6 +745,22 @@ function isTopicEntry(entry: TranscriptEntry): boolean {
   return entry.from === "system" && entry.kind === "system" && entry.text.startsWith("Sujet :");
 }
 
+const TOPIC_HEADER_MAX_LINES = 3;
+const TOPIC_HEADER_MORE = "… /sujet pour le voir en entier";
+
+/**
+ * The topic as the fixed header shows it. The header never scrolls, so a pasted
+ * topic shown whole would push the transcript off the screen; `/sujet` prints it
+ * in full instead.
+ */
+export function topicHeaderLines(topic: string, width: number): string[] {
+  const lines = wrapAll(`Sujet : ${topic.trim().replace(/\s+/gu, " ")}`, width);
+  if (lines.length <= TOPIC_HEADER_MAX_LINES) return lines;
+  const kept = lines.slice(0, TOPIC_HEADER_MAX_LINES - 1);
+  const overflow = lines.slice(TOPIC_HEADER_MAX_LINES - 1).join(" ");
+  return [...kept, truncateEnd(overflow, width, TOPIC_HEADER_MORE)];
+}
+
 function IntroPanel(props: {
   columns: number;
   topic: string;
@@ -753,7 +769,7 @@ function IntroPanel(props: {
   const { columns, topic, status } = props;
   const width = Math.max(1, Math.min(columns, HEADER_MAX_WIDTH));
   const divider = welcomeDivider(width);
-  const topicLines = wrapAll(`Sujet : ${topic}`, width);
+  const topicLines = topicHeaderLines(topic, width);
 
   return (
     <Box flexDirection="column" width={columns}>
