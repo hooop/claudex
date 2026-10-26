@@ -8,8 +8,8 @@ dist/
 # as the .claudex/.gitignore it writes in its users' projects (CLAUDEX_GITIGNORE
 # in src/memory/store.ts): everything is excluded by default, including files
 # later versions add, and only decisions.md and limits.md are versioned, because
-# they are short, written on purpose, and read by both agents at the start of
-# every debate.
+# they are short, written on purpose, and the debate rules point both agents to
+# them.
 .claudex/*
 !.claudex/memory/
 .claudex/memory/*
