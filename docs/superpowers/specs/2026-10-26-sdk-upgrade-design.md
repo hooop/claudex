@@ -106,16 +106,19 @@ version measured; a future upgrade is a deliberate branch that reruns the verifi
 
 ### D3 — Verify outside the repository first, and only then touch it
 
-The verification runs in a scratch directory with its own `npm install` of each SDK
-version. `main` and the branch's `package.json` stay untouched until every case passes.
+The verification runs against scratch directories, each with its own `npm install` of
+one SDK version. `main` and the branch's dependencies stay untouched until every case
+passes (the verification tool itself is committed first).
 
 ### D4 — Version the verification script
 
-`scripts/verify-claude-readonly.mjs` (new): takes no SDK version itself, it uses the
-SDK resolvable from where it runs, so the same script measures 0.1.77 and 0.3.310. It is
-not a test: it calls the real Claude Code with the maintainer's account, so it is never
-run by `npm test` or CI. `limits.md` says to rerun it after every SDK upgrade. It is
-plain `.mjs` and linted with `bin` (lint scope extended to `scripts`).
+`scripts/verify-claude-readonly.ts` (new, run with `npm run verify:readonly`): it
+measures the SDK resolvable from the repository, or the copy installed in a directory
+given with `--sdk-dir`, so the same command measures 0.1.77 and 0.3.310. It is not a
+test: it calls the real Claude Code with the maintainer's account, so it is never run by
+`npm test` or CI. Its verdict logic is pure and unit-tested. TypeScript run through tsx
+like the rest of Claudex; typecheck and lint scopes extended to `scripts`. `limits.md`
+says to rerun it after every SDK upgrade.
 
 This is Claude's call, to make the "re-check after every SDK upgrade" rule cheap to
 follow. Dropping it leaves the rest of the design intact.
