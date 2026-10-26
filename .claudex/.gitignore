@@ -11,7 +11,7 @@ memory/*
 !memory/decisions.md
 !memory/limits.md
 
-# decisions.md et limits.md sont courts, écrits à dessein, et référencés par
-# CLAUDE.md comme par AGENTS.md : une personne qui clone le dépôt doit les
+# decisions.md et limits.md sont courts, écrits à dessein, et relus par les deux
+# agents au début de chaque débat : une personne qui clone le dépôt doit les
 # recevoir. Retire les deux dernières lignes pour garder la mémoire du projet
 # entièrement locale.
