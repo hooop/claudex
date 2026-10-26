@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { render } from "ink";
 import { initMemoryScaffold } from "./memory/store.js";
+import { RENDER_OPTIONS } from "./renderOptions.js";
 import { Root } from "./ui/Root.js";
 
 async function main() {
@@ -19,14 +20,9 @@ async function main() {
     console.log(`Mémoire de projet initialisée : ${created.join(", ")}`);
   }
 
-  // The alternate screen gives Claudex a real viewport: header and footer stay
-  // fixed while the app scrolls only the transcript. Mode 1007 asks compatible
-  // terminals to translate the wheel into arrow keys in that screen.
-  const app = render(<Root cwd={cwd} initialTopic={topic || undefined} />, {
-    exitOnCtrlC: false,
-    alternateScreen: true,
-    incrementalRendering: true,
-  });
+  // Mode 1007 asks compatible terminals to translate the wheel into arrow keys
+  // in the alternate screen.
+  const app = render(<Root cwd={cwd} initialTopic={topic || undefined} />, RENDER_OPTIONS);
   if (process.stdout.isTTY) process.stdout.write("\u001b[?1007h");
   try {
     await app.waitUntilExit();
