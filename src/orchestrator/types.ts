@@ -78,7 +78,7 @@ export interface DeliveryJob {
   /** Clean response text after a successful run — read by batch completion to re-chain the debate. */
   resultText?: string;
   resultSignal?: Signal;
-  /** Exact payload retained for deterministic retry of this immutable job. */
+  /** Exact content retained for deterministic retry; the debate rules are prepended at send time. */
   message?: string;
   /** Revision of the provisional subject validated by an initial turn. */
   provisionalRevision?: number;
