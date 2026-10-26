@@ -23,7 +23,8 @@
   "scripts": {
     "dev": "node --import tsx src/cli.tsx",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src bin docs/demo",
+    "lint": "eslint src bin docs/demo scripts",
+    "verify:readonly": "node --import tsx scripts/verify-claude-readonly.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "check": "npm run typecheck && npm run lint && npm test"

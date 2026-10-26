@@ -9,7 +9,7 @@ import { AUTO_MODEL_LABEL, type AgentSendOptions, type CodingAgent } from "./typ
  * Bash is explicitly excluded — it can write even with "read-only" intent,
  * and a permissive rule or distracted human approval could violate the invariant.
  */
-const DEBATE_TOOLS = ["Read", "Grep", "Glob"];
+export const DEBATE_TOOLS = ["Read", "Grep", "Glob"];
 
 /**
  * Full tool access for implementation phase.

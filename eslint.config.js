@@ -10,15 +10,15 @@ export default tseslint.config(
   },
   {
     ...eslint.configs.recommended,
-    files: ["bin/**/*.{js,mjs,cjs}"],
+    files: ["bin/**/*.{js,mjs,cjs}", "scripts/**/*.mjs"],
     languageOptions: { globals: globals.node },
   },
   ...tseslint.configs.recommendedTypeChecked.map((config) => ({
     ...config,
-    files: ["src/**/*.{ts,tsx}", "docs/demo/**/*.{ts,tsx}"],
+    files: ["src/**/*.{ts,tsx}", "docs/demo/**/*.{ts,tsx}", "scripts/**/*.{ts,tsx}"],
   })),
   {
-    files: ["src/**/*.{ts,tsx}", "docs/demo/**/*.{ts,tsx}"],
+    files: ["src/**/*.{ts,tsx}", "docs/demo/**/*.{ts,tsx}", "scripts/**/*.{ts,tsx}"],
     languageOptions: {
       globals: globals.node,
       parserOptions: {
@@ -47,7 +47,11 @@ export default tseslint.config(
     rules: { "no-console": "off" },
   },
   {
-    files: ["src/**/__tests__/**/*.{ts,tsx}", "src/**/*.{test,spec}.{ts,tsx}"],
+    files: [
+      "src/**/__tests__/**/*.{ts,tsx}",
+      "scripts/**/__tests__/**/*.{ts,tsx}",
+      "src/**/*.{test,spec}.{ts,tsx}",
+    ],
     rules: {
       "@typescript-eslint/no-floating-promises": "off",
       "@typescript-eslint/no-unsafe-assignment": "off",

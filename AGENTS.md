@@ -20,7 +20,7 @@ anyone changing Claudex itself, human or agent. User documentation is in README.
   `claudex` there after `npm link` (see README), or `node /path/to/claudex/bin/claudex.mjs`.
 - `npm test`, `npm run test:watch`: unit and integration tests.
 - `npm run typecheck`: strict type check. `npm run lint`: ESLint. Both cover
-  `src`, `bin` and `docs/demo`.
+  `src`, `bin`, `docs/demo` and `scripts`.
 - `npm run check`: typecheck, lint and tests. CI runs exactly this on every pull
   request to main and every push to main; it must pass before a pull request is opened.
 
@@ -34,6 +34,9 @@ anyone changing Claudex itself, human or agent. User documentation is in README.
 - `src/ui/`: welcome screen, debate view, output rendering.
 - `src/util/`: small helpers (tool input formatting, project status).
 - `docs/demo/`: source of the README demo GIF; typechecked and linted like `src`.
+- `scripts/`: maintainer tooling, never run by `npm test` or CI. `readonly-verification/`
+  holds the pure logic of `npm run verify:readonly`, which measures against a real SDK
+  whether Claude stays read-only during a debate (run it after every SDK upgrade).
 - Tests sit in `__tests__/` next to the code they cover; the scheduler's are in
   `src/__tests__/`.
 
