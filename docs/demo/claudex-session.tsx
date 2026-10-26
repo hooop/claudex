@@ -10,6 +10,7 @@ import type { AgentSendOptions, CodingAgent } from "../../src/agents/types.js";
 import type { AgentId } from "../../src/types.js";
 import { DebateView } from "../../src/ui/DebateView.js";
 import { initMemoryScaffold } from "../../src/memory/store.js";
+import { RENDER_OPTIONS } from "../../src/renderOptions.js";
 import { WelcomeScreen } from "../../src/ui/components/WelcomeScreen.js";
 import { DEFAULT_HEADER_ANIMATION, type HeaderAnimationId } from "../../src/ui/headerArt.js";
 import type { ProjectStatus } from "../../src/util/projectStatus.js";
@@ -199,11 +200,7 @@ function DemoApp() {
   );
 }
 
-const app = render(<DemoApp />, {
-  exitOnCtrlC: false,
-  alternateScreen: true,
-  incrementalRendering: true,
-});
+const app = render(<DemoApp />, RENDER_OPTIONS);
 
 setTimeout(() => {
   app.unmount();

@@ -39,8 +39,7 @@ const app = render(<Text>frame drawn</Text>, {
   patchConsole: false,
 });
 
-// Ink throttles its renders; leave it time to draw before looking.
-await new Promise((resolve) => setTimeout(resolve, 200));
+await app.waitUntilRenderFlush();
 const whileRunning = chunks.join("");
 app.unmount();
 

@@ -5,9 +5,16 @@ import { describe, expect, it } from "vitest";
 
 const run = promisify(execFile);
 const fixture = fileURLToPath(new URL("./fixtures/renderUnderCi.tsx", import.meta.url));
+// `--import tsx` resolves from the child's cwd, whatever directory vitest runs from.
+const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
+// Starting a child process with tsx is slow on a loaded CI runner.
+const CHILD_PROCESS_TIMEOUT = 15_000;
 
 async function renderWithEnv(env: NodeJS.ProcessEnv) {
-  const { stdout } = await run(process.execPath, ["--import", "tsx", fixture], { env });
+  const { stdout } = await run(process.execPath, ["--import", "tsx", fixture], {
+    env,
+    cwd: repoRoot,
+  });
   return JSON.parse(stdout) as { alternateScreen: boolean; frameDrawn: boolean };
 }
 
@@ -21,7 +28,7 @@ describe("render options", () => {
     const result = await renderWithEnv({ ...process.env, CI: "true" });
 
     expect(result).toEqual({ alternateScreen: true, frameDrawn: true });
-  });
+  }, CHILD_PROCESS_TIMEOUT);
 
   it("draws in the alternate screen while running when CI is not set", async () => {
     const env = { ...process.env };
@@ -31,5 +38,5 @@ describe("render options", () => {
     const result = await renderWithEnv(env);
 
     expect(result).toEqual({ alternateScreen: true, frameDrawn: true });
-  });
+  }, CHILD_PROCESS_TIMEOUT);
 });
