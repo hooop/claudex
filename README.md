@@ -36,6 +36,8 @@ The topic is not restricted to architecture. Anything settled before code gets w
 
 **Full-screen terminal interface.** The header and input stay fixed while the transcript scrolls independently. Use the wheel or `↑`/`↓`, `Page Up`/`Page Down`, and `Home`/`End` to navigate; the complete transcript is archived in `.claudex/memory/transcripts/`.
 
+**Long pastes.** A paste longer than 500 characters, or spanning several lines, appears in the input as a single `[Texte collé · N caractères]` label. Its full text, line breaks included, is sent on Enter and shown in the transcript; the fixed header shows only the first lines of the topic, and `/sujet` prints it in full.
+
 ## What leaves the machine
 
 Worth reading before pointing Claudex at a repository owned by someone else, or using it in a professional setting.
