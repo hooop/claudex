@@ -367,6 +367,30 @@ describe("Root — cycle de vie du header", () => {
     app.unmount();
   });
 
+  it("démarre un débat sur un sujet collé qui commence par une barre oblique", async () => {
+    mocks.setAutoComplete(false);
+    const terminal = fakeTerminal();
+    const app = render(<Root cwd="/projet-test" />, {
+      stdout: terminal.stdout as never,
+      stdin: terminal.stdin as never,
+      stderr: terminal.stderr as never,
+      exitOnCtrlC: false,
+      patchConsole: false,
+    });
+
+    await vi.waitFor(() => expect(terminal.stdin.listenerCount("readable")).toBeGreaterThan(0));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await press(terminal, "\u001b[200~/Users/me/app.ts:12 TypeError\nat main\u001b[201~");
+    await press(terminal, "\r");
+
+    await vi.waitFor(() => {
+      const output = terminal.chunks.join("").replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "");
+      expect(output).toContain("Sujet : /Users/me/app.ts:12 TypeError at main");
+    });
+    expect(terminal.chunks.join("")).not.toContain("Pas de débat en cours");
+    app.unmount();
+  });
+
   it("n'écrit le devlog qu'après validation effective du sujet", async () => {
     mocks.setAutoComplete(false);
     const terminal = fakeTerminal();

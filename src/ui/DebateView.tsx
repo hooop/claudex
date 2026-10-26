@@ -2,7 +2,7 @@ import { Box, Text, useInput, useStdout } from "ink";
 import chalk from "chalk";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { appendDecision, appendLimit, readDecisions, saveHandoff } from "../memory/store.js";
-import { decideUsageError, parseCommand } from "../orchestrator/commands.js";
+import { decideUsageError, parseCommand, type Command } from "../orchestrator/commands.js";
 import type { DebateSession } from "../orchestrator/session.js";
 import type { EntryOutcome } from "../orchestrator/types.js";
 import type {
@@ -303,9 +303,11 @@ export function DebateView(props: {
     }
   });
 
-  async function handleSubmit(raw: string) {
+  async function handleSubmit(raw: string, options?: { literal: true }) {
     setCommandPaletteOpen(false);
-    const cmd = parseCommand(raw);
+    const cmd: Command = options?.literal
+      ? { kind: "intervene", target: "both", text: raw.trim() }
+      : parseCommand(raw);
     if (
       (session.lifecycle !== "open" || coordinatorState.kind !== "idle") &&
       cmd.kind !== "new" &&

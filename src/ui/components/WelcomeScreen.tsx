@@ -94,7 +94,11 @@ export function WelcomeScreen(props: {
   const [modelPickerAgent, setModelPickerAgent] = useState<AgentId | null>(null);
   const selectionPaletteOpen = commandPaletteOpen || modelPickerAgent !== null;
 
-  function handleSubmit(value: string) {
+  function handleSubmit(value: string, options?: { literal: true }) {
+    if (options?.literal) {
+      onStart(value);
+      return;
+    }
     const cmd = parseCommand(value);
 
     if (cmd.kind === "model") {

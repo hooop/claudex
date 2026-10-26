@@ -303,7 +303,7 @@ describe("InputBar — collage", () => {
     expect(frame).toContain("[Texte collé · 30 000 caractères]");
     expect(frame).not.toContain("xxx");
     await press(terminal, "\r");
-    expect(terminal.onSubmit).toHaveBeenCalledWith(pasted);
+    expect(terminal.onSubmit).toHaveBeenCalledWith(pasted, { literal: true });
     terminal.app.unmount();
   });
 
@@ -318,7 +318,7 @@ describe("InputBar — collage", () => {
       "[Texte collé · 5 caractères]",
     );
     await press(terminal, "\r");
-    expect(terminal.onSubmit).toHaveBeenCalledWith("a\nb\nc");
+    expect(terminal.onSubmit).toHaveBeenCalledWith("a\nb\nc", { literal: true });
     terminal.app.unmount();
   });
 
@@ -390,7 +390,7 @@ describe("InputBar — collage", () => {
     expect(frame).toContain("[Texte collé #1 · 11 caractères]");
     expect(frame).toContain("[Texte collé #2 · 12 caractères]");
     await press(terminal, "\r");
-    expect(terminal.onSubmit).toHaveBeenCalledWith("first\npastesecond\npaste");
+    expect(terminal.onSubmit).toHaveBeenCalledWith("first\npastesecond\npaste", { literal: true });
     terminal.app.unmount();
   });
 
@@ -404,6 +404,17 @@ describe("InputBar — collage", () => {
     await press(terminal, "\r");
 
     expect(terminal.onSubmit).toHaveBeenCalledWith("new");
+    terminal.app.unmount();
+  });
+
+  it("signale qu'un brouillon ouvert par un collage n'est pas une commande", async () => {
+    const terminal = mount();
+    await ready(terminal);
+
+    await paste(terminal, "// helper\nconst x = 1;");
+    await press(terminal, "\r");
+
+    expect(terminal.onSubmit).toHaveBeenCalledWith("// helper\nconst x = 1;", { literal: true });
     terminal.app.unmount();
   });
 
@@ -428,7 +439,7 @@ describe("InputBar — collage", () => {
     await paste(terminal, "\u{100000}w");
     await press(terminal, "\r");
 
-    expect(terminal.onSubmit).toHaveBeenCalledWith("real\npastezw");
+    expect(terminal.onSubmit).toHaveBeenCalledWith("real\npastezw", { literal: true });
     terminal.app.unmount();
   });
 });

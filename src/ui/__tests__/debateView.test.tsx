@@ -482,6 +482,20 @@ describe("DebateView — viewport plein écran", () => {
     t.app.unmount();
   });
 
+  it("transmet aux agents un collage qui commence par une barre oblique", async () => {
+    const t = mount();
+    await vi.waitFor(() => expect(t.agents.claude.pending).toBe(true));
+    t.chunks.length = 0;
+
+    await press(t, "\u001b[200~// remarque collée\nsuite du code\u001b[201~");
+    await press(t, "\r");
+
+    await vi.waitFor(() => {
+      expect(t.chunks.join("").replace(ANSI_SEQUENCE, "")).toContain("// remarque collée");
+    });
+    t.app.unmount();
+  });
+
   it("réaffiche le sujet complet avec /sujet", async () => {
     const t = mount();
     await vi.waitFor(() => expect(t.agents.claude.pending).toBe(true));

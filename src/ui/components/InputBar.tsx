@@ -163,7 +163,11 @@ function wrapInput(draft: Draft, width: number, cursorVisible: boolean): Wrapped
 export function InputBar(props: {
   disabled: boolean;
   placeholder: string;
-  onSubmit: (value: string) => void | Promise<void>;
+  /**
+   * `literal` is set when the draft opens with a labelled paste: the user typed
+   * no leading "/", so the text must not be read as a command.
+   */
+  onSubmit: (value: string, options?: { literal: true }) => void | Promise<void>;
   onSubmitError?: (error: unknown) => void;
   width?: number;
   /** Total rows, including the empty row above and below the editable text. */
@@ -254,7 +258,10 @@ export function InputBar(props: {
         setPaletteDismissed(false);
         onCommandPaletteChange?.(false);
         try {
-          const result = props.onSubmit(submitted);
+          const result =
+            pasteIndex(value) === null
+              ? props.onSubmit(submitted)
+              : props.onSubmit(submitted, { literal: true });
           if (result) {
             latestSubmission.current = result.catch((error: unknown) => {
               props.onSubmitError?.(error);
