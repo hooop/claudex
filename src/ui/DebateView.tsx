@@ -41,7 +41,6 @@ import {
   CODEX_FLASH_COLOR,
   DEFAULT_HEADER_ANIMATION,
   HEADER_MAX_WIDTH,
-  getHeaderAnimation,
   headerFrame,
   type HeaderAnimationId,
 } from "./headerArt.js";
@@ -670,36 +669,6 @@ function bannerFor(
     };
   }
   return null;
-}
-
-/** One canonical header line, used by snapshots and tests. */
-export function bannerLines(
-  columns: number,
-  animation: HeaderAnimationId = DEFAULT_HEADER_ANIMATION,
-): string[] {
-  const [topLine] = headerFrame(columns, getHeaderAnimation(animation).staticT, animation);
-  if (!topLine) return [""];
-  return [topLine.map((band) => chalk.hex(band.color)(band.chars)).join(""), ""];
-}
-
-export function introLines(
-  columns: number,
-  topic: string,
-  status: Pick<ProjectStatus, "decisionsCount" | "lastSession">,
-): string[] {
-  const width = Math.max(1, Math.min(columns, HEADER_MAX_WIDTH));
-  const memoryColor = chalk.ansi256(102);
-  const divider = memoryColor(welcomeDivider(width));
-  const topicLines = wrapAll(`Sujet : ${topic}`, width);
-
-  return [
-    divider,
-    memoryColor(welcomeMemoryLine(status, width)),
-    divider,
-    ...topicLines.map((line) => memoryColor(line)),
-    divider,
-    "",
-  ];
 }
 
 function AnimatedHeaderLine(props: {
