@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 import { render } from "ink";
 import { initMemoryScaffold } from "./memory/store.js";
-import { RENDER_OPTIONS } from "./renderOptions.js";
+import { hasInteractiveTerminal, RENDER_OPTIONS } from "./renderOptions.js";
 import { Root } from "./ui/Root.js";
 
 async function main() {
   const topic = process.argv.slice(2).join(" ").trim();
   const cwd = process.cwd();
 
-  if (!process.stdin.isTTY) {
+  if (!hasInteractiveTerminal(process.stdin, process.stdout)) {
     console.error(
       "Claudex a besoin d'un vrai terminal interactif (TTY) : lance-le directement dans ton terminal, pas via un pipe, un script non interactif ou un `| cat`.",
     );
