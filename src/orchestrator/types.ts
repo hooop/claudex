@@ -21,7 +21,6 @@ import type {
 export type AgentResultSuccess = {
   kind: "success";
   text: string;
-  resolvedModel?: string;
 };
 
 export type AgentResultError = {

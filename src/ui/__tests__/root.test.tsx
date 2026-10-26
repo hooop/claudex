@@ -98,7 +98,6 @@ vi.mock("../../memory/store.js", () => ({
   appendDevlog: mocks.appendDevlog,
   appendLimit: vi.fn(async () => {}),
   readDecisions: vi.fn(async () => "# Décisions\n\nAucune décision actée."),
-  rememberModel: vi.fn(async () => {}),
   rememberAutonomyBudget: vi.fn(async () => {}),
   saveHandoff: vi.fn(async () => "handoff.md"),
   saveTranscript: mocks.saveTranscript,

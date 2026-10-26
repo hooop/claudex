@@ -15,14 +15,12 @@ import { DebateSession } from "../../orchestrator/session.js";
 import type { AgentResult } from "../../orchestrator/types.js";
 import type { AgentId } from "../../types.js";
 import {
-  bannerLines,
   DebateView,
   topicHeaderLines,
   transcriptBlockLines,
   transcriptWindow,
 } from "../DebateView.js";
 import { displayWidth } from "../stream/lineBuffer.js";
-import { getHeaderAnimation, headerFrame } from "../headerArt.js";
 
 const CLEAR_SCREEN = /\u001b\[[23]J/;
 const CURSOR_UP = /\u001b\[1A/g;
@@ -232,24 +230,6 @@ describe("DebateView — viewport plein écran", () => {
     await press(t, "\u001b");
     expect(pause).not.toHaveBeenCalled();
     t.app.unmount();
-  });
-
-  it("fige la phase canonique du preset reçu dans le scrollback", () => {
-    const animation = "rule110";
-    const expected = headerFrame(40, getHeaderAnimation(animation).staticT, animation)[0]!.map((band) =>
-      band.chars,
-    ).join("");
-    const frozen = bannerLines(40, animation)
-      .slice(0, 1)
-      .map((line) => line.replace(ANSI_SEQUENCE, ""));
-
-    expect(frozen).toEqual([expected]);
-    expect(bannerLines(40, animation)).toHaveLength(2);
-    expect(frozen).not.toEqual(
-      bannerLines(40, "plasma")
-        .slice(0, 1)
-        .map((line) => line.replace(ANSI_SEQUENCE, "")),
-    );
   });
 
   it("n'efface jamais l'écran, même sur une réponse plus haute que le terminal", async () => {

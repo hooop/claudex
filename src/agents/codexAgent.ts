@@ -128,7 +128,6 @@ export class CodexAgent implements CodingAgent {
 
     this.cancelled = false;
     let text = "";
-    let resolvedModel: string | undefined;
     let terminalError: CodexTurnError | null = null;
     const streamedItems = new Set<string>();
     const activeCommands = new Map<string, RunningCommand>();
@@ -337,7 +336,7 @@ export class CodexAgent implements CodingAgent {
       if (!nextThreadId) throw new Error("Codex app-server n'a pas renvoyé d'identifiant de thread.");
       this.threadId = nextThreadId;
       expectedThreadId = nextThreadId;
-      resolvedModel = stringOf(threadResponse.model) || undefined;
+      const resolvedModel = stringOf(threadResponse.model) || undefined;
       if (resolvedModel) this.resolvedModel = resolvedModel;
 
       const turnResponse = asRecord(await connection.request("turn/start", {
@@ -373,7 +372,7 @@ export class CodexAgent implements CodingAgent {
         };
       }
 
-      return { kind: "success", text, resolvedModel };
+      return { kind: "success", text };
     } catch (error) {
       if (this.cancelled || options.signal?.aborted) {
         return { kind: "cancelled", partialText: text || undefined };

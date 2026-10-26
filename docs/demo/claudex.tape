@@ -46,5 +46,4 @@ Type "Comment refondre l'auth sans couper les utilisateurs connectés ?"
 Sleep 500ms
 Enter
 Sleep 4400ms
-Screenshot docs/demo/claudex.png
 Sleep 2s

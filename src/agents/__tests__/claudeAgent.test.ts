@@ -77,7 +77,7 @@ describe("ClaudeAgent streaming", () => {
 
     expect(deltas).toEqual(["Bon", "jour"]);
     expect(contexts).toEqual([{ usedTokens: 3_500, contextWindow: 200_000 }]);
-    expect(result).toMatchObject({ kind: "success", text: "Bonjour", resolvedModel: "claude-test" });
+    expect(result).toMatchObject({ kind: "success", text: "Bonjour" });
     expect(agent.currentModel()).toBe("Test");
     expect(queryMock.mock.calls[0]?.[0]?.options.model).toBeUndefined();
     expect(queryMock.mock.calls[0]?.[0]?.options.includePartialMessages).toBe(true);

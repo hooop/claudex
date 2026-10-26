@@ -1,6 +1,5 @@
 import {
   SELECTION_PALETTE_ROWS,
-  SELECTION_PALETTE_VISIBLE_ITEMS,
   SelectionPalette,
 } from "./SelectionPalette.js";
 
@@ -12,7 +11,6 @@ export interface CommandSuggestion {
   description: string;
 }
 
-export const COMMAND_PALETTE_VISIBLE_ITEMS = SELECTION_PALETTE_VISIBLE_ITEMS;
 export const COMMAND_PALETTE_ROWS = SELECTION_PALETTE_ROWS;
 
 export const WELCOME_COMMANDS: readonly CommandSuggestion[] = [

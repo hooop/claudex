@@ -5,7 +5,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   initMemoryScaffold,
   rememberAutonomyBudget,
-  rememberModel,
   saveHandoff,
   saveTranscript,
   sessionTitle,
@@ -158,18 +157,18 @@ describe("transcript snapshots and project policy", () => {
     expect(second).toMatch(/-2\.md$/);
   });
 
-  it("serializes concurrent state updates so model and autonomy policy both survive", async () => {
-    await Promise.all([
-      rememberModel(cwd, "claude", "claude-test"),
-      rememberAutonomyBudget(cwd, { kind: "automatic-starts", maximum: 4 }),
-    ]);
+  it("serializes concurrent state updates so the last autonomy policy wins", async () => {
+    await Promise.all(
+      Array.from({ length: 20 }, (_, index) =>
+        rememberAutonomyBudget(cwd, { kind: "automatic-starts", maximum: index + 1 }),
+      ),
+    );
 
     const state = JSON.parse(
       await readFile(path.join(cwd, ".claudex/memory/.state.json"), "utf8"),
     ) as Record<string, unknown>;
-    expect(state).toMatchObject({
-      lastKnownModels: { claude: "claude-test" },
-      autonomyBudget: { kind: "automatic-starts", maximum: 4 },
+    expect(state).toEqual({
+      autonomyBudget: { kind: "automatic-starts", maximum: 20 },
     });
   });
 });

@@ -79,7 +79,6 @@ export interface SchedulerCallbacks {
   onConsensusReached: () => void;
   onConsensusInvalidated: () => void;
   onSynthesisReady: (summary: string) => void;
-  onModelResolved: (agent: AgentId, model: string) => void;
 }
 
 export class Scheduler {
@@ -899,11 +898,6 @@ export class Scheduler {
 
     switch (result.kind) {
       case "success": {
-        // Update resolved model
-        if (result.resolvedModel) {
-          this.callbacks.onModelResolved(agent, result.resolvedModel);
-        }
-
         // Parse the single shared protocol grammar before changing any causal
         // state. The visible body never includes a recognised marker.
         const { cleanText, signal } = extractSignal(result.text);

@@ -82,7 +82,7 @@ class DemoAgent implements CodingAgent {
       freeze(3_000);
     }
 
-    return { kind: "success", text: response, resolvedModel: this.currentModel() };
+    return { kind: "success", text: response };
   }
 
   async stop(): Promise<void> {

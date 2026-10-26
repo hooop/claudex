@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { AgentId, AutonomyBudget, TranscriptEntry } from "../types.js";
+import type { AutonomyBudget, TranscriptEntry } from "../types.js";
 
 const MEMORY_DIR = ".claudex/memory";
 
@@ -44,7 +44,6 @@ async function ensureMemoryDir(cwd: string): Promise<void> {
 }
 
 interface ClaudexState {
-  lastKnownModels?: Partial<Record<AgentId, string>>;
   autonomyBudget?: AutonomyBudget;
 }
 
@@ -58,23 +57,6 @@ async function readState(cwd: string): Promise<ClaudexState> {
   } catch {
     return {};
   }
-}
-
-/**
- * The Claude Agent SDK only reveals the actually-resolved default model
- * after a real turn (there's no static config to read it from beforehand,
- * unlike Codex's ~/.codex/config.toml). So we remember the last one we
- * actually saw, to show something better than a placeholder on the dashboard.
- */
-export async function rememberModel(cwd: string, agent: AgentId, model: string): Promise<void> {
-  await updateState(cwd, (state) => {
-    state.lastKnownModels = { ...state.lastKnownModels, [agent]: model };
-  });
-}
-
-export async function getLastKnownModel(cwd: string, agent: AgentId): Promise<string | null> {
-  const state = await readState(cwd);
-  return state.lastKnownModels?.[agent] ?? null;
 }
 
 export async function rememberAutonomyBudget(cwd: string, budget: AutonomyBudget): Promise<void> {

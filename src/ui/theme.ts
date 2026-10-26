@@ -20,7 +20,6 @@ export const BRAND_COLOR = "#a78bfa";
  * themes), and no block ever paints a background for the same reason.
  */
 export const CODE_COLOR = "#a3be8c";
-export const RULE_COLOR = "#8b949e";
 
 /** Reading measure, in columns. Long lines are the main thing that hurts legibility. */
 export const MAX_CONTENT_WIDTH = 84;
