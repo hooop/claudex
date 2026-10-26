@@ -221,6 +221,10 @@ src/
 
 Claudex is usable today and under active development. The current release includes topic qualification, the autonomous debate loop, human interventions, project memory, transcript archives, context-usage indicators, model selection, handoffs, and an optional implementation phase.
 
+## Contributing
+
+[AGENTS.md](AGENTS.md) describes the stack, the commands (`npm run check` must pass before a pull request), the conventions and the constraints to respect. `CLAUDE.md` imports it, so Claude Code and Codex read the same guide.
+
 ## License
 
 Claudex is available under the [MIT License](LICENSE). You may use, copy, modify, distribute, sublicense, or sell it, including for commercial purposes, provided that the copyright and license notice are retained.
