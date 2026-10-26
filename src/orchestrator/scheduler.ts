@@ -821,7 +821,7 @@ export class Scheduler {
     job.attempts++;
 
     const agent = job.agent;
-    const message = this.buildJobMessage(job);
+    const message = this.pendingInstructions(agent) + this.buildJobMessage(job);
 
     this.busy = true;
     this.currentAbort = new AbortController();
@@ -898,6 +898,10 @@ export class Scheduler {
 
     switch (result.kind) {
       case "success": {
+        // Only an answered turn proves the agent read the rules it carried. A
+        // failed one may be replaced by a new delivery, which must bring them.
+        this.instructed[agent] = true;
+
         // Parse the single shared protocol grammar before changing any causal
         // state. The visible body never includes a recognised marker.
         const { cleanText, signal } = extractSignal(result.text);
@@ -1057,19 +1061,15 @@ export class Scheduler {
   private buildJobMessage(job: DeliveryJob): string {
     if (job.message !== undefined) return job.message;
     const agent = job.agent;
-    const other = this.other(agent);
-
-    // Ensure instructions are added
-    const prefix = this.ensureInstructed(agent, other);
 
     // Every block says who wrote it and who it is for. Without this an agent
     // reads the other one's text with no attribution at all — the debate rules
-    // are sent once, on the first turn only, so by the tenth round nothing in
+    // are sent once, on the first answered turn only, so by the tenth round nothing in
     // the message identifies either party, and an agent can start answering as
     // if it were its counterpart. `source` existed for this and was discarded.
     const content = job.blocks.map((b) => blockHeader(b, agent) + b.text).join("\n\n");
 
-    job.message = prefix + content;
+    job.message = content;
     return job.message;
   }
 
@@ -1590,10 +1590,15 @@ export class Scheduler {
     return full;
   }
 
-  private ensureInstructed(agent: AgentId, otherAgent: AgentId): string {
+  /**
+   * The debate rules, until the agent has answered a turn that carried them.
+   * Decided at send time rather than stored in the job, so whichever delivery
+   * reaches the agent first brings them, and a retry drops them only once
+   * another delivery has been answered.
+   */
+  private pendingInstructions(agent: AgentId): string {
     if (this.instructed[agent]) return "";
-    this.instructed[agent] = true;
-    return `${CONSENSUS_INSTRUCTIONS(AGENT_NAME[agent], AGENT_NAME[otherAgent])}\n\n`;
+    return `${CONSENSUS_INSTRUCTIONS(AGENT_NAME[agent], AGENT_NAME[this.other(agent)])}\n\n`;
   }
 }
 

@@ -633,6 +633,87 @@ describe("Scheduler", () => {
       expect(agents.claude.lastMessage).toBe(originalMessage);
     });
 
+    /**
+     * A failed first turn never reached the agent, so the debate rules it
+     * carried were never read. Typing a message instead of /resume replaces
+     * that turn, and the replacement must carry the rules in its place.
+     */
+    it("should send the debate rules again when a failed first qualification is replaced", async () => {
+      scheduler.start("Test topic");
+
+      await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
+      agents.claude.fail("spawn claude ENOENT");
+      await vi.waitFor(() => expect(scheduler.isPaused()).toBe(true));
+
+      scheduler.intervene("Precision", "both");
+
+      await vi.waitFor(() => expect(agents.claude.getSendCount()).toBe(2));
+      expect(agents.claude.lastMessage).toContain("Precision");
+      expect(agents.claude.lastMessage).toContain("tu es Claude");
+    });
+
+    it("should send the debate rules with an intervention that follows a failed first turn", async () => {
+      scheduler.start("Test topic");
+
+      await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
+      agents.claude.complete("Qualification\n\n<<CONTINUE>>");
+      await vi.waitFor(() => expect(agents.codex.isPending()).toBe(true));
+      agents.codex.fail("turn/start rejected: unknown model");
+      await vi.waitFor(() => expect(scheduler.isPaused()).toBe(true));
+
+      scheduler.intervene("Use the default model", "codex");
+
+      await vi.waitFor(() => expect(agents.codex.getSendCount()).toBe(2));
+      expect(agents.codex.lastMessage).toContain("Use the default model");
+      expect(agents.codex.lastMessage).toContain("tu es Codex");
+    });
+
+    it("should not repeat the debate rules when a failed turn is retried after a delivered one", async () => {
+      scheduler.start("Test topic");
+
+      await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
+      agents.claude.complete("Qualification\n\n<<CONTINUE>>");
+      await vi.waitFor(() => expect(agents.codex.isPending()).toBe(true));
+      agents.codex.fail("turn/start rejected: unknown model");
+      await vi.waitFor(() => expect(scheduler.isPaused()).toBe(true));
+
+      scheduler.intervene("Use the default model", "codex");
+      await vi.waitFor(() => expect(agents.codex.getSendCount()).toBe(2));
+      agents.codex.complete("Switched model\n\n<<CONTINUE>>");
+
+      // The failed turn is retried next; the rules already arrived with the intervention.
+      await vi.waitFor(() => expect(agents.codex.getSendCount()).toBe(3));
+      expect(agents.codex.lastMessage).toContain("[Claude → Codex]\nQualification");
+      expect(agents.codex.lastMessage).not.toContain("tu es Codex");
+    });
+
+    it("should not repeat the debate rules when retrying an answer that lacked a marker", async () => {
+      scheduler.start("Test topic");
+
+      await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
+      agents.claude.complete("Qualification without a marker");
+      await vi.waitFor(() => expect(scheduler.isPaused()).toBe(true));
+
+      // The agent answered, so it read the rules even though the answer is rejected.
+      scheduler.resume();
+
+      await vi.waitFor(() => expect(agents.claude.getSendCount()).toBe(2));
+      expect(agents.claude.lastMessage).toContain("Test topic");
+      expect(agents.claude.lastMessage).not.toContain("tu es Claude");
+    });
+
+    it("should send the debate rules only once to an agent whose turn succeeded", async () => {
+      scheduler.start("Test topic");
+
+      await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
+      agents.claude.complete("Qualification\n\n<<CONTINUE>>");
+      await vi.waitFor(() => expect(agents.codex.isPending()).toBe(true));
+      agents.codex.complete("Reply\n\n<<CONTINUE>>");
+
+      await vi.waitFor(() => expect(agents.claude.getSendCount()).toBe(2));
+      expect(agents.claude.lastMessage).not.toContain("tu es Claude");
+    });
+
     it("should not retry a failed intervention from an already-consumed wake-up", async () => {
       scheduler.start("Test topic");
 
