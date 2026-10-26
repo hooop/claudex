@@ -15,10 +15,10 @@ export default tseslint.config(
   },
   ...tseslint.configs.recommendedTypeChecked.map((config) => ({
     ...config,
-    files: ["src/**/*.{ts,tsx}"],
+    files: ["src/**/*.{ts,tsx}", "docs/demo/**/*.{ts,tsx}"],
   })),
   {
-    files: ["src/**/*.{ts,tsx}"],
+    files: ["src/**/*.{ts,tsx}", "docs/demo/**/*.{ts,tsx}"],
     languageOptions: {
       globals: globals.node,
       parserOptions: {
@@ -31,7 +31,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ["src/**/*.tsx"],
+    files: ["src/**/*.tsx", "docs/demo/**/*.tsx"],
     plugins: { "react-hooks": reactHooks },
     rules: {
       "react-hooks/rules-of-hooks": "error",

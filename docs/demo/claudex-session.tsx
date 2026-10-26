@@ -3,11 +3,11 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { render } from "ink";
-import React, { useCallback, useState } from "react";
+import { useCallback, useState } from "react";
 import { DebateSession } from "../../src/orchestrator/session.js";
 import type { AgentResult } from "../../src/orchestrator/types.js";
 import type { AgentSendOptions, CodingAgent } from "../../src/agents/types.js";
-import type { AgentId, AutonomyBudget } from "../../src/types.js";
+import type { AgentId } from "../../src/types.js";
 import { DebateView } from "../../src/ui/DebateView.js";
 import { initMemoryScaffold } from "../../src/memory/store.js";
 import { WelcomeScreen } from "../../src/ui/components/WelcomeScreen.js";
@@ -40,8 +40,8 @@ class DemoAgent implements CodingAgent {
     this.turn = 0;
   }
 
-  async send(message: string, options: AgentSendOptions): Promise<AgentResult> {
-    const response = this.responseFor(message);
+  async send(_message: string, options: AgentSendOptions): Promise<AgentResult> {
+    const response = this.responseFor();
     this.turn++;
 
     options.onActivity?.({ kind: "waiting", status: "running" });
@@ -89,7 +89,7 @@ class DemoAgent implements CodingAgent {
     // No remote process to stop in the demo.
   }
 
-  private responseFor(message: string): string {
+  private responseFor(): string {
     if (this.id === "claude" && this.turn === 0) {
       return [
         "Sujet accepté. Je cadrerais la migration comme un basculement progressif, pas comme une réécriture.",
@@ -156,7 +156,7 @@ const status: ProjectStatus = {
   decisionsCount: 5,
   decisionsText: null,
   lastSession: "2026-09-28T08:12:00.000Z",
-  autonomyBudget: undefined,
+  autonomyBudget: null,
   claudeConfiguredModel: "Opus 5",
   claudeDefaultModel: "Opus 5",
   codexDefaultModel: "gpt-5.6-sol",
@@ -193,8 +193,8 @@ function DemoApp() {
       headerAnimation={headerAnimation}
       coordinatorState={{ kind: "idle" }}
       coordinatorNotice={null}
-      onLifecycleRequest={async () => ({ ok: true, message: "Démo terminée." })}
-      onAutonomySelected={async (_budget: AutonomyBudget) => undefined}
+      onLifecycleRequest={() => Promise.resolve({ ok: true, message: "Démo terminée." })}
+      onAutonomySelected={() => Promise.resolve()}
     />
   );
 }
