@@ -58,6 +58,13 @@ function nextIndex(text: string, index: number): number {
   return next ? index + next.length : text.length;
 }
 
+interface Draft {
+  value: string;
+  cursor: number;
+}
+
+const EMPTY_DRAFT: Draft = { value: "", cursor: 0 };
+
 interface InputGlyph {
   text: string;
   width: number;
@@ -135,8 +142,15 @@ export function InputBar(props: {
   inputActive?: boolean;
 }) {
   const { onCommandPaletteChange, onRowsChange } = props;
-  const [value, setValue] = useState("");
-  const [cursor, setCursor] = useState(0);
+  const [draft, setDraftState] = useState<Draft>(EMPTY_DRAFT);
+  // Ink can deliver several stdin chunks before React re-renders; reading the
+  // draft from the last render would let each chunk overwrite the previous one.
+  const latestDraft = useRef<Draft>(EMPTY_DRAFT);
+  const setDraft = (next: Draft) => {
+    latestDraft.current = next;
+    setDraftState(next);
+  };
+  const { value, cursor } = draft;
   const [cursorVisible, setCursorVisible] = useState(true);
   const [selectedCommand, setSelectedCommand] = useState(0);
   const [paletteDismissed, setPaletteDismissed] = useState(false);
@@ -162,6 +176,7 @@ export function InputBar(props: {
 
   useInput(
     (input, key) => {
+      const { value, cursor } = latestDraft.current;
       if (paletteOpen) {
         if (key.upArrow || key.downArrow) {
           if (commandMatches.length > 0) {
@@ -175,8 +190,7 @@ export function InputBar(props: {
         if (key.tab) {
           const command = commandMatches[safeSelectedCommand];
           if (command) {
-            setValue(command.completion);
-            setCursor(command.completion.length);
+            setDraft({ value: command.completion, cursor: command.completion.length });
             setPaletteDismissed(true);
           }
           return;
@@ -194,8 +208,7 @@ export function InputBar(props: {
       if (key.return) {
         const submitted = value;
         if (!submitted.trim()) return;
-        setValue("");
-        setCursor(0);
+        setDraft(EMPTY_DRAFT);
         setPaletteDismissed(false);
         onCommandPaletteChange?.(false);
         try {
@@ -216,7 +229,7 @@ export function InputBar(props: {
           props.onNavigate(-1);
           return;
         }
-        setCursor((c) => previousIndex(value, c));
+        setDraft({ value, cursor: previousIndex(value, cursor) });
         return;
       }
       if (key.rightArrow) {
@@ -224,20 +237,19 @@ export function InputBar(props: {
           props.onNavigate(1);
           return;
         }
-        setCursor((c) => nextIndex(value, c));
+        setDraft({ value, cursor: nextIndex(value, cursor) });
         return;
       }
       if (key.ctrl && input === "a") {
-        setCursor(0);
+        setDraft({ value, cursor: 0 });
         return;
       }
       if (key.ctrl && input === "e") {
-        setCursor(value.length);
+        setDraft({ value, cursor: value.length });
         return;
       }
       if (key.ctrl && input === "u") {
-        setValue("");
-        setCursor(0);
+        setDraft(EMPTY_DRAFT);
         setPaletteDismissed(false);
         return;
       }
@@ -245,8 +257,7 @@ export function InputBar(props: {
         if (cursor === 0) return;
         const previous = previousIndex(value, cursor);
         const nextValue = value.slice(0, previous) + value.slice(cursor);
-        setValue(nextValue);
-        setCursor(previous);
+        setDraft({ value: nextValue, cursor: previous });
         if (!nextValue.startsWith("/")) setPaletteDismissed(false);
         return;
       }
@@ -256,8 +267,7 @@ export function InputBar(props: {
       const clean = input.replace(/[\u0000-\u001f\u007f]/g, "");
       if (clean === "") return;
       const nextValue = value.slice(0, cursor) + clean + value.slice(cursor);
-      setValue(nextValue);
-      setCursor(cursor + clean.length);
+      setDraft({ value: nextValue, cursor: cursor + clean.length });
       if (!nextValue.startsWith("/")) setPaletteDismissed(false);
     },
     { isActive: inputActive },

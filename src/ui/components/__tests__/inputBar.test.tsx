@@ -51,6 +51,11 @@ function fakeTerminal() {
       inputQueue.push(input);
       stdin.emit("readable");
     },
+    /** Several stdin chunks read in one `readable` event, as a long raw paste arrives. */
+    pushBurst(chunks: readonly string[]) {
+      inputQueue.push(...chunks);
+      stdin.emit("readable");
+    },
   };
 }
 
@@ -261,6 +266,23 @@ describe("InputBar — navigation contextuelle", () => {
     await press(terminal, "\r");
 
     expect(terminal.onSubmit).toHaveBeenCalledWith("ba");
+    terminal.app.unmount();
+  });
+});
+
+describe("InputBar — collage", () => {
+  it("garde chaque morceau d'un collage brut arrivé d'un seul bloc", async () => {
+    const terminal = mount();
+    await ready(terminal);
+
+    const chunks = ["a".repeat(4000), "b".repeat(4000), "c".repeat(4000)];
+    await act(async () => {
+      terminal.pushBurst(chunks);
+      await new Promise((resolve) => setTimeout(resolve, 60));
+    });
+    await press(terminal, "\r");
+
+    expect(terminal.onSubmit).toHaveBeenCalledWith(chunks.join(""));
     terminal.app.unmount();
   });
 });
