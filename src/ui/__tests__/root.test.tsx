@@ -185,6 +185,7 @@ describe("Root — cycle de vie du header", () => {
       stderr: terminal.stderr as never,
       exitOnCtrlC: false,
       patchConsole: false,
+      interactive: true,
     });
 
     await vi.waitFor(() => expect(terminal.stdin.listenerCount("readable")).toBeGreaterThan(0));
@@ -243,6 +244,7 @@ describe("Root — cycle de vie du header", () => {
       stderr: terminal.stderr as never,
       exitOnCtrlC: false,
       patchConsole: false,
+      interactive: true,
     });
 
     await vi.waitFor(() => expect(terminal.stdin.listenerCount("readable")).toBeGreaterThan(0));
@@ -270,6 +272,7 @@ describe("Root — cycle de vie du header", () => {
       stderr: terminal.stderr as never,
       exitOnCtrlC: false,
       patchConsole: false,
+      interactive: true,
     });
 
     await vi.waitFor(() => expect(terminal.stdin.listenerCount("readable")).toBeGreaterThan(0));
@@ -300,6 +303,7 @@ describe("Root — cycle de vie du header", () => {
       stderr: terminal.stderr as never,
       exitOnCtrlC: false,
       patchConsole: false,
+      interactive: true,
     });
 
     await vi.waitFor(() => expect(terminal.stdin.listenerCount("readable")).toBeGreaterThan(0));
@@ -342,6 +346,7 @@ describe("Root — cycle de vie du header", () => {
       stderr: terminal.stderr as never,
       exitOnCtrlC: false,
       patchConsole: false,
+      interactive: true,
     });
 
     await vi.waitFor(() => expect(terminal.stdin.listenerCount("readable")).toBeGreaterThan(0));
@@ -375,6 +380,7 @@ describe("Root — cycle de vie du header", () => {
       stderr: terminal.stderr as never,
       exitOnCtrlC: false,
       patchConsole: false,
+      interactive: true,
     });
 
     await vi.waitFor(() => expect(terminal.stdin.listenerCount("readable")).toBeGreaterThan(0));
@@ -399,6 +405,7 @@ describe("Root — cycle de vie du header", () => {
       stderr: terminal.stderr as never,
       exitOnCtrlC: false,
       patchConsole: false,
+      interactive: true,
     });
 
     await vi.waitFor(() => expect(terminal.stdin.listenerCount("readable")).toBeGreaterThan(0));
@@ -426,6 +433,7 @@ describe("Root — cycle de vie du header", () => {
       stderr: terminal.stderr as never,
       exitOnCtrlC: false,
       patchConsole: false,
+      interactive: true,
     });
     await vi.waitFor(() => expect(terminal.stdin.listenerCount("readable")).toBeGreaterThan(0));
     await new Promise((resolve) => setTimeout(resolve, 20));
@@ -451,6 +459,7 @@ describe("Root — cycle de vie du header", () => {
       stderr: terminal.stderr as never,
       exitOnCtrlC: false,
       patchConsole: false,
+      interactive: true,
     });
 
     await vi.waitFor(() => expect(terminal.stdin.listenerCount("readable")).toBeGreaterThan(0));
@@ -479,6 +488,7 @@ describe("Root — cycle de vie du header", () => {
       stderr: terminal.stderr as never,
       exitOnCtrlC: false,
       patchConsole: false,
+      interactive: true,
     });
 
     await vi.waitFor(() => expect(terminal.stdin.listenerCount("readable")).toBeGreaterThan(0));
@@ -517,6 +527,7 @@ describe("Root — cycle de vie du header", () => {
       stderr: terminal.stderr as never,
       exitOnCtrlC: false,
       patchConsole: false,
+      interactive: true,
     });
     await vi.waitFor(() => expect(terminal.stdin.listenerCount("readable")).toBeGreaterThan(0));
     await new Promise((resolve) => setTimeout(resolve, 20));
@@ -551,6 +562,7 @@ describe("Root — cycle de vie du header", () => {
       stderr: terminal.stderr as never,
       exitOnCtrlC: false,
       patchConsole: false,
+      interactive: true,
     });
     await vi.waitFor(() => expect(terminal.stdin.listenerCount("readable")).toBeGreaterThan(0));
     await new Promise((resolve) => setTimeout(resolve, 20));

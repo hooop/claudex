@@ -23,6 +23,8 @@ function fakeTerminal() {
   const stdout = Object.assign(new EventEmitter(), {
     // Ink 7 ne dessine de trame que si la sortie est un vrai terminal
     // (`interactive` = !CI && stdout.isTTY). Sans ce drapeau, il n'écrit rien.
+    // isTTY ne suffit pas sous CI=true (GitHub Actions) : render() force donc
+    // aussi `interactive: true`.
     isTTY: true,
     columns: 80,
     rows: 24,
@@ -84,6 +86,7 @@ function mount(
       stderr: terminal.stderr as never,
       exitOnCtrlC: false,
       patchConsole: false,
+      interactive: true,
     },
   );
   return { ...terminal, app, onSubmit };
