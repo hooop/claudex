@@ -5,6 +5,15 @@
   "license": "MIT",
   "type": "module",
   "description": "Terminal orchestrator for a live, human-arbitrated debate between Claude Code and Codex before any code gets written.",
+  "author": "Emmanuel",
+  "homepage": "https://github.com/hooop/claudex#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hooop/claudex.git"
+  },
+  "bugs": {
+    "url": "https://github.com/hooop/claudex/issues"
+  },
   "engines": {
     "node": ">=22"
   },
