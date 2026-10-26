@@ -1,5 +1,7 @@
 # Claudex
 
+[![CI](https://github.com/hooop/claudex/actions/workflows/ci.yml/badge.svg)](https://github.com/hooop/claudex/actions/workflows/ci.yml)
+
 Claudex runs a structured debate between Claude Code and Codex on a technical question, inside a single terminal, with a human in control. It replaces the manual copy-paste of one agent's answer into the other and keeps the discussion attached to the project.
 
 <img src="docs/demo/claudex.gif" alt="Claudex demo: animated header, a topic typed into the prompt, then Claude and Codex debating an authentication migration" width="660">
@@ -118,7 +120,7 @@ Claudex is currently installed from source; it is not published as an npm packag
 npm run check
 ```
 
-This runs the strict TypeScript typecheck, ESLint, then the complete test suite. Everything should pass.
+This runs the strict TypeScript typecheck, ESLint, then the complete test suite. Everything should pass. The same command runs in CI, on Node 22, for every pull request and every push to `main`.
 
 ### Common problems
 

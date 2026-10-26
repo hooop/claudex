@@ -168,6 +168,7 @@ function mount(options: { fromFullScreen?: boolean; topic?: string } = {}) {
       stderr: terminal.stderr as never,
       exitOnCtrlC: false,
       patchConsole: false,
+      interactive: true,
     },
   );
 

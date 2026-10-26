@@ -23,7 +23,7 @@
   "scripts": {
     "dev": "node --import tsx src/cli.tsx",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src bin",
+    "lint": "eslint src bin docs/demo",
     "test": "vitest run",
     "test:watch": "vitest",
     "check": "npm run typecheck && npm run lint && npm test"

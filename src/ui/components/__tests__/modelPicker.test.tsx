@@ -44,6 +44,7 @@ function mount(agent: "claude" | "codex") {
       stderr: stderr as never,
       exitOnCtrlC: false,
       patchConsole: false,
+      interactive: true,
     },
   );
   return {
