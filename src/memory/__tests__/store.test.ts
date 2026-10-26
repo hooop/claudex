@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -101,7 +102,7 @@ describe("initMemoryScaffold", () => {
     ]);
   });
 
-  it("leaves curated memory shareable, since CLAUDE.md and AGENTS.md point at it", async () => {
+  it("leaves curated memory shareable, since the debate rules point at it", async () => {
     await initMemoryScaffold(cwd);
     const rules = rulesOf(await readFile(path.join(cwd, ".claudex/.gitignore"), "utf8"));
 
@@ -182,8 +183,8 @@ describe("sessionTitle", () => {
     expect(sessionTitle("Premier axe\n\n  puis le second")).toBe("Premier axe puis le second");
   });
 
-  // Le devlog est lu au démarrage de chaque session : y recopier un prompt
-  // d'audit de plusieurs milliers de mots le faisait grossir sans borne.
+  // Le devlog est un index des sessions : y recopier un prompt d'audit de
+  // plusieurs milliers de mots le faisait grossir sans borne.
   it("tronque un long prompt et signale la coupe", () => {
     const title = sessionTitle("mot ".repeat(200));
     expect(title.length).toBeLessThanOrEqual(61);
@@ -191,7 +192,10 @@ describe("sessionTitle", () => {
   });
 });
 
-describe("CLAUDE.md généré", () => {
+// CLAUDE.md et AGENTS.md appartiennent à l'utilisateur : tout ce que Claudex y
+// écrit est relu par chaque session Claude Code ou Codex ouverte ensuite dans
+// le dépôt, débat ou pas. La mémoire passe par les règles du débat.
+describe("fichiers d'instructions de l'utilisateur", () => {
   let cwd: string;
 
   beforeEach(async () => {
@@ -202,17 +206,24 @@ describe("CLAUDE.md généré", () => {
     await rm(cwd, { recursive: true, force: true });
   });
 
-  // `@fichier` recopie le fichier entier dans le prompt système à chaque appel,
-  // alors qu'AGENTS.md se contente de nommer les mêmes fichiers à Codex.
-  it("nomme la mémoire du projet au lieu de l'importer", async () => {
-    await initMemoryScaffold(cwd);
-    const claudeMd = await readFile(path.join(cwd, "CLAUDE.md"), "utf8");
-    const agentsMd = await readFile(path.join(cwd, "AGENTS.md"), "utf8");
+  it("n'en crée aucun au premier lancement", async () => {
+    const { created } = await initMemoryScaffold(cwd);
 
-    expect(claudeMd).not.toContain("@.claudex/memory/");
-    for (const file of ["decisions.md", "limits.md", "devlog.md"]) {
-      expect(claudeMd).toContain(`.claudex/memory/${file}`);
-      expect(agentsMd).toContain(`.claudex/memory/${file}`);
-    }
+    expect(existsSync(path.join(cwd, "CLAUDE.md"))).toBe(false);
+    expect(existsSync(path.join(cwd, "AGENTS.md"))).toBe(false);
+    expect(created.filter((file) => /CLAUDE\.md|AGENTS\.md/u.test(file))).toEqual([]);
+  });
+
+  it("laisse intacts ceux qui existent déjà, lancement après lancement", async () => {
+    const claudeMd = "# Mes règles\n\nPas de mémoire ici.\n";
+    const agentsMd = "# Agents\n";
+    await writeFile(path.join(cwd, "CLAUDE.md"), claudeMd, "utf8");
+    await writeFile(path.join(cwd, "AGENTS.md"), agentsMd, "utf8");
+
+    await initMemoryScaffold(cwd);
+    await initMemoryScaffold(cwd);
+
+    expect(await readFile(path.join(cwd, "CLAUDE.md"), "utf8")).toBe(claudeMd);
+    expect(await readFile(path.join(cwd, "AGENTS.md"), "utf8")).toBe(agentsMd);
   });
 });

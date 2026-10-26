@@ -155,7 +155,7 @@ describe("ClaudeAgent — réglages par phase", () => {
 
   /**
    * Retirer les réglages utilisateur allège le débat, mais les instructions
-   * projet — CLAUDE.md et les pointeurs vers la mémoire — doivent rester dans
+   * projet — le CLAUDE.md de l'utilisateur — doivent rester dans
    * les deux phases, et l'implémentation garde l'outillage global.
    */
   it("charge les réglages utilisateur seulement pendant l'implémentation", async () => {
