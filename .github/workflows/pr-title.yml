@@ -1,0 +1,28 @@
+name: PR title
+
+on:
+  pull_request:
+    # synchronize re-runs the check on each new commit, so a required check
+    # is never missing on the head commit.
+    types: [opened, edited, synchronize, reopened]
+    branches: [main]
+
+permissions: {}
+
+jobs:
+  conventional-commits:
+    name: conventional-commits
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - name: Check that the title follows Conventional Commits
+        # The title is attacker-controlled: it goes through env, never into the script text.
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          pattern='^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\([a-z0-9._-]+\))?!?: [^ ].*$'
+          if [[ ! "$TITLE" =~ $pattern ]]; then
+            echo "::error::The PR title must follow Conventional Commits, e.g. 'feat(ui): add a help panel'."
+            printf 'Current title: %s\n' "$TITLE"
+            exit 1
+          fi
