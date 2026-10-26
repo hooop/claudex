@@ -2,6 +2,32 @@
 
 Journal des décisions validées à l'issue d'un débat Claude ↔ Codex.
 
+## 2026-10-26 — Claudex ne touche plus à CLAUDE.md ni à AGENTS.md
+
+**Nature :** arbitrage humain direct, avant la distribution sur une marketplace.
+
+**Constat :** au lancement, Claudex créait `CLAUDE.md` et `AGENTS.md`, ou leur ajoutait une section
+de mémoire. Ce texte était relu par toutes les sessions Claude Code ou Codex ouvertes ensuite dans
+le dépôt, débat ou pas, y compris la consigne « débat jusqu'à consensus avant toute écriture de
+code ». La section revenait au lancement suivant si l'utilisateur la supprimait, et le modèle
+pointait vers `devlog.md`, qui n'est pas versionné.
+
+**Décisions :**
+- Claudex n'écrit rien hors de `.claudex/`. `CLAUDE.md` et `AGENTS.md` appartiennent à l'utilisateur
+  et restent lus par les agents pendant le débat.
+- Les règles du débat (`CONSENSUS_INSTRUCTIONS`), envoyées une fois à chaque agent par le même
+  chemin, nomment `decisions.md` et `limits.md`. Nommés, pas recopiés (coût en tokens, voir
+  `limits.md`). Le devlog n'est plus désigné : c'est un index local des sessions.
+- Les fichiers produits par les versions précédentes ne sont pas nettoyés automatiquement ; le README
+  indique qu'on peut supprimer la section.
+
+**Alternatives écartées :** écriture sur consentement au premier lancement (une option de plus à
+maintenir pour un bénéfice limité aux sessions hors Claudex) ;
+garder la génération en retirant seulement la phrase sur le binôme (le fichier reste modifié sans
+demande).
+
+**Fichiers concernés :** `src/memory/store.ts`, `src/orchestrator/scheduler.ts`, `README.md`.
+
 ## 2026-09-28 — Le débat utilise un viewport plein écran géré par Claudex
 
 **Nature :** arbitrage humain direct après essais visuels du header animé.

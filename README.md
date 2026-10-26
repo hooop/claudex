@@ -34,7 +34,9 @@ The topic is not restricted to architecture. Anything settled before code gets w
 
 **Topic qualification.** The first message is assessed before it becomes the official topic. An off-topic or incomplete request receives an answer and waits for clarification. Nothing is written to project memory until a topic has been accepted.
 
-**Persistent project memory.** Decisions and constraints are stored in `.claudex/memory/`, then read again automatically at the start of every session by Claude through `CLAUDE.md` and by Codex through `AGENTS.md`.
+**Persistent project memory.** Decisions and constraints are stored in `.claudex/memory/`. The debate rules sent to both agents point them at those files, so every new debate starts from what was already settled.
+
+**Your instruction files stay yours.** Claudex never creates or modifies `CLAUDE.md` or `AGENTS.md`. If you already have them, both agents keep reading them during a debate. Earlier versions of Claudex appended a "Mémoire du projet (Claudex)" section to these files, or created them; that section, or the whole file if Claudex created it, can be deleted safely.
 
 **Full-screen terminal interface.** The header and input stay fixed while the transcript scrolls independently. Use the wheel or `↑`/`↓`, `Page Up`/`Page Down`, and `Home`/`End` to navigate; the complete transcript is archived in `.claudex/memory/transcripts/`.
 
@@ -52,7 +54,7 @@ Worth reading before pointing Claudex at a repository owned by someone else, or 
 
 **Implementation is a separate, explicit phase.** `/implement` gives the agents write-capable tools. Codex remains sandboxed to the current project and temporary directories, with network access disabled. Claude Code uses its normal implementation tools and may ask for permission before sensitive actions. Review the agreed plan before enabling this phase.
 
-**Debates are written inside the repository.** Claudex creates a `.claudex/` directory at the root of the folder it is launched from, and stores transcripts there. On first launch it also installs a `.gitignore` so those transcripts never reach a commit. Decisions and limits stay committable on purpose: they are short, and both `CLAUDE.md` and `AGENTS.md` point to them.
+**Debates are written inside the repository.** Claudex creates a `.claudex/` directory at the root of the folder it is launched from, and stores transcripts there. On first launch it also installs a `.gitignore` so those transcripts never reach a commit. Decisions and limits stay committable on purpose: they are short, and anyone who clones the repository should get them.
 
 ## Requirements
 
