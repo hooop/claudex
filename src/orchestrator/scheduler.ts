@@ -1064,7 +1064,7 @@ export class Scheduler {
 
     // Every block says who wrote it and who it is for. Without this an agent
     // reads the other one's text with no attribution at all — the debate rules
-    // are sent once, on the first turn only, so by the tenth round nothing in
+    // are sent once, on the first answered turn only, so by the tenth round nothing in
     // the message identifies either party, and an agent can start answering as
     // if it were its counterpart. `source` existed for this and was discarded.
     const content = job.blocks.map((b) => blockHeader(b, agent) + b.text).join("\n\n");
@@ -1593,7 +1593,8 @@ export class Scheduler {
   /**
    * The debate rules, until the agent has answered a turn that carried them.
    * Decided at send time rather than stored in the job, so whichever delivery
-   * reaches the agent first brings them, and a retry never repeats them.
+   * reaches the agent first brings them, and a retry drops them only once
+   * another delivery has been answered.
    */
   private pendingInstructions(agent: AgentId): string {
     if (this.instructed[agent]) return "";

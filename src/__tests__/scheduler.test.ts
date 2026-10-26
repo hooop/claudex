@@ -648,6 +648,7 @@ describe("Scheduler", () => {
       scheduler.intervene("Precision", "both");
 
       await vi.waitFor(() => expect(agents.claude.getSendCount()).toBe(2));
+      expect(agents.claude.lastMessage).toContain("Precision");
       expect(agents.claude.lastMessage).toContain("tu es Claude");
     });
 
@@ -663,6 +664,7 @@ describe("Scheduler", () => {
       scheduler.intervene("Use the default model", "codex");
 
       await vi.waitFor(() => expect(agents.codex.getSendCount()).toBe(2));
+      expect(agents.codex.lastMessage).toContain("Use the default model");
       expect(agents.codex.lastMessage).toContain("tu es Codex");
     });
 
@@ -683,6 +685,21 @@ describe("Scheduler", () => {
       await vi.waitFor(() => expect(agents.codex.getSendCount()).toBe(3));
       expect(agents.codex.lastMessage).toContain("[Claude → Codex]\nQualification");
       expect(agents.codex.lastMessage).not.toContain("tu es Codex");
+    });
+
+    it("should not repeat the debate rules when retrying an answer that lacked a marker", async () => {
+      scheduler.start("Test topic");
+
+      await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
+      agents.claude.complete("Qualification without a marker");
+      await vi.waitFor(() => expect(scheduler.isPaused()).toBe(true));
+
+      // The agent answered, so it read the rules even though the answer is rejected.
+      scheduler.resume();
+
+      await vi.waitFor(() => expect(agents.claude.getSendCount()).toBe(2));
+      expect(agents.claude.lastMessage).toContain("Test topic");
+      expect(agents.claude.lastMessage).not.toContain("tu es Claude");
     });
 
     it("should send the debate rules only once to an agent whose turn succeeded", async () => {
