@@ -175,4 +175,27 @@ describe("ClaudeAgent — réglages par phase", () => {
 
     expect(queryMock.mock.calls[0]?.[0]?.options.model).toBe("opus");
   });
+
+  /**
+   * En débat, la lecture seule ne repose que sur `tools` et `canUseTool` :
+   * `permissionMode: "plan"` et `allowedTools` ne l'imposent pas dans le SDK
+   * installé (limits.md, 2026-08-29). Ce test fige ces réglages pour qu'une
+   * mise à jour du SDK ne les relâche pas en silence.
+   */
+  it("restreint le débat à Read, Grep et Glob, sous arbitrage humain", async () => {
+    queryMock.mockReturnValue(messages([successResult()]));
+    const agent = new ClaudeAgent();
+    await agent.send("Sujet", {
+      cwd: "/tmp",
+      writeAccess: false,
+      onPermissionRequest: async () => ({ behavior: "deny" }),
+    });
+
+    const options = queryMock.mock.calls[0]?.[0]?.options;
+    expect(options.tools).toEqual(["Read", "Grep", "Glob"]);
+    expect(options.permissionMode).toBe("default");
+    expect(options.allowedTools).toEqual([]);
+    expect(options.settingSources).toEqual(["project"]);
+    expect(typeof options.canUseTool).toBe("function");
+  });
 });
