@@ -135,8 +135,8 @@ export class ClaudeAgent implements CodingAgent {
           // Claudex needs from those settings is the default model, which it
           // reads itself and passes as `model` above.
           //
-          // Project settings stay in both phases: that is where CLAUDE.md and
-          // the pointers to the project memory live.
+          // Project settings stay in both phases: that is where the user's own
+          // CLAUDE.md lives, and their instructions apply during a debate too.
           settingSources: options.writeAccess ? ["project", "user"] : ["project"],
           // Deliberately always "default", never "plan": plan mode carries its own
           // built-in ritual (present a plan, call ExitPlanMode) that conflicts with

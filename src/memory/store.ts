@@ -11,8 +11,8 @@ const MEMORY_DIR = ".claudex/memory";
  * Transcripts and handoffs are bulky and hold the raw text of a debate; the
  * devlog holds every prompt its author ever typed. None of that belongs in a
  * team's history by accident. Decisions and limits are the opposite: short,
- * deliberately curated, and referenced by CLAUDE.md and AGENTS.md — a teammate
- * cloning the repository should get them.
+ * deliberately curated, and read by both agents at the start of every debate —
+ * a teammate cloning the repository should get them.
  */
 const CLAUDEX_GITIGNORE = `# Écrit par Claudex au premier lancement, pour que les transcripts de tes débats
 # ne partent pas dans un commit de ce dépôt.
@@ -27,12 +27,11 @@ memory/*
 !memory/decisions.md
 !memory/limits.md
 
-# decisions.md et limits.md sont courts, écrits à dessein, et référencés par
-# CLAUDE.md comme par AGENTS.md : une personne qui clone le dépôt doit les
+# decisions.md et limits.md sont courts, écrits à dessein, et relus par les deux
+# agents au début de chaque débat : une personne qui clone le dépôt doit les
 # recevoir. Retire les deux dernières lignes pour garder la mémoire du projet
 # entièrement locale.
 `;
-const MEMORY_MARKER = ".claudex/memory/decisions.md";
 const STATE_FILE = ".claudex/memory/.state.json";
 
 function memoryPath(cwd: string, file: string): string {
@@ -288,8 +287,10 @@ export async function readDecisions(cwd: string): Promise<string | null> {
 }
 
 /**
- * Idempotent: creates .claudex/memory/*.md and wires CLAUDE.md / AGENTS.md to
- * point at them, without clobbering existing project instructions.
+ * Idempotent: creates .claudex/memory/*.md and nothing outside .claudex/.
+ * CLAUDE.md and AGENTS.md belong to the user: whatever Claudex wrote there was
+ * read by every later Claude Code or Codex session in the repository, debate or
+ * not. Both debate agents learn about the memory from the debate rules instead.
  */
 export async function initMemoryScaffold(cwd: string): Promise<{ created: string[] }> {
   await ensureMemoryDir(cwd);
@@ -299,7 +300,7 @@ export async function initMemoryScaffold(cwd: string): Promise<{ created: string
   // user's own repository, so without this the first `git add .` sweeps a full
   // transcript of their internal discussions into a commit — possibly their
   // employer's. Curated memory (decisions, limits) stays committable on
-  // purpose: it is small, deliberate, and the file CLAUDE.md/AGENTS.md point at.
+  // purpose: it is small, deliberate, and what the debate rules point at.
   const ignorePath = path.join(cwd, ".claudex", ".gitignore");
   if (!existsSync(ignorePath)) {
     await writeFile(ignorePath, CLAUDEX_GITIGNORE, "utf8");
@@ -325,84 +326,5 @@ export async function initMemoryScaffold(cwd: string): Promise<{ created: string
     }
   }
 
-  const claudeMdPath = path.join(cwd, "CLAUDE.md");
-  const agentsMdPath = path.join(cwd, "AGENTS.md");
-
-  if (!existsSync(claudeMdPath)) {
-    await writeFile(claudeMdPath, claudeMdTemplate(), "utf8");
-    created.push("CLAUDE.md");
-  } else {
-    const contents = await readFile(claudeMdPath, "utf8");
-    if (!contents.includes(MEMORY_MARKER)) {
-      await appendFile(claudeMdPath, `\n${claudeMdMemorySection()}\n`, "utf8");
-      created.push("CLAUDE.md (mémoire ajoutée)");
-    }
-  }
-
-  if (!existsSync(agentsMdPath)) {
-    await writeFile(agentsMdPath, agentsMdTemplate(), "utf8");
-    created.push("AGENTS.md");
-  } else {
-    const contents = await readFile(agentsMdPath, "utf8");
-    if (!contents.includes(MEMORY_MARKER)) {
-      await appendFile(agentsMdPath, `\n${agentsMdMemorySection()}\n`, "utf8");
-      created.push("AGENTS.md (mémoire ajoutée)");
-    }
-  }
-
   return { created };
-}
-
-/**
- * Named, not imported. `@fichier` inlines the whole file into Claude's system
- * prompt on every single call, so the project memory was re-billed at each tool
- * use of each turn while Codex, pointed at the same files by AGENTS.md, paid
- * only for what it chose to read. Pointing at them restores the symmetry.
- */
-function claudeMdMemorySection(): string {
-  return [
-    "## Mémoire du projet (Claudex)",
-    "",
-    "Avant de proposer une architecture ou une décision, lis ces fichiers :",
-    "- `.claudex/memory/decisions.md` — décisions déjà actées",
-    "- `.claudex/memory/limits.md` — contraintes et choses explicitement écartées",
-    "- `.claudex/memory/devlog.md` — index des sessions passées",
-    "",
-    "Ne remets pas en question une décision déjà actée sans le signaler explicitement et sans raison nouvelle.",
-  ].join("\n");
-}
-
-function agentsMdMemorySection(): string {
-  return [
-    "## Mémoire du projet (Claudex)",
-    "",
-    "Avant de proposer une architecture ou une décision, lis ces fichiers :",
-    "- `.claudex/memory/decisions.md` — décisions déjà actées",
-    "- `.claudex/memory/devlog.md` — historique des sessions",
-    "- `.claudex/memory/limits.md` — contraintes et choses explicitement écartées",
-    "",
-    "Ne remets pas en question une décision déjà actée sans le signaler explicitement et sans raison nouvelle.",
-  ].join("\n");
-}
-
-function claudeMdTemplate(): string {
-  return [
-    "# Projet",
-    "",
-    "Ce projet est développé avec Claudex : Claude Code et Codex y travaillent en binôme, en débat structuré jusqu'à consensus avant toute écriture de code, sous supervision humaine directe.",
-    "",
-    claudeMdMemorySection(),
-    "",
-  ].join("\n");
-}
-
-function agentsMdTemplate(): string {
-  return [
-    "# Agents",
-    "",
-    "Ce projet est développé avec Claudex : Claude Code et Codex y travaillent en binôme, en débat structuré jusqu'à consensus avant toute écriture de code, sous supervision humaine directe.",
-    "",
-    agentsMdMemorySection(),
-    "",
-  ].join("\n");
 }
