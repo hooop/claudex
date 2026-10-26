@@ -76,6 +76,26 @@ describe("runCase — what the stream tells", () => {
     ]);
   });
 
+  it("collects every tool use of one assistant message, in order", async () => {
+    const query = scripted(init(), {
+      type: "assistant",
+      message: {
+        content: [
+          { type: "tool_use", id: "t1", name: "Grep", input: {} },
+          { type: "text", text: "and then" },
+          { type: "tool_use", id: "t2", name: "Glob", input: {} },
+        ],
+      },
+    });
+
+    const observation = await runCase(query, caseOf("F"), settings);
+
+    expect(observation.toolUses).toEqual([
+      { id: "t1", name: "Grep" },
+      { id: "t2", name: "Glob" },
+    ]);
+  });
+
   it("leaves everything empty when the stream carries nothing usable", async () => {
     const query = scripted(
       "not an object",
@@ -98,6 +118,71 @@ describe("runCase — what the stream tells", () => {
       resultSubtype: null,
       error: null,
     });
+  });
+});
+
+// An engine that failed (rejected model, lost login, API error) ends the stream
+// with a normal-looking result message. If it were not reported as an error, a
+// case could pass on the init message alone, having tested nothing.
+describe("runCase — error results", () => {
+  it("reports an error result even when its subtype is success", async () => {
+    const query = scripted(init(), {
+      type: "result",
+      subtype: "success",
+      is_error: true,
+      result: "Invalid API key",
+    });
+
+    const observation = await runCase(query, caseOf("E"), settings);
+
+    expect(observation.error).toContain("success");
+    expect(observation.error).toContain("Invalid API key");
+    expect(observation.resultSubtype).toBe("success");
+  });
+
+  it("reports an error_during_execution result with its error strings", async () => {
+    const query = scripted(init(), {
+      type: "result",
+      subtype: "error_during_execution",
+      is_error: true,
+      errors: ["model not found", "request failed"],
+    });
+
+    const observation = await runCase(query, caseOf("E"), settings);
+
+    expect(observation.error).toContain("error_during_execution");
+    expect(observation.error).toContain("model not found");
+    expect(observation.error).toContain("request failed");
+  });
+
+  it("reports an error result that carries no detail", async () => {
+    const query = scripted(init(), { type: "result", subtype: "error_during_execution", is_error: true });
+
+    const observation = await runCase(query, caseOf("E"), settings);
+
+    expect(observation.error).toContain("error_during_execution");
+  });
+
+  it("does not treat running out of turns as an engine failure", async () => {
+    const query = scripted(init(), toolUse("t1", "Grep"), {
+      type: "result",
+      subtype: "error_max_turns",
+      is_error: true,
+    });
+
+    const observation = await runCase(query, caseOf("F"), settings);
+
+    expect(observation.error).toBeNull();
+    expect(observation.resultSubtype).toBe("error_max_turns");
+    expect(observation.toolUses).toEqual([{ id: "t1", name: "Grep" }]);
+  });
+
+  it("does not report a result that says it is not an error", async () => {
+    const query = scripted(init(), { type: "result", subtype: "success", is_error: false, result: "hello" });
+
+    const observation = await runCase(query, caseOf("E"), settings);
+
+    expect(observation.error).toBeNull();
   });
 });
 

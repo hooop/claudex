@@ -80,9 +80,26 @@ function record(observation: Observation, message: unknown): void {
         observation.toolUses.push({ id: block.id, name: block.name });
       }
     }
-  } else if (message.type === "result" && typeof message.subtype === "string") {
-    observation.resultSubtype = message.subtype;
+  } else if (message.type === "result") {
+    const subtype = typeof message.subtype === "string" ? message.subtype : null;
+    if (subtype !== null) observation.resultSubtype = subtype;
+    // Running out of turns is a result flagged as an error too, but the model
+    // did run: its observation is kept as it is.
+    if (message.is_error === true && subtype !== "error_max_turns") {
+      observation.error = describeErrorResult(subtype, message);
+    }
   }
+}
+
+// A failed engine (rejected model, lost login, API error) still ends the
+// stream with a result message. Its details sit in `errors` on the error
+// subtypes and in `result` on an error flagged as a "success" subtype.
+function describeErrorResult(subtype: string | null, message: Record<string, unknown>): string {
+  const details = [
+    ...(Array.isArray(message.errors) ? (message.errors as unknown[]) : []),
+    message.result,
+  ].filter((detail): detail is string => typeof detail === "string" && detail !== "");
+  return `engine returned an error result (subtype ${subtype ?? "unknown"})${details.length > 0 ? `: ${details.join("; ")}` : ""}`;
 }
 
 async function writeProjectFiles(dir: string, files: Record<string, string>): Promise<void> {

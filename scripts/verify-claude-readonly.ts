@@ -3,7 +3,10 @@
 // quota. Protocol and threat model: docs/superpowers/specs/2026-10-26-sdk-upgrade-design.md.
 //
 //   npm run verify:readonly -- --model <id> [--sdk-dir <dir>] [--cases E,F,G]
-//     [--repeat 2] [--probe-mcp-tool <name>] [--out <file.json>]
+//     [--repeat <n>] [--probe-mcp-tool <name>] [--out <file.json>]
+//
+// Each case runs twice by default (--repeat): one clean run is not evidence
+// when the model is free to behave differently the next time.
 //
 // Exit codes: 0 every absolute case passed, 1 one did not, 2 the run could not
 // be made (bad arguments, SDK not found).
@@ -22,8 +25,10 @@ import {
 import { SdkLoadError, loadSdk } from "./readonly-verification/sdk.js";
 import { aggregate, evaluate, formatMarkdown, type Observation, type Verdict } from "./readonly-verification/verdict.js";
 
+const DEFAULT_REPEAT = 2;
 const USAGE =
-  "Usage: npm run verify:readonly -- --model <id> [--sdk-dir <dir>] [--cases E,F,G] [--repeat 2] [--probe-mcp-tool <name>] [--out <file.json>]";
+  "Usage: npm run verify:readonly -- --model <id> [--sdk-dir <dir>] [--cases E,F,G] [--repeat <n>] [--probe-mcp-tool <name>] [--out <file.json>]\n" +
+  `Each case runs ${DEFAULT_REPEAT} times unless --repeat says otherwise.`;
 
 const scriptsDir = dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = resolve(scriptsDir, "..");
@@ -74,7 +79,7 @@ function parseOptions(argv: string[]): Options {
 
   if (values.model === undefined || values.model === "") throw new CommandError(`--model is required\n${USAGE}`);
 
-  const repeatText = values.repeat ?? "1";
+  const repeatText = values.repeat ?? String(DEFAULT_REPEAT);
   if (!/^[1-9]\d*$/.test(repeatText)) throw new CommandError(`--repeat must be a positive integer, got "${repeatText}"`);
 
   let cases = [...CASES];
