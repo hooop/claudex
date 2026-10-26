@@ -150,8 +150,10 @@ E, F and G are the gate: any failure stops the upgrade.
 
 The property under test is the anti-goal: no write to the user's repository during a
 debate turn without a human approving that specific call. The analysed repository and
-its `.claude/` configuration are treated as untrusted (a cloned repository is a normal
-use of Claudex).
+its `.claude/` configuration are treated as untrusted for this measurement. The README
+already tells users not to analyse untrusted code (Codex can read any file the account
+can); the measurement says whether that warning must also cover Claude, it does not
+lift it.
 
 Criterion for E, F and G, stated precisely:
 - the built-in tools in the init `tools` list are a subset of `DEBATE_TOOLS`;
@@ -239,6 +241,26 @@ Commits: `test:` (1), `chore(deps):` (2), `chore(deps):` (3), `chore:` (4), `doc
   no `overrides`, since they force a transitive version upstream never tested.
 - Any adapter change beyond type adjustments.
 - Any change to an existing test other than adding assertions.
+
+## Follow-ups (out of scope, own branches)
+
+Agreed with the maintainer on 2026-10-26 when discussing how Claudex stays current
+without them editing the project by hand:
+
+- `chore/dependabot`: Dependabot proposes updates as pull requests; CI decides for
+  ordinary dependencies. Weekly grouped PR for development dependencies, the SDK on its
+  own monthly PR that is merged only after `scripts/verify-claude-readonly.mjs` passes.
+  GitHub configuration: shown to the maintainer before it is applied.
+- Codex version check at startup: Claudex spawns the user's `codex` with no version
+  check, so a Codex release that changes the app-server protocol breaks Claudex with an
+  obscure error. Check the version, say clearly when it is untested.
+- At packaging time: a "new Claudex version available" notice, and whether to publish
+  an `npm-shrinkwrap.json` (published packages ignore `package-lock.json`, so caret
+  ranges resolve to whatever is newest on the user's machine at install time).
+
+Never adopting "latest" automatically is deliberate: an SDK release can change the
+read-only guarantee (this branch's `tools` note is an example), and a compromised
+release reaches every auto-updating user within hours.
 
 ## Left to the builder
 
