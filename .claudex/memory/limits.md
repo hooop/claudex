@@ -66,9 +66,12 @@ comme A. A et D sont identiques. La conclusion du 2026-08-29 tient toujours : se
   sans aucune invite (le SDK n'affiche pas de dialogue de confiance de l'espace de travail). Cela
   contredit la phrase du README « Claude Code has no shell tool during this phase » pour un dépôt
   non fiable ; le README demande déjà de ne pas analyser de code non fiable, et le dit désormais
-  aussi pour la configuration Claude Code du dépôt.
-- Cas H : les serveurs de `.mcp.json` du dépôt démarrent sans approbation pendant un débat ; leurs
-  appels d'outil atteignent toutefois `canUseTool`.
+  aussi pour la configuration Claude Code du dépôt (ses hooks et les serveurs MCP qu'il déclare).
+- Cas H : un serveur stdio déclaré dans le `.mcp.json` du dépôt est une commande que le moteur lance
+  au démarrage de la session. Mesuré : le serveur est « evil (connected) » sans aucune approbation,
+  sur les deux versions. C'est la même classe que les hooks (cas J) : une commande fournie par le
+  dépôt s'exécute pendant un débat. Seuls ses appels d'outil atteignent `canUseTool` (refusés dans
+  le test), pas son démarrage.
 - Suite proposée au mainteneur, pas décidée : une branche `fix/` qui isole le débat (aucun hook,
   aucun serveur MCP). Elle touche à la configuration de sécurité et demande son accord.
 
