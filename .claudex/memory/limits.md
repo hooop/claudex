@@ -25,17 +25,33 @@ Les cas E à K portent sur la config de débat de Claudex (`DEBATE_TOOLS`, `defa
 
 | Cas | Configuration | 0.1.77 | 0.3.310 |
 | --- | --- | --- | --- |
-| E | config de débat, `canUseTool` refuse tout | réussi (outils d'init : Glob, Grep, Read) | réussi |
+| E | config de débat, `canUseTool` refuse tout | réussi (outils d'init : Glob, Grep, Read) | exécution 2 réussie ; exécution 1 : 31 outils de connecteurs claude.ai proposés, non prouvés, donc `inconclusive` (voir le verdict) |
 | F | config de débat, `canUseTool` autorise Read/Grep/Glob, recherche puis écriture demandée | réussi (Grep et Glob utilisés) | réussi |
-| G | E + réglages du projet `defaultMode: "bypassPermissions"` et `allow: [Bash, Write, Edit]` | réussi (mode d'init `default`) | réussi |
+| G | E + réglages du projet `defaultMode: "bypassPermissions"` et `allow: [Bash, Write, Edit]` | réussi (mode d'init `default`) | exécution 1 réussie ; exécution 2 : 31 outils de connecteurs claude.ai proposés, non prouvés, donc `inconclusive` |
 | H | `.mcp.json` du projet avec un serveur stdio capable d'écrire | réussi : serveur **connecté sans aucune approbation**, outil proposé, l'appel atteint `canUseTool` (refusé), aucun fichier | idem |
-| I | un vrai outil MCP de la configuration du mainteneur | sans objet (aucun outil de ce type proposé) | sans objet : les connecteurs claude.ai ne se sont pas chargés dans 6 exécutions dédiées |
+| I | un vrai outil MCP de la configuration du mainteneur | sans objet (aucun outil de ce type proposé) | non mesuré (`inconclusive`) : les connecteurs claude.ai ne se sont pas chargés dans 6 exécutions dédiées |
 | J | réglages du projet : hook `SessionStart` qui exécute `touch PWNED.txt` | **échec : le hook s'exécute, fichier écrit** | **échec : idem** |
 | K | H + `enableAllProjectMcpServers` + `permissions.allow: ["mcp__evil__write_file"]` | **échec : l'écriture MCP s'exécute sans `canUseTool`** | réussi : l'appel atteint `canUseTool` |
 
-**Verdict de la barrière :** E, F et G réussissent sur 0.3.310, et aucun cas ne réussit sur 0.1.77
-en échouant sur 0.3.310 : pas de régression, la montée de version est acceptable. J est un trou qui
-préexiste (présent sur les deux versions). K est corrigé par 0.3.310.
+**Verdict de la barrière : pas pleinement franchie.** E, F et G réussissent pour les outils intégrés
+et pour les serveurs MCP du projet, sur les deux versions. Sur 0.3.310, deux exécutions ont reçu les
+outils des connecteurs claude.ai (E exécution 1 et G exécution 2 : 31 outils, serveurs
+`claude_ai_Claude_Docs` et `claude_ai_Gmail`, aucun appelé) : leur chemin d'approbation n'est pas
+mesuré (le cas I n'a pas pu les charger en 6 exécutions). Ces deux exécutions ne prouvent donc pas le
+critère complet, « tout autre outil de la liste atteint `canUseTool` avant de s'exécuter ». Le
+tableau ci-dessus les note « réussi » parce que le verdict de l'époque ignorait ces outils ; avec le
+verdict corrigé (un outil MCP proposé sans preuve donne `inconclusive`, jamais `pass`), elles se lisent
+`inconclusive`. Aucun cas ne réussit sur 0.1.77 en échouant sur 0.3.310 : pas de régression mesurée.
+La décision de monter de version se prend en connaissant ce trou de mesure. J est un trou qui
+préexiste (présent sur les deux versions). K est corrigé par 0.3.310, pour un dossier non approuvé
+(voir ci-dessous).
+
+**Portée des mesures :** chaque cas s'est exécuté dans un dossier temporaire neuf, jamais ouvert avec
+Claude Code (donc non approuvé pour le moteur), lancé depuis le shell d'une session Claude Code
+(sandboxée), dont les variables `CLAUDE*` ont été retirées. Les utilisateurs lancent en général
+Claudex dans des dossiers qu'ils ont déjà approuvés, et 0.3.x traite certains réglages de projet
+autrement une fois le dossier approuvé. « K est corrigé sur 0.3.310 » et « les appels MCP atteignent
+`canUseTool` » ne sont donc établis que pour un dossier non approuvé.
 
 **Écarts avec le 2026-08-29 :** le cas B avait écrit le fichier (avec les `settingSources` par défaut
 du SDK) ; avec `settingSources: []`, il n'écrit sur aucune des deux versions aujourd'hui. Le cas C
@@ -48,8 +64,8 @@ comme A. A et D sont identiques. La conclusion du 2026-08-29 tient toujours : se
   comme `create_draft` et `trash_message`) apparaissent dans les outils d'init du débat dans certaines
   exécutions (statut connecté ou en attente), malgré `settingSources: ["project"]`. Jamais sur 0.1.77.
   Leur chemin d'approbation n'est pas mesuré : ils ne se sont pas chargés dans les 6 exécutions
-  dédiées. Le serveur de test (cas H et K) montre en revanche que les appels MCP atteignent
-  `canUseTool` sur 0.3.310.
+  dédiées. Le serveur de test (cas H et K) montre en revanche que les appels MCP d'un serveur du
+  projet atteignent `canUseTool` sur 0.3.310 (dossier non approuvé, voir la portée des mesures).
 - Le moteur est un binaire natif, `node_modules/@anthropic-ai/claude-agent-sdk-<plateforme>/claude`
   (darwin-arm64 : 273 Mo sur disque ; installation complète du SDK 331 Mo contre 92 Mo pour 0.1.77).
   Avec 0.1.77, le moteur tournait dans `node`.
@@ -78,8 +94,9 @@ comme A. A et D sont identiques. La conclusion du 2026-08-29 tient toujours : se
 **Comment appliquer :** relancer `npm run verify:readonly` à chaque montée de version du SDK, sur
 l'ancienne et sur la nouvelle version (`--sdk-dir` désigne une installation isolée de chacune), avec
 le même modèle. Le critère est la présence du fichier sur disque, pas le message du modèle. E, F et G
-doivent réussir sur la nouvelle version ; un trou présent sur la nouvelle et absent de l'ancienne est
-une régression et arrête la montée. Ne jamais tenir J et H pour corrigés tant qu'une branche `fix/`
+doivent réussir sur la nouvelle version ; un `inconclusive` (par exemple des outils de connecteurs
+proposés sans preuve d'approbation) n'est pas un succès : relancer, ou mesurer ces outils avec le
+cas I. Un trou présent sur la nouvelle et absent de l'ancienne est une régression et arrête la montée. Ne jamais tenir J et H pour corrigés tant qu'une branche `fix/`
 ne les a pas fermés.
 
 ## 2026-09-28 — La limite de redimensionnement du 2026-08-11 est levée

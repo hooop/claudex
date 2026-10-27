@@ -34,9 +34,10 @@ anyone changing Claudex itself, human or agent. User documentation is in README.
 - `src/ui/`: welcome screen, debate view, output rendering.
 - `src/util/`: small helpers (tool input formatting, project status).
 - `docs/demo/`: source of the README demo GIF; typechecked and linted like `src`.
-- `scripts/`: maintainer tooling, never run by `npm test` or CI. `readonly-verification/`
-  holds the pure logic of `npm run verify:readonly`, which measures against a real SDK
-  whether Claude stays read-only during a debate (run it after every SDK upgrade).
+- `scripts/`: maintainer tooling. `npm run verify:readonly` measures against a real SDK
+  whether Claude stays read-only during a debate (run it after every SDK upgrade); that
+  command is never run by `npm test` or CI, but its unit tests under
+  `scripts/**/__tests__` are. `readonly-verification/` holds its logic.
 - Tests sit in `__tests__/` next to the code they cover; the scheduler's are in
   `src/__tests__/`.
 
@@ -48,10 +49,11 @@ anyone changing Claudex itself, human or agent. User documentation is in README.
 - Conventional Commits for commits and pull request titles (CI checks the title).
 - One branch per change (`feat/`, `fix/`, `docs/`, `chore/`, `refactor/`), merged
   through a pull request. Never push to main.
-- Write the test first for any behaviour change. Tests never call a real CLI or
-  the network: orchestrator and UI tests use a fake `CodingAgent` (for example
-  `FakeAgent` in `src/__tests__/scheduler.test.ts`), adapter tests mock the SDK's
-  `query` and `child_process.spawn`.
+- Write the test first for any behaviour change. Tests never call `claude`,
+  `codex` or the network (some run `git init` and spawn `node`): orchestrator and
+  UI tests use a fake `CodingAgent` (for example `FakeAgent` in
+  `src/__tests__/scheduler.test.ts`), adapter tests mock the SDK's `query` and
+  `child_process.spawn`.
 - Discuss any new dependency before adding it.
 
 ## Constraints

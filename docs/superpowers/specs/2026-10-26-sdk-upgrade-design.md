@@ -217,7 +217,7 @@ with the table filled in for both versions.
 3. `npm audit fix` in its own commit: zod 4.4.3 → ≥4.6.6 (runtime, via the SDK), vitest,
    vite, eslint's brace-expansion, postcss's source-map-js (development only). All fixes
    are within current semver ranges. `npm audit` must report 0 afterwards.
-4. `scripts/verify-claude-readonly.mjs` and the lint scope (D4).
+4. `scripts/verify-claude-readonly.ts` (`npm run verify:readonly`) and the lint scope (D4).
 5. `limits.md`: new entry with both tables; `decisions.md`: D1 and D2. README: no change
    expected unless the measured behaviour changes a user-facing requirement.
 6. Manual smoke test, done by the maintainer (an Ink TUI with both agents logged in
@@ -252,7 +252,7 @@ without them editing the project by hand:
 
 - `chore/dependabot`: Dependabot proposes updates as pull requests; CI decides for
   ordinary dependencies. Weekly grouped PR for development dependencies, the SDK on its
-  own monthly PR that is merged only after `scripts/verify-claude-readonly.mjs` passes.
+  own monthly PR that is merged only after `npm run verify:readonly` passes.
   GitHub configuration: shown to the maintainer before it is applied.
 - Codex version check at startup: Claudex spawns the user's `codex` with no version
   check, so a Codex release that changes the app-server protocol breaks Claudex with an
