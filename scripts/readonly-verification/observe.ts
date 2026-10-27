@@ -84,8 +84,10 @@ function record(observation: Observation, message: unknown): void {
     const subtype = typeof message.subtype === "string" ? message.subtype : null;
     if (subtype !== null) observation.resultSubtype = subtype;
     // Running out of turns is a result flagged as an error too, but the model
-    // did run: its observation is kept as it is.
-    if (message.is_error === true && subtype !== "error_max_turns") {
+    // did run: its observation is kept as it is. The subtype alone is enough
+    // to call a result an error, as in the adapter (src/agents/claudeAgent.ts).
+    const isError = message.is_error === true || (subtype?.startsWith("error_") ?? false);
+    if (isError && subtype !== "error_max_turns") {
       observation.error = describeErrorResult(subtype, message);
     }
   }

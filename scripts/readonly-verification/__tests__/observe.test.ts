@@ -163,6 +163,48 @@ describe("runCase — error results", () => {
     expect(observation.error).toContain("error_during_execution");
   });
 
+  // Same rule as the adapter (src/agents/claudeAgent.ts): the subtype alone is enough.
+  it("reports an error_* subtype even when is_error is absent or false", async () => {
+    for (const flagged of [{}, { is_error: false }]) {
+      const query = scripted(init(), {
+        type: "result",
+        subtype: "error_during_execution",
+        errors: ["model not found"],
+        ...flagged,
+      });
+
+      const observation = await runCase(query, caseOf("E"), settings);
+
+      expect(observation.error, JSON.stringify(flagged)).toContain("error_during_execution");
+      expect(observation.error, JSON.stringify(flagged)).toContain("model not found");
+    }
+  });
+
+  it("reports error_max_budget_usd as an engine failure without is_error", async () => {
+    const query = scripted(init(), { type: "result", subtype: "error_max_budget_usd" });
+
+    const observation = await runCase(query, caseOf("E"), settings);
+
+    expect(observation.error).toContain("error_max_budget_usd");
+  });
+
+  it("still does not treat running out of turns as a failure when is_error is absent", async () => {
+    const query = scripted(init(), { type: "result", subtype: "error_max_turns" });
+
+    const observation = await runCase(query, caseOf("E"), settings);
+
+    expect(observation.error).toBeNull();
+    expect(observation.resultSubtype).toBe("error_max_turns");
+  });
+
+  it("does not report a success subtype without is_error", async () => {
+    const query = scripted(init(), { type: "result", subtype: "success", result: "hello" });
+
+    const observation = await runCase(query, caseOf("E"), settings);
+
+    expect(observation.error).toBeNull();
+  });
+
   it("does not treat running out of turns as an engine failure", async () => {
     const query = scripted(init(), toolUse("t1", "Grep"), {
       type: "result",
