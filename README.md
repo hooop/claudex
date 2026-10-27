@@ -52,6 +52,8 @@ Worth reading before pointing Claudex at a repository owned by someone else, or 
 
 **Read-only means "cannot modify anything", not "only sees the repository".** In the current version of Codex, nothing restricts what a command may read. It can open any file the current account has access to and copy its contents into the transcript, which is then sent to both models and written to disk. Without network access a command cannot exfiltrate anything by itself, but it can still copy. Claudex should therefore not be used to analyse untrusted code.
 
+**The analysed repository's own Claude Code configuration still applies.** During a debate, Claude Code loads the project's settings and MCP configuration. Hooks declared in the repository's `.claude/settings.json` run without a prompt, and the MCP servers declared in its `.mcp.json` start without a prompt, although their tool calls still need your approval. Tools from the connectors of your claude.ai account (mail, documents) may also be offered to Claude Code. Whether their calls always reach the approval prompt has not been measured. This is another reason not to analyse untrusted code: a hook is a command that runs on your machine, even though Claude Code has no shell tool of its own during a debate.
+
 **Implementation is a separate, explicit phase.** `/implement` gives the agents write-capable tools. Codex remains sandboxed to the current project and temporary directories, with network access disabled. Claude Code uses its normal implementation tools and may ask for permission before sensitive actions. Review the agreed plan before enabling this phase.
 
 **Debates are written inside the repository.** Claudex creates a `.claudex/` directory at the root of the folder it is launched from, and stores transcripts there. On first launch it also installs a `.gitignore` so those transcripts never reach a commit. Decisions and limits stay committable on purpose: they are short, and anyone who clones the repository should get them.
@@ -112,6 +114,8 @@ npm install
 npm link
 ```
 
+`npm install` also downloads the Claude Code engine bundled with the Claude Agent SDK (about 270 MB on macOS arm64, as measured). Signing in still goes through your own Claude Code, as in step 2.
+
 `npm link` makes the `claudex` command available from any directory. It creates a link to this folder, which must therefore not be moved afterwards. To remove the command later: `npm unlink -g claudex`.
 
 Claudex is currently installed from source; it is not published as an npm package.
@@ -132,6 +136,7 @@ This runs the strict TypeScript typecheck, ESLint, then the complete test suite.
 | `Claudex a besoin d'un vrai terminal interactif (TTY)` | Claudex was started inside a script or a pipe. Start it directly in a terminal. |
 | `command not found: claude` or `codex` | Repeat step 2 or step 3. |
 | The debate fails on the first turn | One of the two accounts is not signed in. Run `claude` and `codex` separately to check. |
+| Claude never answers, the turn never ends | An outbound firewall that rules per program (LuLu, Little Snitch) sees each install location of the Claude Code engine bundled with the SDK as a new program, and blocks its requests until you allow it. Allow `node_modules/@anthropic-ai/claude-agent-sdk-<platform>/claude` inside the `claudex` folder, for example `claude-agent-sdk-darwin-arm64` on an Apple silicon Mac. |
 | `EACCES` during `npm install -g` | Insufficient permissions on the global npm directory. See [the npm documentation](https://docs.npmjs.com/resolving-eacces-permissions-errors-when-installing-packages-globally). |
 
 ## Usage

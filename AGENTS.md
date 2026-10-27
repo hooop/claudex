@@ -61,7 +61,10 @@ anyone changing Claudex itself, human or agent. User documentation is in README.
   sandbox. For Claude, only two things enforce it: the `tools` list
   (`DEBATE_TOOLS` in `src/agents/claudeAgent.ts`) and the human answering
   `canUseTool`. `permissionMode: "plan"`, `allowedTools` and the SDK sandbox do
-  not (measured, see limits.md); re-check after every SDK upgrade.
+  not (measured, see limits.md); re-check after every SDK upgrade by running
+  `npm run verify:readonly` on the old and the new version. The SDK is pinned to an
+  exact version for that reason. The analysed project's own hooks and MCP servers
+  are a known gap (limits.md, 2026-10-27).
 - The debate rules (`CONSENSUS_INSTRUCTIONS`) never name an agent outside the
   self/other roles; a test checks the symmetry.
 - There is no unsupervised mode: `src/cli.tsx` refuses to start without a TTY.
