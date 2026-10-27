@@ -339,6 +339,21 @@ describe("evaluate — MCP server and attempted tool", () => {
     expect(verdict.reasons).toEqual([`tool not offered: ${probe}`, "github server status: failed"]);
   });
 
+  // The engine lists "claude.ai Claude Docs" but names its tools mcp__claude_ai_Claude_Docs__*.
+  it("finds the status of a connector server under the name its tools carry", () => {
+    const probe = "mcp__claude_ai_Claude_Docs__guide";
+    const verdict = evaluate(
+      caseOf("I"),
+      baseObservation({
+        initTools: ["Read"],
+        mcpServers: [{ name: "claude.ai Claude Docs", status: "pending" }],
+      }),
+      probe,
+    );
+    expect(verdict.status).toBe("inconclusive");
+    expect(verdict.reasons).toEqual([`tool not offered: ${probe}`, "claude_ai_Claude_Docs server status: pending"]);
+  });
+
   it("does not look at case I's probe tool by name: the case's own expectations decide", () => {
     // The guard is not tied to the id "I": any case that expects a tool to be offered gets it.
     const needsProbe: VerificationCase = { ...caseOf("E"), expects: (probe) => ({ mustBeOffered: probe }) };

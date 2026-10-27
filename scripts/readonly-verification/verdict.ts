@@ -95,7 +95,9 @@ export function evaluate(c: VerificationCase, o: Observation, probeTool?: string
   const explainMissing = (tool: string): void => {
     note(`tool not offered: ${tool}`);
     const name = mcpServerOf(tool);
-    const server = o.mcpServers.find((candidate) => candidate.name === name);
+    // Tool names carry the server name with every character outside
+    // [A-Za-z0-9_-] replaced by "_" ("claude.ai Gmail" -> claude_ai_Gmail).
+    const server = o.mcpServers.find((candidate) => candidate.name.replace(/[^A-Za-z0-9_-]/g, "_") === name);
     if (server?.status !== "connected") note(`${name} server status: ${server?.status ?? "not listed"}`);
   };
   const unprovenApproval = (use: { id: string; name: string }): string =>
