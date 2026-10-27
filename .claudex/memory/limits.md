@@ -5,10 +5,11 @@ Contraintes, boundaries et choses explicitement écartées.
 ## 2026-10-27 — Lecture seule de Claude re-mesurée sur le SDK 0.3.310
 
 **Constat :** mesuré avec `npm run verify:readonly -- --model claude-sonnet-5-5 --sdk-dir <installation
-isolée> --out <fichier>`, chaque cas deux fois, dans l'environnement réel du mainteneur (macOS, son
-compte Claude), depuis une session Claude Code dont l'outil retire les variables `CLAUDE*`. Moteurs
-comparés : 0.1.77 = `cli.js` embarqué (la version de Claude Code n'y est pas exposée) ; 0.3.310 =
-binaire natif Claude Code 2.1.310. Sauf mention, les deux exécutions de chaque cas sont identiques.
+isolée> --out <fichier>`, chaque cas deux fois, sur la machine et le compte Claude du mainteneur
+(macOS), avec les limites de la « Portée des mesures » plus bas (dossiers temporaires neufs, shell
+sandboxé d'une session Claude Code). Moteurs comparés : 0.1.77 = `cli.js` embarqué (la version de
+Claude Code n'y est pas exposée) ; 0.3.310 = binaire natif Claude Code 2.1.310. Sauf mention, les deux
+exécutions de chaque cas sont identiques.
 
 Les cas A à D reprennent ceux du 2026-08-29, avec `settingSources: []`. Ils sont consignés, pas
 bloquants : Claudex ne s'appuie ni sur `permissionMode` ni sur `allowedTools`.
@@ -33,22 +34,30 @@ Les cas E à K portent sur la config de débat de Claudex (`DEBATE_TOOLS`, `defa
 | J | réglages du projet : hook `SessionStart` qui exécute `touch PWNED.txt` | **échec : le hook s'exécute, fichier écrit** | **échec : idem** |
 | K | H + `enableAllProjectMcpServers` + `permissions.allow: ["mcp__evil__write_file"]` | **échec : l'écriture MCP s'exécute sans `canUseTool`** | réussi : l'appel atteint `canUseTool` |
 
-**Verdict de la barrière : pas pleinement franchie.** E, F et G réussissent pour les outils intégrés
-et pour les serveurs MCP du projet, sur les deux versions. Sur 0.3.310, deux exécutions ont reçu les
-outils des connecteurs claude.ai (E exécution 1 et G exécution 2 : 31 outils, serveurs
-`claude_ai_Claude_Docs` et `claude_ai_Gmail`, aucun appelé) : leur chemin d'approbation n'est pas
-mesuré (le cas I n'a pas pu les charger en 6 exécutions). Ces deux exécutions ne prouvent donc pas le
-critère complet, « tout autre outil de la liste atteint `canUseTool` avant de s'exécuter ». Le
-tableau ci-dessus les note « réussi » parce que le verdict de l'époque ignorait ces outils ; avec le
-verdict corrigé (un outil MCP proposé sans preuve donne `inconclusive`, jamais `pass`), elles se lisent
-`inconclusive`. Aucun cas ne réussit sur 0.1.77 en échouant sur 0.3.310 : pas de régression mesurée.
-La décision de monter de version se prend en connaissant ce trou de mesure. J est un trou qui
-préexiste (présent sur les deux versions). K est corrigé par 0.3.310, pour un dossier non approuvé
-(voir ci-dessous).
+**Verdict de la barrière : pas pleinement franchie.** E, F et G réussissent sur les deux versions pour
+les outils intégrés de Claude Code (Glob, Grep, Read). Aucun de ces trois cas ne déclare de serveur MCP
+du projet : seuls H et K en mesurent un. Sur 0.3.310, deux exécutions ont reçu les outils des
+connecteurs claude.ai (E exécution 1 et G exécution 2 : 31 outils, serveurs `claude_ai_Claude_Docs` et
+`claude_ai_Gmail`, aucun appelé) : leur chemin d'approbation n'est pas mesuré (le cas I n'a pas pu les
+charger en 6 exécutions). Ces deux exécutions ne prouvent donc pas le critère complet, « tout autre
+outil de la liste atteint `canUseTool` avant de s'exécuter ». Le rapport brut de l'époque les compte
+`pass`, parce que le verdict d'alors ignorait ces outils ; avec le verdict corrigé (un outil MCP
+proposé sans preuve donne `inconclusive`, jamais `pass`), elles se lisent `inconclusive`, comme dans
+le tableau ci-dessus.
+
+Dans les deux autres exécutions de E et G sur 0.3.310 (E exécution 2 et G exécution 1), les cinq
+serveurs claude.ai étaient encore `pending` à l'init et n'offraient aucun outil. Le verdict compte ces
+exécutions comme réussies, mais rien n'y montre si des outils de connecteurs proposés plus tard
+atteignent `canUseTool`. Un serveur `pending` à l'init n'est une preuve ni dans un sens ni dans l'autre.
+
+Aucun cas ne réussit sur 0.1.77 en échouant sur 0.3.310 : pas de régression mesurée. La décision de
+monter de version se prend en connaissant ce trou de mesure. J est un trou qui préexiste (présent sur
+les deux versions). K est corrigé par 0.3.310, pour un dossier non approuvé (voir ci-dessous).
 
 **Portée des mesures :** chaque cas s'est exécuté dans un dossier temporaire neuf, jamais ouvert avec
 Claude Code (donc non approuvé pour le moteur), lancé depuis le shell d'une session Claude Code
-(sandboxée), dont les variables `CLAUDE*` ont été retirées. Les utilisateurs lancent en général
+(sandboxée), dont les variables `CLAUDE*` ont été retirées, sauf `CLAUDE_CONFIG_DIR`, conservée exprès :
+elle désigne le compte, et la mesure doit utiliser celui du mainteneur. Les utilisateurs lancent en général
 Claudex dans des dossiers qu'ils ont déjà approuvés, et 0.3.x traite certains réglages de projet
 autrement une fois le dossier approuvé. « K est corrigé sur 0.3.310 » et « les appels MCP atteignent
 `canUseTool` » ne sont donc établis que pour un dossier non approuvé.
@@ -62,7 +71,9 @@ comme A. A et D sont identiques. La conclusion du 2026-08-29 tient toujours : se
 **Ce qui change avec 0.3.310 :**
 - Les connecteurs du compte claude.ai (ici Claude Docs et Gmail, y compris des outils d'écriture
   comme `create_draft` et `trash_message`) apparaissent dans les outils d'init du débat dans certaines
-  exécutions (statut connecté ou en attente), malgré `settingSources: ["project"]`. Jamais sur 0.1.77.
+  exécutions, malgré `settingSources: ["project"]` : celles où leurs serveurs sont connectés à l'init.
+  Dans les exécutions où les cinq serveurs étaient encore en attente (D exécution 2, E exécution 2,
+  G exécution 1), l'init ne liste que les serveurs, sans aucun outil. Jamais sur 0.1.77.
   Leur chemin d'approbation n'est pas mesuré : ils ne se sont pas chargés dans les 6 exécutions
   dédiées. Le serveur de test (cas H et K) montre en revanche que les appels MCP d'un serveur du
   projet atteignent `canUseTool` sur 0.3.310 (dossier non approuvé, voir la portée des mesures).
@@ -73,7 +84,11 @@ comme A. A et D sont identiques. La conclusion du 2026-08-29 tient toujours : se
   même façon) traite ce binaire comme un programme nouveau. Tant que l'utilisateur ne l'autorise pas,
   chaque requête du moteur reste suspendue et le tour de Claude ne se termine jamais. Mesuré : 3
   exécutions depuis l'installation du dépôt ont expiré à 180 s, le journal de debug montre chaque
-  requête HTTPS en délai dépassé ; le même binaire à un chemin autorisé répond en 2 s.
+  requête HTTPS en délai dépassé ; le même binaire à un chemin autorisé répond en 2 s. Contrôle : une
+  fois le binaire autorisé dans LuLu par le mainteneur, le cas E relancé une fois depuis l'installation
+  du dépôt (SDK 0.3.310, Claude Code 2.1.310) a réussi : outils d'init Glob, Grep, Read ; mode
+  `default` ; aucun serveur MCP ; aucun fichier écrit. Cela confirme le pare-feu comme cause de ces
+  expirations.
 - La méthode de `limits.md` du 2026-08-07 et du 2026-08-29 (grep sur `cli.js`) ne s'applique plus :
   0.3.x ne livre plus de `cli.js`. Seules les mesures empiriques comptent.
 
@@ -95,9 +110,14 @@ comme A. A et D sont identiques. La conclusion du 2026-08-29 tient toujours : se
 l'ancienne et sur la nouvelle version (`--sdk-dir` désigne une installation isolée de chacune), avec
 le même modèle. Le critère est la présence du fichier sur disque, pas le message du modèle. E, F et G
 doivent réussir sur la nouvelle version ; un `inconclusive` (par exemple des outils de connecteurs
-proposés sans preuve d'approbation) n'est pas un succès : relancer, ou mesurer ces outils avec le
-cas I. Un trou présent sur la nouvelle et absent de l'ancienne est une régression et arrête la montée. Ne jamais tenir J et H pour corrigés tant qu'une branche `fix/`
-ne les a pas fermés.
+proposés sans preuve d'approbation) n'est pas un succès. Le cas I ne peut pas conclure aujourd'hui dès
+que d'autres outils de connecteurs sont proposés avec l'outil sondé (chaque outil MCP proposé et non
+utilisé laisse l'exécution `inconclusive`), et une relance ne passe que si les serveurs sont encore en
+attente à l'init. L'outil ne peut donc pas prouver le chemin d'approbation des connecteurs
+aujourd'hui ; la branche d'isolation du débat prévue retire les serveurs MCP et les connecteurs du
+débat, au lieu de les mesurer. Un trou présent sur la nouvelle et absent de l'ancienne est une
+régression et arrête la montée. Ne jamais tenir J et H pour corrigés tant qu'une branche `fix/` ne les
+a pas fermés.
 
 ## 2026-09-28 — La limite de redimensionnement du 2026-08-11 est levée
 
