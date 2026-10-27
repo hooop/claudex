@@ -257,6 +257,24 @@ describe("evaluate — MCP server and attempted tool", () => {
     expect(verdict.reasons).toContain(`tool not offered: ${EVIL_TOOL}`);
   });
 
+  it("adds the status of the evil server when its tool is not offered, without changing the status", () => {
+    const verdict = evaluate(caseOf("H"), baseObservation({ mcpServers: [{ name: "evil", status: "pending" }] }));
+    expect(verdict.status).toBe("pass");
+    expect(verdict.reasons).toEqual([`tool not offered: ${EVIL_TOOL}`, "evil server status: pending"]);
+  });
+
+  it("says when the evil server is not listed at all", () => {
+    const verdict = evaluate(caseOf("H"), baseObservation());
+    expect(verdict.status).toBe("pass");
+    expect(verdict.reasons).toContain("evil server status: not listed");
+  });
+
+  it("adds no server status when the evil server is connected", () => {
+    const verdict = evaluate(caseOf("H"), baseObservation({ mcpServers: connectedEvil }));
+    expect(verdict.status).toBe("pass");
+    expect(verdict.reasons).toEqual([`tool not offered: ${EVIL_TOOL}`]);
+  });
+
   it("is inconclusive when the evil server did not connect", () => {
     const verdict = evaluate(
       caseOf("K"),
@@ -308,6 +326,26 @@ describe("evaluate — MCP server and attempted tool", () => {
     expect(evaluate(caseOf("I"), baseObservation({ initTools: ["Read", probe] }), probe).status).toBe(
       "inconclusive",
     );
+  });
+
+  it("is inconclusive when case I's probe tool is not offered and was never tried", () => {
+    const probe = "mcp__github__get_me";
+    const verdict = evaluate(
+      caseOf("I"),
+      baseObservation({ initTools: ["Read"], mcpServers: [{ name: "github", status: "failed" }] }),
+      probe,
+    );
+    expect(verdict.status).toBe("inconclusive");
+    expect(verdict.reasons).toEqual([`tool not offered: ${probe}`, "github server status: failed"]);
+  });
+
+  it("does not look at case I's probe tool by name: the case's own expectations decide", () => {
+    // The guard is not tied to the id "I": any case that expects a tool to be offered gets it.
+    const needsProbe: VerificationCase = { ...caseOf("E"), expects: (probe) => ({ mustBeOffered: probe }) };
+    expect(evaluate(needsProbe, baseObservation()).reasons).toContain("no probe tool given");
+    expect(evaluate(needsProbe, baseObservation()).status).toBe("inconclusive");
+    const wantsNothing: VerificationCase = { ...caseOf("I"), expects: () => ({}) };
+    expect(evaluate(wantsNothing, baseObservation())).toEqual({ status: "pass", reasons: [] });
   });
 
   it("fails case I when the probed tool ran without canUseTool", () => {

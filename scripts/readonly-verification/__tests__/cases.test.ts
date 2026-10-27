@@ -75,6 +75,7 @@ describe("CASES", () => {
     expect(caseOf("I").expects("mcp__probe__read_thing")).toEqual({
       ...mode,
       mustAttempt: "mcp__probe__read_thing",
+      mustBeOffered: "mcp__probe__read_thing",
     });
     expect(caseOf("J").expects(undefined)).toEqual(mode);
     expect(caseOf("K").expects(undefined)).toEqual({

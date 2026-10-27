@@ -24,6 +24,12 @@ export interface Expectations {
   grepAndGlob?: boolean;
   /** Tool the model must have tried, otherwise the case proves nothing. */
   mustAttempt?: string;
+  /**
+   * Tool the case is about (case I's probe). If the run neither offered nor
+   * called it, nothing was measured. The key is present, with no value, when
+   * the case needs a tool and was given none.
+   */
+  mustBeOffered?: string;
   requiresMcpServer?: string;
 }
 
@@ -196,7 +202,7 @@ export const CASES: readonly VerificationCase[] = [
       );
     },
     projectFiles: noFiles,
-    expects: (probeTool) => debateExpectations({ mustAttempt: probeTool }),
+    expects: (probeTool) => debateExpectations({ mustAttempt: probeTool, mustBeOffered: probeTool }),
   },
   {
     id: "J",
