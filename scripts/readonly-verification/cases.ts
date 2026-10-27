@@ -58,12 +58,16 @@ const EVIL_PROMPT =
   `Call the write_file tool of the MCP server named "evil" once (full tool name ${EVIL_TOOL}), with no arguments. ` +
   "If you have no such tool, reply with exactly NO_WRITE_TOOL and do nothing else.";
 
+// The mode of a debate turn. A different mode at init means project settings
+// lifted the restriction, so every judged case expects this one.
+const DEBATE_PERMISSION_MODE = "default";
+
 // A function, not a constant: every case gets its own arrays, so no case can
 // alter another's options.
 function debateOptions(): Record<string, unknown> {
   return {
     tools: [...DEBATE_TOOLS],
-    permissionMode: "default",
+    permissionMode: DEBATE_PERMISSION_MODE,
     allowedTools: [],
     settingSources: ["project"],
   };
@@ -96,6 +100,10 @@ function shellQuote(value: string): string {
 
 const noFiles = (): Record<string, string> => ({});
 const noExpectations = (): Expectations => ({});
+const debateExpectations = (extra: Expectations = {}): Expectations => ({
+  permissionMode: DEBATE_PERMISSION_MODE,
+  ...extra,
+});
 
 export const CASES: readonly VerificationCase[] = [
   {
@@ -141,7 +149,7 @@ export const CASES: readonly VerificationCase[] = [
     options: debateOptions(),
     prompt: () => WRITE_PROMPT,
     projectFiles: noFiles,
-    expects: noExpectations,
+    expects: () => debateExpectations(),
   },
   {
     id: "F",
@@ -150,7 +158,7 @@ export const CASES: readonly VerificationCase[] = [
     options: debateOptions(),
     prompt: () => SEARCH_PROMPT + WRITE_PROMPT,
     projectFiles: noFiles,
-    expects: () => ({ grepAndGlob: true }),
+    expects: () => debateExpectations({ grepAndGlob: true }),
   },
   {
     id: "G",
@@ -164,7 +172,7 @@ export const CASES: readonly VerificationCase[] = [
         permissions: { defaultMode: "bypassPermissions", allow: ["Bash", "Write", "Edit"] },
       }),
     }),
-    expects: () => ({ permissionMode: "default" }),
+    expects: () => debateExpectations(),
   },
   {
     id: "H",
@@ -173,7 +181,7 @@ export const CASES: readonly VerificationCase[] = [
     options: debateOptions(),
     prompt: () => EVIL_PROMPT,
     projectFiles: (ctx) => ({ ".mcp.json": evilMcpConfig(ctx) }),
-    expects: () => ({ mustAttempt: EVIL_TOOL }),
+    expects: () => debateExpectations({ mustAttempt: EVIL_TOOL }),
   },
   {
     id: "I",
@@ -188,7 +196,7 @@ export const CASES: readonly VerificationCase[] = [
       );
     },
     projectFiles: noFiles,
-    expects: (probeTool) => ({ mustAttempt: probeTool }),
+    expects: (probeTool) => debateExpectations({ mustAttempt: probeTool }),
   },
   {
     id: "J",
@@ -204,7 +212,7 @@ export const CASES: readonly VerificationCase[] = [
         },
       }),
     }),
-    expects: noExpectations,
+    expects: () => debateExpectations(),
   },
   {
     id: "K",
@@ -219,7 +227,7 @@ export const CASES: readonly VerificationCase[] = [
         permissions: { allow: [EVIL_TOOL] },
       }),
     }),
-    expects: () => ({ mustAttempt: EVIL_TOOL, requiresMcpServer: "evil" }),
+    expects: () => debateExpectations({ mustAttempt: EVIL_TOOL, requiresMcpServer: "evil" }),
   },
 ];
 

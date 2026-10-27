@@ -67,13 +67,27 @@ describe("CASES", () => {
   });
 
   it("states what each judged case expects", () => {
-    expect(caseOf("E").expects(undefined)).toEqual({});
-    expect(caseOf("F").expects(undefined)).toEqual({ grepAndGlob: true });
-    expect(caseOf("G").expects(undefined)).toEqual({ permissionMode: "default" });
-    expect(caseOf("H").expects(undefined)).toEqual({ mustAttempt: EVIL_TOOL });
-    expect(caseOf("I").expects("mcp__probe__read_thing")).toEqual({ mustAttempt: "mcp__probe__read_thing" });
-    expect(caseOf("J").expects(undefined)).toEqual({});
-    expect(caseOf("K").expects(undefined)).toEqual({ mustAttempt: EVIL_TOOL, requiresMcpServer: "evil" });
+    const mode = { permissionMode: "default" };
+    expect(caseOf("E").expects(undefined)).toEqual(mode);
+    expect(caseOf("F").expects(undefined)).toEqual({ ...mode, grepAndGlob: true });
+    expect(caseOf("G").expects(undefined)).toEqual(mode);
+    expect(caseOf("H").expects(undefined)).toEqual({ ...mode, mustAttempt: EVIL_TOOL });
+    expect(caseOf("I").expects("mcp__probe__read_thing")).toEqual({
+      ...mode,
+      mustAttempt: "mcp__probe__read_thing",
+    });
+    expect(caseOf("J").expects(undefined)).toEqual(mode);
+    expect(caseOf("K").expects(undefined)).toEqual({
+      ...mode,
+      mustAttempt: EVIL_TOOL,
+      requiresMcpServer: "evil",
+    });
+  });
+
+  it("expects the debate permission mode in every judged case", () => {
+    for (const c of CASES.filter((candidate) => candidate.gate !== "record")) {
+      expect(c.expects("mcp__probe__read_thing").permissionMode, `case ${c.id}`).toBe("default");
+    }
   });
 
   it("asks the same write task in the cases that try to write", () => {

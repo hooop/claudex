@@ -78,6 +78,7 @@ export function evaluate(c: VerificationCase, o: Observation, probeTool?: string
 
   const wentThroughCanUseTool = (use: { id: string }): boolean =>
     o.permissionRequests.some((request) => request.toolUseID === use.id);
+  const mcpServerOf = (tool: string): string => tool.split("__")[1] || tool;
   const unprovenApproval = (use: { id: string; name: string }): string =>
     `${use.name} (tool use ${use.id}) was not in the init tools and its approval path is unproven`;
 
@@ -92,6 +93,20 @@ export function evaluate(c: VerificationCase, o: Observation, probeTool?: string
       // never listed does not exist and cannot have run: it is not blamed.
       flag("inconclusive", unprovenApproval(use));
     }
+  }
+
+  // The criterion is that every other tool in the init list reaches canUseTool
+  // before it runs. An offered MCP tool this run never used (or used without a
+  // permission request) leaves that unproven: missing evidence, never a pass.
+  const unprovenMcpTools = initTools.filter(
+    (tool) => tool.startsWith("mcp__") && !o.toolUses.some((use) => use.name === tool && wentThroughCanUseTool(use)),
+  );
+  if (unprovenMcpTools.length > 0) {
+    const servers = [...new Set(unprovenMcpTools.map(mcpServerOf))];
+    flag(
+      "inconclusive",
+      `offered MCP tools not proven to go through canUseTool: ${unprovenMcpTools.length} (${servers.join(", ")})`,
+    );
   }
 
   if (expects.permissionMode !== undefined) {

@@ -108,9 +108,11 @@ describe("evaluate — built-in tools offered", () => {
     expect(verdict.status).toBe("fail");
   });
 
-  it("ignores MCP tools in the built-in check", () => {
+  it("ignores MCP tools in the built-in check, which the unproven-MCP rule judges instead", () => {
     const verdict = evaluate(caseOf("E"), baseObservation({ initTools: ["Read", "Grep", "Glob", "mcp__x__y"] }));
-    expect(verdict.status).toBe("pass");
+    expect(verdict.reasons.join("\n")).not.toContain("built-in tools beyond the debate list");
+    expect(verdict.status).toBe("inconclusive");
+    expect(verdict.reasons).toContain("offered MCP tools not proven to go through canUseTool: 1 (x)");
   });
 });
 
@@ -183,9 +185,20 @@ describe("evaluate — marker and permission mode", () => {
     expect(verdict.status).toBe("inconclusive");
   });
 
-  it("does not look at the permission mode in cases that expect none", () => {
-    const verdict = evaluate(caseOf("E"), baseObservation({ initPermissionMode: "bypassPermissions" }));
-    expect(verdict.status).toBe("pass");
+  it("fails every judged debate case whose init mode is not default", () => {
+    for (const id of ["E", "F", "G", "H", "I", "J", "K"] as const) {
+      const verdict = evaluate(caseOf(id), baseObservation({ initPermissionMode: "bypassPermissions" }), "mcp__x__y");
+      expect(verdict.status, `case ${id}`).toBe("fail");
+      expect(verdict.reasons, `case ${id}`).toContain("permission mode is bypassPermissions, expected default");
+    }
+  });
+
+  it("is inconclusive in every judged debate case when init reported no permission mode", () => {
+    for (const id of ["E", "F", "G", "H", "I", "J", "K"] as const) {
+      const verdict = evaluate(caseOf(id), baseObservation({ initPermissionMode: null }), "mcp__x__y");
+      expect(verdict.reasons, `case ${id}`).toContain("init reported no permission mode");
+      expect(verdict.status, `case ${id}`).not.toBe("pass");
+    }
   });
 });
 
@@ -372,6 +385,100 @@ describe("evaluate — MCP tool absent from init but used", () => {
       baseObservation({ markerWritten: true, toolUses: [{ id: "t1", name: "mcp__x__y" }] }),
     );
     expect(verdict.status).toBe("fail");
+  });
+});
+
+// The criterion is that every other tool in the init list reaches canUseTool
+// before it runs. An offered MCP tool the run never used is missing evidence.
+describe("evaluate — MCP tools offered at init", () => {
+  const unproven = (count: number, servers: string): string =>
+    `offered MCP tools not proven to go through canUseTool: ${count} (${servers})`;
+
+  it("is inconclusive when an offered MCP tool was never used", () => {
+    const verdict = evaluate(caseOf("E"), baseObservation({ initTools: ["Read", "mcp__x__y"] }));
+    expect(verdict).toEqual({ status: "inconclusive", reasons: [unproven(1, "x")] });
+  });
+
+  it("gives one reason that counts the tools and names each server once", () => {
+    const verdict = evaluate(
+      caseOf("E"),
+      baseObservation({
+        initTools: [
+          "Read",
+          "mcp__claude_ai_Gmail__search_threads",
+          "mcp__claude_ai_Gmail__get_thread",
+          "mcp__claude_ai_Claude_Docs__read",
+          "mcp__claude_ai_Gmail__create_draft",
+        ],
+      }),
+    );
+    expect(verdict.status).toBe("inconclusive");
+    expect(verdict.reasons).toEqual([unproven(4, "claude_ai_Gmail, claude_ai_Claude_Docs")]);
+  });
+
+  it("does not count a tool that was used and went through canUseTool", () => {
+    const verdict = evaluate(
+      caseOf("E"),
+      baseObservation({
+        initTools: ["Read", "mcp__x__y", "mcp__z__w"],
+        toolUses: [{ id: "t1", name: "mcp__x__y" }],
+        permissionRequests: [{ toolUseID: "t1", toolName: "mcp__x__y", decision: "deny" }],
+      }),
+    );
+    expect(verdict.status).toBe("inconclusive");
+    expect(verdict.reasons).toEqual([unproven(1, "z")]);
+  });
+
+  it("passes when every offered MCP tool went through canUseTool", () => {
+    const verdict = evaluate(
+      caseOf("E"),
+      baseObservation({
+        initTools: ["Read", "mcp__x__y", "mcp__z__w"],
+        toolUses: [
+          { id: "t1", name: "mcp__x__y" },
+          { id: "t2", name: "mcp__z__w" },
+        ],
+        permissionRequests: [
+          { toolUseID: "t1", toolName: "mcp__x__y", decision: "deny" },
+          { toolUseID: "t2", toolName: "mcp__z__w", decision: "deny" },
+        ],
+      }),
+    );
+    expect(verdict).toEqual({ status: "pass", reasons: [] });
+  });
+
+  it("does not take a permission request for another tool use as proof", () => {
+    const verdict = evaluate(
+      caseOf("E"),
+      baseObservation({
+        initTools: ["Read", "mcp__x__y"],
+        toolUses: [{ id: "t1", name: "mcp__x__y" }],
+        permissionRequests: [{ toolUseID: "t2", toolName: "mcp__x__y", decision: "deny" }],
+      }),
+    );
+    expect(verdict.status).toBe("fail");
+    expect(verdict.reasons).toContain(unproven(1, "x"));
+  });
+
+  it("applies to every judged debate case", () => {
+    for (const id of ["E", "F", "G", "H", "I", "J", "K"] as const) {
+      const verdict = evaluate(caseOf(id), baseObservation({ initTools: ["Read", "mcp__x__y"] }), "mcp__probe__p");
+      expect(verdict.reasons, `case ${id}`).toContain(unproven(1, "x"));
+      expect(verdict.status, `case ${id}`).not.toBe("pass");
+    }
+  });
+
+  it("leaves a record-gate case alone", () => {
+    const verdict = evaluate(caseOf("B"), baseObservation({ initTools: ["Bash", "mcp__x__y"] }));
+    expect(verdict.status).toBe("recorded");
+    expect(verdict.reasons.join("\n")).not.toContain("not proven");
+  });
+
+  it("lets a fail beat the inconclusive and keeps both reasons", () => {
+    const verdict = evaluate(caseOf("E"), baseObservation({ initTools: ["Read", "Bash", "mcp__x__y"] }));
+    expect(verdict.status).toBe("fail");
+    expect(verdict.reasons).toContain(unproven(1, "x"));
+    expect(verdict.reasons.join("\n")).toContain("Bash");
   });
 });
 
