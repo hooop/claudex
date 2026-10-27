@@ -20,7 +20,7 @@ A session always follows the same cycle:
 6. `/handoff` writes that decision to a standalone markdown file, ready to hand to a `claude` or `codex` session for implementation.
 7. Alternatively, `/implement claude` or `/implement codex` lets the chosen agent implement the agreed plan without leaving Claudex.
 
-The debate phase is strictly read-only: both agents can inspect the code, but neither can modify it. Write access is enabled only after an explicit `/implement` command.
+The debate phase is read-only for the agents: both can inspect the code, but neither can modify it. The one exception is the analysed repository's own Claude Code hooks, which still run during a debate (see [What leaves the machine](#what-leaves-the-machine)). Write access is enabled only after an explicit `/implement` command.
 
 The topic is not restricted to architecture. Anything settled before code gets written fits: choosing between two approaches, reviewing existing code, diagnosing an observed bug, weighing a trade-off.
 
@@ -50,9 +50,9 @@ Worth reading before pointing Claudex at a repository owned by someone else, or 
 
 **Debate permissions are deliberately narrow.** During a debate, Codex can execute shell commands inside a read-only, network-disabled operating system sandbox. Claude Code has no shell tool during this phase and is restricted to reading and searching files.
 
-**Read-only means "cannot modify anything", not "only sees the repository".** In the current version of Codex, nothing restricts what a command may read. It can open any file the current account has access to and copy its contents into the transcript, which is then sent to both models and written to disk. Without network access a command cannot exfiltrate anything by itself, but it can still copy. Claudex should therefore not be used to analyse untrusted code.
+**Read-only means "the agents cannot modify anything", not "only sees the repository".** In the current version of Codex, nothing restricts what a command may read. It can open any file the current account has access to and copy its contents into the transcript, which is then sent to both models and written to disk. Without network access a command cannot exfiltrate anything by itself, but it can still copy. Claudex should therefore not be used to analyse untrusted code. Hooks in the repository's own Claude Code configuration are a separate exception, described next.
 
-**The analysed repository's own Claude Code configuration still applies.** During a debate, Claude Code loads the project's settings and MCP configuration. Hooks declared in the repository's `.claude/settings.json` run without a prompt, and the MCP servers declared in its `.mcp.json` start without a prompt, although their tool calls still need your approval. Tools from the connectors of your claude.ai account (mail, documents) may also be offered to Claude Code. Whether their calls always reach the approval prompt has not been measured. This is another reason not to analyse untrusted code: a hook is a command that runs on your machine, even though Claude Code has no shell tool of its own during a debate.
+**The analysed repository's own Claude Code configuration still applies.** During a debate, Claude Code loads the project's settings and MCP configuration. Hooks declared in the repository's `.claude/settings.json` run without a prompt, and the MCP servers declared in its `.mcp.json` start without a prompt, although their tool calls still need your approval. Tools from the connectors of your claude.ai account (mail, documents) may also be offered to Claude Code. Whether their calls reach the approval prompt has not been measured. This is another reason not to analyse untrusted code: a hook is a command that runs on your machine, even though Claude Code has no shell tool of its own during a debate.
 
 **Implementation is a separate, explicit phase.** `/implement` gives the agents write-capable tools. Codex remains sandboxed to the current project and temporary directories, with network access disabled. Claude Code uses its normal implementation tools and may ask for permission before sensitive actions. Review the agreed plan before enabling this phase.
 
@@ -114,7 +114,7 @@ npm install
 npm link
 ```
 
-`npm install` also downloads the Claude Code engine bundled with the Claude Agent SDK (about 270 MB on macOS arm64, as measured). Signing in still goes through your own Claude Code, as in step 2.
+`npm install` also downloads the Claude Code engine bundled with the Claude Agent SDK (about 270 MB on macOS arm64). Signing in still goes through your own Claude Code, as in step 2.
 
 `npm link` makes the `claudex` command available from any directory. It creates a link to this folder, which must therefore not be moved afterwards. To remove the command later: `npm unlink -g claudex`.
 
