@@ -91,6 +91,36 @@ describe("ClaudeAgent streaming", () => {
     expect(agent.currentModel()).toBe("Opus 4.5");
   });
 
+  it("affiche le modèle qui a répondu, pas le premier modèle listé dans modelUsage", async () => {
+    // Measured on SDK 0.3.310: with model "opus", modelUsage lists the engine's
+    // background Haiku first, then the model that actually answered.
+    queryMock.mockReturnValue(
+      messages([
+        {
+          type: "assistant",
+          session_id: "session-1",
+          message: {
+            model: "claude-opus-5-5",
+            usage: { input_tokens: 1_000, output_tokens: 100 },
+            content: [{ type: "text", text: "Résumé" }],
+          },
+        },
+        {
+          ...successResult(),
+          modelUsage: {
+            "claude-haiku-5-5": { contextWindow: 200_000 },
+            "claude-opus-5-5": { contextWindow: 200_000 },
+          },
+        },
+      ]) as never,
+    );
+
+    const agent = new ClaudeAgent("opus", "Opus 5");
+    await agent.send("Sujet", { cwd: "/tmp", writeAccess: false });
+
+    expect(agent.currentModel()).toBe("Opus 5.5");
+  });
+
   it("affiche le libellé du sélecteur dès qu'un modèle est choisi", () => {
     const agent = new ClaudeAgent();
     agent.setModel("sonnet");

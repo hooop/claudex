@@ -240,7 +240,10 @@ export class ClaudeAgent implements CodingAgent {
           };
 
           const modelUsage = resultMsg.modelUsage;
-          const usedModel = modelUsage && Object.keys(modelUsage)[0];
+          // modelUsage also counts the engine's background model (Haiku on SDK
+          // 0.3.310) and lists it first, so only the assistant messages name
+          // the model that answered.
+          const usedModel = latestAssistantContext?.model;
           if (usedModel) this.resolvedModel = usedModel;
 
           const contextWindow = modelContextWindowOf(modelUsage, latestAssistantContext?.model);
