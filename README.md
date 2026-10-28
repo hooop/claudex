@@ -20,7 +20,7 @@ A session always follows the same cycle:
 6. `/handoff` writes that decision to a standalone markdown file, ready to hand to a `claude` or `codex` session for implementation.
 7. Alternatively, `/implement claude` or `/implement codex` lets the chosen agent implement the agreed plan without leaving Claudex.
 
-The debate phase is strictly read-only: both agents can inspect the code, but neither can modify it. Write access is enabled only after an explicit `/implement` command.
+The debate phase is read-only for the agents: both can inspect the code, but neither can modify it. The one exception is the analysed repository's own Claude Code configuration: its hooks and the stdio MCP servers it declares are commands that still run during a debate (see [What leaves the machine](#what-leaves-the-machine)). Write access is enabled only after an explicit `/implement` command.
 
 The topic is not restricted to architecture. Anything settled before code gets written fits: choosing between two approaches, reviewing existing code, diagnosing an observed bug, weighing a trade-off.
 
@@ -48,9 +48,11 @@ Worth reading before pointing Claudex at a repository owned by someone else, or 
 
 **The code is sent to two providers.** Claudex drives Claude Code (Anthropic) and Codex (OpenAI). Everything the agents read, whether files, excerpts or search results, is sent to both, and each answer from one is forwarded to the other.
 
-**Debate permissions are deliberately narrow.** During a debate, Codex can execute shell commands inside a read-only, network-disabled operating system sandbox. Claude Code has no shell tool during this phase and is restricted to reading and searching files.
+**Debate permissions are deliberately narrow.** During a debate, Codex can execute shell commands inside a read-only, network-disabled operating system sandbox. Claude Code has no shell tool during this phase: its own tools are limited to reading and searching files. MCP tools can also be offered to it (see below).
 
-**Read-only means "cannot modify anything", not "only sees the repository".** In the current version of Codex, nothing restricts what a command may read. It can open any file the current account has access to and copy its contents into the transcript, which is then sent to both models and written to disk. Without network access a command cannot exfiltrate anything by itself, but it can still copy. Claudex should therefore not be used to analyse untrusted code.
+**Read-only means "the agents cannot modify anything", not "only sees the repository".** In the current version of Codex, nothing restricts what a command may read. It can open any file the current account has access to and copy its contents into the transcript, which is then sent to both models and written to disk. Without network access a command cannot exfiltrate anything by itself, but it can still copy. Claudex should therefore not be used to analyse untrusted code. The repository's own Claude Code configuration is a separate exception, described next.
+
+**The analysed repository's own Claude Code configuration can run commands during a debate.** Claude Code loads the project's settings and MCP configuration. Hooks declared in the repository's `.claude/settings.json` run without a prompt, and so does a stdio MCP server declared in its `.mcp.json`: it is a command started on your machine when the session begins (an http or sse server is a URL Claude Code connects to instead). The calls to their tools still needed your approval in the runs we measured, in a folder never opened with Claude Code; folders you already trust were not measured. Tools from the connectors of your claude.ai account (mail, documents) may also be offered to Claude Code, and whether their calls reach the approval prompt has not been measured. This is another reason not to analyse untrusted code: a hook or a stdio MCP server is a command that runs on your machine, even though Claude Code has no shell tool of its own during a debate.
 
 **Implementation is a separate, explicit phase.** `/implement` gives the agents write-capable tools. Codex remains sandboxed to the current project and temporary directories, with network access disabled. Claude Code uses its normal implementation tools and may ask for permission before sensitive actions. Review the agreed plan before enabling this phase.
 
@@ -112,6 +114,8 @@ npm install
 npm link
 ```
 
+`npm install` also downloads the Claude Code engine bundled with the Claude Agent SDK (about 270 MB on macOS arm64). Signing in still goes through your own Claude Code, as in step 2.
+
 `npm link` makes the `claudex` command available from any directory. It creates a link to this folder, which must therefore not be moved afterwards. To remove the command later: `npm unlink -g claudex`.
 
 Claudex is currently installed from source; it is not published as an npm package.
@@ -132,6 +136,7 @@ This runs the strict TypeScript typecheck, ESLint, then the complete test suite.
 | `Claudex a besoin d'un vrai terminal interactif (TTY)` | Claudex was started inside a script or a pipe. Start it directly in a terminal. |
 | `command not found: claude` or `codex` | Repeat step 2 or step 3. |
 | The debate fails on the first turn | One of the two accounts is not signed in. Run `claude` and `codex` separately to check. |
+| Claude never answers, the turn never ends | An outbound firewall that rules per program (LuLu, Little Snitch) sees each install location of the Claude Code engine bundled with the SDK as a new program, and blocks its requests until you allow it. Allow `node_modules/@anthropic-ai/claude-agent-sdk-<platform>/claude` inside the `claudex` folder, for example `claude-agent-sdk-darwin-arm64` on an Apple silicon Mac. |
 | `EACCES` during `npm install -g` | Insufficient permissions on the global npm directory. See [the npm documentation](https://docs.npmjs.com/resolving-eacces-permissions-errors-when-installing-packages-globally). |
 
 ## Usage
@@ -220,6 +225,10 @@ src/
 ## Status
 
 Claudex is usable today and under active development. The current release includes topic qualification, the autonomous debate loop, human interventions, project memory, transcript archives, context-usage indicators, model selection, handoffs, and an optional implementation phase.
+
+## Contributing
+
+[AGENTS.md](AGENTS.md) describes the stack, the commands (`npm run check` must pass before a pull request), the conventions and the constraints to respect. `CLAUDE.md` imports it, so Claude Code and Codex read the same guide.
 
 ## License
 

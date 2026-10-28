@@ -4,21 +4,22 @@ dist/
 *.heapsnapshot
 .DS_Store
 
-# Mémoire écrite par Claudex pendant ses propres sessions. Même politique que
-# celle qu'il installe chez ses utilisateurs (CLAUDEX_GITIGNORE, dans
-# src/memory/store.ts) : tout est exclu par défaut, y compris ce qui sera
-# ajouté plus tard, et seuls decisions.md et limits.md sont versionnés — ils
-# sont courts et CLAUDE.md comme AGENTS.md les référencent.
+# Memory written by Claudex during debates run on this repository. Same policy
+# as the .claudex/.gitignore it writes in its users' projects (CLAUDEX_GITIGNORE
+# in src/memory/store.ts): everything is excluded by default, including files
+# later versions add, and only decisions.md and limits.md are versioned, because
+# they are short, written on purpose, and the debate rules point both agents to
+# them.
 .claudex/*
 !.claudex/memory/
 .claudex/memory/*
 !.claudex/memory/decisions.md
 !.claudex/memory/limits.md
 
-# Exports bruts de débats, conservés en local.
+# Raw debate exports, kept locally.
 debat.md/
 
-# Configuration Claude Code. Même logique que ci-dessus : ce qui est écrit à
-# dessein et profite à quelqu'un qui clone le dépôt est versionné (les agents),
-# ce qui est propre à une machine ne l'est pas.
+# Claude Code configuration: what is written on purpose and helps anyone who
+# clones the repository is versioned (the subagents), what is specific to one
+# machine is not.
 .claude/settings.local.json

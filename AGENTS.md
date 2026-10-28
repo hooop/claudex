@@ -1,12 +1,82 @@
-# Agents
+# Claudex contributor guide
 
-Ce projet est développé avec Claudex : Claude Code et Codex y travaillent en binôme, en débat structuré jusqu'à consensus avant toute écriture de code, sous supervision humaine directe.
+Claudex is a terminal app that runs a live debate between Claude Code and Codex,
+under direct human supervision, before any code is written. This guide is for
+anyone changing Claudex itself, human or agent. User documentation is in README.md.
 
-## Mémoire du projet (Claudex)
+## Stack
+- Node.js >= 22, TypeScript (strict, ESM), run through tsx: there is no build step.
+  `bin/claudex.mjs` starts `src/cli.tsx` with this repository's tsconfig.
+- UI: Ink 7 and React 19, in the terminal's alternate screen.
+- Agents: `@anthropic-ai/claude-agent-sdk` for Claude, the `codex app-server`
+  protocol for Codex. Running Claudex needs Claude Code and Codex set up and
+  logged in (see README).
+- Tests: Vitest. Lint: ESLint, with type-checked typescript-eslint rules on TypeScript.
 
-Avant de proposer une architecture ou une décision, lis ces fichiers :
-- `.claudex/memory/decisions.md` — décisions déjà actées
-- `.claudex/memory/devlog.md` — historique des sessions
-- `.claudex/memory/limits.md` — contraintes et choses explicitement écartées
+## Commands
+- `npm install`: install dependencies.
+- `npm run dev`: run Claudex from source on this repository (npm always runs
+  scripts from the package root). To try your changes on another project, run
+  `claudex` there after `npm link` (see README), or `node /path/to/claudex/bin/claudex.mjs`.
+- `npm test`, `npm run test:watch`: unit and integration tests.
+- `npm run typecheck`: strict type check. `npm run lint`: ESLint. Both cover
+  `src`, `bin`, `docs/demo` and `scripts`.
+- `npm run check`: typecheck, lint and tests. CI runs exactly this on every pull
+  request to main and every push to main; it must pass before a pull request is opened.
 
-Ne remets pas en question une décision déjà actée sans le signaler explicitement et sans raison nouvelle.
+## Layout
+- `src/cli.tsx`: entry point (TTY check, memory scaffold, Ink render).
+- `src/types.ts`: shared types and the protocol marker constants.
+- `src/agents/`: Claude and Codex adapters behind the `CodingAgent` interface.
+- `src/orchestrator/`: the scheduler (per-agent delivery queues, intervention
+  batches behind a barrier, epoch-based consensus), slash commands, protocol markers.
+- `src/memory/`: reads and writes `.claudex/memory/` in the user's project.
+- `src/ui/`: welcome screen, debate view, output rendering.
+- `src/util/`: small helpers (tool input formatting, project status).
+- `docs/demo/`: source of the README demo GIF; typechecked and linted like `src`.
+- `scripts/`: maintainer tooling. `npm run verify:readonly` measures against a real SDK
+  whether Claude stays read-only during a debate (run it after every SDK upgrade); that
+  command is never run by `npm test` or CI, but its unit tests under
+  `scripts/**/__tests__` are. `readonly-verification/` holds its logic.
+- Tests sit in `__tests__/` next to the code they cover; the scheduler's are in
+  `src/__tests__/`.
+
+## Conventions
+- Code, comments, commit messages and docs are in English. The UI, agent prompts,
+  most test names and some comments are still in French and will be translated
+  in one pass; until then, match the language of the surrounding strings.
+- Comments explain why, not what.
+- Conventional Commits for commits and pull request titles (CI checks the title).
+- One branch per change (`feat/`, `fix/`, `docs/`, `chore/`, `refactor/`), merged
+  through a pull request. Never push to main.
+- Write the test first for any behaviour change. Tests never call `claude`,
+  `codex` or the network (some run `git init` and spawn `node`): orchestrator and
+  UI tests use a fake `CodingAgent` (for example `FakeAgent` in
+  `src/__tests__/scheduler.test.ts`), adapter tests mock the SDK's `query` and
+  `child_process.spawn`.
+- Discuss any new dependency before adding it.
+
+## Constraints
+- In the user's project, Claudex itself writes nothing outside `.claudex/` (the
+  agents may, after `/implement`). It never creates or edits CLAUDE.md or AGENTS.md.
+- Agents are read-only until the implementation phase. Codex gets a read-only
+  sandbox. For Claude, only two things enforce it: the `tools` list
+  (`DEBATE_TOOLS` in `src/agents/claudeAgent.ts`) and the human answering
+  `canUseTool`. `permissionMode: "plan"` and `allowedTools` do not (measured,
+  see limits.md). Claudex does not use the SDK sandbox; on 0.3.310 it can block
+  writes in `cwd`, measured once (limits.md, 2026-10-28). Re-check after every SDK upgrade by running
+  `npm run verify:readonly` on the old and the new version. The SDK is pinned to an
+  exact version for that reason. The analysed project's own hooks and MCP servers
+  are a known gap (limits.md, 2026-10-27).
+- The debate rules (`CONSENSUS_INSTRUCTIONS`) never name an agent outside the
+  self/other roles; a test checks the symmetry.
+- There is no unsupervised mode: `src/cli.tsx` refuses to start without a TTY.
+  This is why autonomy is unbounded by default.
+- Fake agents that always answer `<<CONTINUE>>` never stop; a test that needs a
+  finished debate must set its own autonomy bound.
+
+## Project memory
+`.claudex/memory/decisions.md` and `limits.md` record settled decisions and
+verified limits (in French for now). Read them before proposing an architectural
+change, and do not reopen a decision without saying so and giving a new reason.
+The rest of `.claudex/memory/` (transcripts, handoffs, devlog) is local and not versioned.

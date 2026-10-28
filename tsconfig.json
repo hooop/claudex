@@ -17,5 +17,5 @@
     "noEmit": true,
     "allowImportingTsExtensions": true
   },
-  "include": ["src/**/*", "bin/**/*", "docs/demo/**/*"]
+  "include": ["src/**/*", "bin/**/*", "docs/demo/**/*", "scripts/**/*"]
 }
