@@ -2,6 +2,52 @@
 
 Contraintes, boundaries et choses explicitement écartées.
 
+## 2026-10-28 — Le sandbox du SDK 0.3.310 peut rendre `cwd` non-inscriptible (mesure ponctuelle)
+
+**Constat :** re-mesure de la limite du 2026-08-07, avec un script exploratoire hors du dépôt (pas
+`npm run verify:readonly`) : `query()` isolé, `tools: ["Bash"]`, `settingSources: []`, `canUseTool`
+qui autorise tout (le sandbox est la seule protection mesurée), dossier temporaire neuf avec `git init`,
+`cwd` passé par son chemin réel. Le modèle reçoit une commande fixe qui écrit à la racine de `cwd`,
+dans un sous-dossier, dans `.git` et dans un dossier hors de `cwd`, puis appelle un site en HTTPS. Le
+critère est la présence des fichiers sur disque. Une exécution par réglage, macOS, SDK 0.3.310 (Claude
+Code 2.1.310), `claude-sonnet-5-5`. Réglages communs : `enabled`, `failIfUnavailable`,
+`autoAllowBashIfSandboxed`, `allowUnsandboxedCommands: false`, `network.allowedDomains: []`.
+
+| Réglage ajouté | Racine, sous-dossier, `.git` | Hors de `cwd` |
+| --- | --- | --- |
+| aucun | **écrits** | bloqué |
+| `filesystem.denyWrite: [<cwd absolu>]` | bloqués | bloqué |
+| `filesystem.denyWrite: [<cwd absolu>/**]` | bloqués | bloqué |
+| `filesystem.denyWrite: [".", "./**"]` | **écrits** | bloqué |
+| `filesystem.denyWrite: ["/"]` | bloqués | bloqué |
+| `settings.permissions.deny: ["Edit(/<cwd absolu>/**)"]` | bloqués | bloqué |
+| `denyWrite` absolu, consigne d'appeler Bash avec `dangerouslyDisableSandbox: true` | bloqués (le modèle l'a demandé deux fois) | bloqué |
+
+Réseau : avec `allowedDomains: []` seul, chaque connexion arrive dans `canUseTool` sous le nom
+`SandboxNetworkAccess` (autorisée par le script, donc la requête est passée). Avec en plus
+`network.strictAllowlist: true`, la connexion est refusée sans passer par `canUseTool` (`curl` rend
+`000`, le moteur signale `deny network-outbound example.com:443`), et les écritures restent bloquées.
+
+**Ce que ça change :** la limite du 2026-08-07 ne tient plus sur 0.3.310. Avec le chemin absolu de
+`cwd` dans `denyWrite`, `allowUnsandboxedCommands: false` et `strictAllowlist: true`, le Bash de Claude
+obtient la même garantie que le sandbox de Codex : lecture seule et pas de réseau, appliqués par le
+système. Le raccourci `.` ne désigne pas `cwd`.
+
+**Non mesuré :**
+- la comparaison sur 0.1.77 : le moteur s'est bloqué dès que le sandbox était activé, sans lancer
+  aucune commande, et a été arrêté après environ 5 minutes, deux fois (configuration complète, puis
+  celle d'août). La comparaison repose donc sur la mesure du 2026-08-07 ;
+- la répétition : une seule exécution par réglage ;
+- Linux, où le sandbox repose sur un autre mécanisme (bubblewrap) ;
+- Windows, où le SDK indique qu'un sandbox ne peut pas tenir les commandes shell à l'écart des
+  dossiers.
+
+**Comment appliquer :** ne pas donner Bash à Claude pendant le débat sur la foi de cette seule
+mesure. Une branche dédiée, avec design et plan de retour arrière, doit ajouter ces cas à
+`npm run verify:readonly`, les répéter, mesurer Linux, garder les outils actuels là où le sandbox
+n'est pas disponible, et repasser la décision du 2026-08-17 (« L'asymétrie d'exécution reste en
+l'état ») avec cette nouvelle raison.
+
 ## 2026-10-27 — Lecture seule de Claude re-mesurée sur le SDK 0.3.310
 
 **Constat :** mesuré avec `npm run verify:readonly -- --model claude-sonnet-5-5 --sdk-dir <installation
@@ -103,8 +149,8 @@ comme A. A et D sont identiques. La conclusion du 2026-08-29 tient toujours : se
   sur les deux versions. C'est la même classe que les hooks (cas J) : une commande fournie par le
   dépôt s'exécute pendant un débat. Seuls ses appels d'outil atteignent `canUseTool` (refusés dans
   le test), pas son démarrage.
-- Suite proposée au mainteneur, pas décidée : une branche `fix/` qui isole le débat (aucun hook,
-  aucun serveur MCP). Elle touche à la configuration de sécurité et demande son accord.
+- Suite acceptée par le mainteneur le 2026-10-28 : une branche `fix/` qui isole le débat (aucun hook,
+  aucun serveur MCP, aucun connecteur claude.ai), après la fusion de cette montée de version.
 
 **Comment appliquer :** relancer `npm run verify:readonly` à chaque montée de version du SDK, sur
 l'ancienne et sur la nouvelle version (`--sdk-dir` désigne une installation isolée de chacune), avec
@@ -160,6 +206,9 @@ débat avant toute implémentation — ne pas implémenter le handoff tel quel.
 **Comment appliquer :** avant d'activer Bash (même "lecture seule") pendant la phase de débat, revérifier
 empiriquement sur la version du SDK alors installée — ne pas se fier à la doc seule, ni aux types `.d.ts`
 seuls (`sandboxTypes.d.ts` est lui-même en retard sur ce que `cli.js` embarqué supporte réellement).
+
+**Mise à jour 2026-10-28 :** sur le SDK 0.3.310, `denyWrite` avec le chemin absolu de `cwd` bloque
+les écritures dans `cwd` (mesure ponctuelle, voir l'entrée du 2026-10-28 plus haut).
 
 **Mise à jour 2026-10-27 :** voir « 2026-10-27 — Lecture seule de Claude re-mesurée sur le SDK
 0.3.310 » plus haut. Le SDK 0.3.x livre un binaire natif et plus de `cli.js` : la méthode par grep
