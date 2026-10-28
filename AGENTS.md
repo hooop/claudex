@@ -20,7 +20,7 @@ anyone changing Claudex itself, human or agent. User documentation is in README.
   `claudex` there after `npm link` (see README), or `node /path/to/claudex/bin/claudex.mjs`.
 - `npm test`, `npm run test:watch`: unit and integration tests.
 - `npm run typecheck`: strict type check. `npm run lint`: ESLint. Both cover
-  `src`, `bin` and `docs/demo`.
+  `src`, `bin`, `docs/demo` and `scripts`.
 - `npm run check`: typecheck, lint and tests. CI runs exactly this on every pull
   request to main and every push to main; it must pass before a pull request is opened.
 
@@ -34,6 +34,10 @@ anyone changing Claudex itself, human or agent. User documentation is in README.
 - `src/ui/`: welcome screen, debate view, output rendering.
 - `src/util/`: small helpers (tool input formatting, project status).
 - `docs/demo/`: source of the README demo GIF; typechecked and linted like `src`.
+- `scripts/`: maintainer tooling. `npm run verify:readonly` measures against a real SDK
+  whether Claude stays read-only during a debate (run it after every SDK upgrade); that
+  command is never run by `npm test` or CI, but its unit tests under
+  `scripts/**/__tests__` are. `readonly-verification/` holds its logic.
 - Tests sit in `__tests__/` next to the code they cover; the scheduler's are in
   `src/__tests__/`.
 
@@ -45,10 +49,11 @@ anyone changing Claudex itself, human or agent. User documentation is in README.
 - Conventional Commits for commits and pull request titles (CI checks the title).
 - One branch per change (`feat/`, `fix/`, `docs/`, `chore/`, `refactor/`), merged
   through a pull request. Never push to main.
-- Write the test first for any behaviour change. Tests never call a real CLI or
-  the network: orchestrator and UI tests use a fake `CodingAgent` (for example
-  `FakeAgent` in `src/__tests__/scheduler.test.ts`), adapter tests mock the SDK's
-  `query` and `child_process.spawn`.
+- Write the test first for any behaviour change. Tests never call `claude`,
+  `codex` or the network (some run `git init` and spawn `node`): orchestrator and
+  UI tests use a fake `CodingAgent` (for example `FakeAgent` in
+  `src/__tests__/scheduler.test.ts`), adapter tests mock the SDK's `query` and
+  `child_process.spawn`.
 - Discuss any new dependency before adding it.
 
 ## Constraints
@@ -57,8 +62,12 @@ anyone changing Claudex itself, human or agent. User documentation is in README.
 - Agents are read-only until the implementation phase. Codex gets a read-only
   sandbox. For Claude, only two things enforce it: the `tools` list
   (`DEBATE_TOOLS` in `src/agents/claudeAgent.ts`) and the human answering
-  `canUseTool`. `permissionMode: "plan"`, `allowedTools` and the SDK sandbox do
-  not (measured, see limits.md); re-check after every SDK upgrade.
+  `canUseTool`. `permissionMode: "plan"` and `allowedTools` do not (measured,
+  see limits.md). Claudex does not use the SDK sandbox; on 0.3.310 it can block
+  writes in `cwd`, measured once (limits.md, 2026-10-28). Re-check after every SDK upgrade by running
+  `npm run verify:readonly` on the old and the new version. The SDK is pinned to an
+  exact version for that reason. The analysed project's own hooks and MCP servers
+  are a known gap (limits.md, 2026-10-27).
 - The debate rules (`CONSENSUS_INSTRUCTIONS`) never name an agent outside the
   self/other roles; a test checks the symmetry.
 - There is no unsupervised mode: `src/cli.tsx` refuses to start without a TTY.

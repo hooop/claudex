@@ -91,6 +91,36 @@ describe("ClaudeAgent streaming", () => {
     expect(agent.currentModel()).toBe("Opus 4.5");
   });
 
+  it("affiche le modèle qui a répondu, pas le premier modèle listé dans modelUsage", async () => {
+    // Measured on SDK 0.3.310: with model "opus", modelUsage lists the engine's
+    // background Haiku first, then the model that actually answered.
+    queryMock.mockReturnValue(
+      messages([
+        {
+          type: "assistant",
+          session_id: "session-1",
+          message: {
+            model: "claude-opus-5-5",
+            usage: { input_tokens: 1_000, output_tokens: 100 },
+            content: [{ type: "text", text: "Résumé" }],
+          },
+        },
+        {
+          ...successResult(),
+          modelUsage: {
+            "claude-haiku-5-5": { contextWindow: 200_000 },
+            "claude-opus-5-5": { contextWindow: 200_000 },
+          },
+        },
+      ]) as never,
+    );
+
+    const agent = new ClaudeAgent("opus", "Opus 5");
+    await agent.send("Sujet", { cwd: "/tmp", writeAccess: false });
+
+    expect(agent.currentModel()).toBe("Opus 5.5");
+  });
+
   it("affiche le libellé du sélecteur dès qu'un modèle est choisi", () => {
     const agent = new ClaudeAgent();
     agent.setModel("sonnet");
@@ -174,5 +204,28 @@ describe("ClaudeAgent — réglages par phase", () => {
     await agent.send("Sujet", { cwd: "/tmp", writeAccess: false });
 
     expect(queryMock.mock.calls[0]?.[0]?.options.model).toBe("opus");
+  });
+
+  /**
+   * En débat, la lecture seule ne repose que sur `tools` et `canUseTool` :
+   * `permissionMode: "plan"` et `allowedTools` ne l'imposent pas dans le SDK
+   * installé (limits.md, 2026-08-29). Ce test fige ces réglages pour qu'une
+   * mise à jour du SDK ne les relâche pas en silence.
+   */
+  it("restreint le débat à Read, Grep et Glob, sous arbitrage humain", async () => {
+    queryMock.mockReturnValue(messages([successResult()]));
+    const agent = new ClaudeAgent();
+    await agent.send("Sujet", {
+      cwd: "/tmp",
+      writeAccess: false,
+      onPermissionRequest: async () => ({ behavior: "deny" }),
+    });
+
+    const options = queryMock.mock.calls[0]?.[0]?.options;
+    expect(options.tools).toEqual(["Read", "Grep", "Glob"]);
+    expect(options.permissionMode).toBe("default");
+    expect(options.allowedTools).toEqual([]);
+    expect(options.settingSources).toEqual(["project"]);
+    expect(typeof options.canUseTool).toBe("function");
   });
 });

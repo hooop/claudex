@@ -9,7 +9,7 @@ import { AUTO_MODEL_LABEL, type AgentSendOptions, type CodingAgent } from "./typ
  * Bash is explicitly excluded — it can write even with "read-only" intent,
  * and a permissive rule or distracted human approval could violate the invariant.
  */
-const DEBATE_TOOLS = ["Read", "Grep", "Glob"];
+export const DEBATE_TOOLS = ["Read", "Grep", "Glob"];
 
 /**
  * Full tool access for implementation phase.
@@ -240,7 +240,10 @@ export class ClaudeAgent implements CodingAgent {
           };
 
           const modelUsage = resultMsg.modelUsage;
-          const usedModel = modelUsage && Object.keys(modelUsage)[0];
+          // modelUsage also counts the engine's background model (Haiku on SDK
+          // 0.3.310) and lists it first, so only the assistant messages name
+          // the model that answered.
+          const usedModel = latestAssistantContext?.model;
           if (usedModel) this.resolvedModel = usedModel;
 
           const contextWindow = modelContextWindowOf(modelUsage, latestAssistantContext?.model);

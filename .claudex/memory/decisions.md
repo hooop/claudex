@@ -2,6 +2,38 @@
 
 Journal des décisions validées à l'issue d'un débat Claude ↔ Codex.
 
+## 2026-10-27 — Claudex garde le moteur Claude Code fourni par le SDK, à version exacte
+
+**Nature :** arbitrage délégué par le mainteneur, pendant la montée du SDK Claude Agent de 0.1.77 à
+0.3.310. Sa première intuition était d'utiliser le `claude` de l'utilisateur ; il a laissé le choix
+technique.
+
+**Constat :** le SDK 0.3.x ne contient plus de `cli.js` : il lance un binaire natif Claude Code
+(2.1.310), installé par une dépendance optionnelle propre à chaque plateforme (273 Mo sur disque
+en darwin-arm64 ; installation complète du SDK 331 Mo contre 92 Mo pour 0.1.77). La lecture seule du
+débat a été mesurée sur un moteur précis, voir `limits.md` (2026-10-27).
+
+**Décisions :**
+- **D1 : Claudex laisse le SDK lancer le moteur qu'il fournit.** Pas de `pathToClaudeCodeExecutable`.
+  La garantie de lecture seule est mesurée sur une version exacte du moteur : avec le binaire fourni,
+  la version que l'utilisateur exécute est celle qui a été testée. Le binaire est de toute façon
+  installé (dépendance optionnelle du SDK). La connexion ne change pas : le binaire fourni lit les
+  mêmes identifiants Claude Code.
+- **D2 : le SDK est épinglé à une version exacte** (`"@anthropic-ai/claude-agent-sdk": "0.3.310"`,
+  sans `^`). Une montée de version est une branche délibérée, qui relance `npm run verify:readonly`
+  sur l'ancienne et sur la nouvelle version.
+
+**Alternatives écartées :**
+- Le `claude` de l'utilisateur via `pathToClaudeCodeExecutable` : même téléchargement, garantie plus
+  faible (la version exécutée serait celle que l'utilisateur a installée, plus ancienne ou plus
+  récente que tout ce qui a été mesuré, et le SDK parle un protocole de contrôle versionné avec son
+  propre binaire), et des modes d'échec en plus (aucun `claude` dans le `PATH`, mauvaise version).
+- Une plage avec `^` : une version du SDK non testée atteindrait les utilisateurs, alors qu'une
+  version peut changer la garantie de lecture seule.
+
+**Fichiers concernés :** `package.json`, `package-lock.json`, `scripts/verify-claude-readonly.ts`,
+`AGENTS.md`, `README.md`.
+
 ## 2026-10-26 — Claudex ne touche plus à CLAUDE.md ni à AGENTS.md
 
 **Nature :** arbitrage humain direct, avant la distribution sur une marketplace.
