@@ -55,7 +55,7 @@ it("sans sandbox, les options sont exactement celles d'avant", () => {
   expect("sandbox" in debateQueryOptions(null)).toBe(false);
 });
 
-const sandboxed = { cwd: "/private/tmp/p", home: "/Users/u" };
+const sandboxed = { cwd: "/private/tmp/p", home: "/Users/u", extraDenyRead: [], secretEnvNames: [] };
 const DENY_READ_RELATIVE = [
   ".ssh", ".aws", ".azure", ".config/gcloud", ".kube", ".docker", ".gnupg", ".netrc", ".git-credentials",
   ".npmrc", ".pypirc", ".config/gh", ".claude", ".claude.json", ".codex", "Library/Keychains",
@@ -104,4 +104,20 @@ it("deux appels ne partagent aucun tableau de la sandbox", () => {
   expect(second.sandbox?.filesystem.denyWrite).toEqual(["/private/tmp/p"]);
   expect(second.sandbox?.network.allowedDomains).toEqual([]);
   expect(second.tools).toEqual(["Read", "Grep", "Glob", "Bash"]);
+});
+
+it("ajoute les cibles réelles des liens après les chemins du home", () => {
+  const o = debateQueryOptions({ ...sandboxed, extraDenyRead: ["/vault/ssh"] });
+  const denyRead = o.sandbox?.filesystem.denyRead ?? [];
+  expect(denyRead).toHaveLength(17);
+  expect(denyRead[0]).toBe("/Users/u/.ssh");
+  expect(denyRead[16]).toBe("/vault/ssh");
+});
+
+it("masque les variables secrètes à Bash, et seulement s'il y en a", () => {
+  const o = debateQueryOptions({ ...sandboxed, secretEnvNames: ["A_KEY", "GITHUB_TOKEN"] });
+  expect(o.sandbox?.credentials).toEqual({
+    envVars: [{ name: "A_KEY", mode: "deny" }, { name: "GITHUB_TOKEN", mode: "deny" }],
+  });
+  expect("credentials" in (debateQueryOptions(sandboxed).sandbox ?? {})).toBe(false);
 });

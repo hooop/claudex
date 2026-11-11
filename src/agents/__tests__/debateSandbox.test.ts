@@ -15,7 +15,12 @@ function tempProject() {
 
 it("darwin : renvoie le chemin réel", async () => {
   const { dir, link } = tempProject();
-  expect(await resolveDebateSandbox(link, "darwin", "/h")).toEqual({ cwd: realpathSync(dir), home: "/h" });
+  expect(await resolveDebateSandbox(link, "darwin", "/h", {})).toEqual({
+    cwd: realpathSync(dir),
+    home: "/h",
+    extraDenyRead: [],
+    secretEnvNames: [],
+  });
 });
 
 it("linux et win32 : pas de Bash", async () => {
@@ -26,4 +31,45 @@ it("linux et win32 : pas de Bash", async () => {
 
 it("dossier absent : rejette", async () => {
   await expect(resolveDebateSandbox(join(tmpdir(), "claudex-absent-dir-xyz"), "darwin", "/h")).rejects.toThrow();
+});
+
+it("un dossier de credentials en lien : sa cible réelle est ajoutée", async () => {
+  const { dir } = tempProject();
+  const home = mkdtempSync(join(tmpdir(), "claudex-home-"));
+  const target = mkdtempSync(join(tmpdir(), "claudex-ssh-"));
+  symlinkSync(target, join(home, ".ssh"));
+  mkdirSync(join(home, ".aws"));
+  const result = await resolveDebateSandbox(dir, "darwin", home, {});
+  expect(result?.extraDenyRead).toEqual([realpathSync(target)]);
+});
+
+it("un home en lien : home devient son chemin réel", async () => {
+  const { dir, link } = tempProject();
+  const result = await resolveDebateSandbox(dir, "darwin", link, {});
+  expect(result?.home).toBe(realpathSync(link));
+});
+
+it("un home introuvable est gardé tel quel", async () => {
+  const { dir } = tempProject();
+  const result = await resolveDebateSandbox(dir, "darwin", "/nonexistent-home-xyz", {});
+  expect(result).toMatchObject({ home: "/nonexistent-home-xyz", extraDenyRead: [] });
+});
+
+it("les cibles en double sont dédoublonnées et triées", async () => {
+  const { dir } = tempProject();
+  const home = mkdtempSync(join(tmpdir(), "claudex-home-"));
+  const b = mkdtempSync(join(tmpdir(), "claudex-b-"));
+  const a = mkdtempSync(join(tmpdir(), "claudex-a-"));
+  symlinkSync(b, join(home, ".ssh"));
+  symlinkSync(b, join(home, ".aws"));
+  symlinkSync(a, join(home, ".kube"));
+  const result = await resolveDebateSandbox(dir, "darwin", home, {});
+  expect(result?.extraDenyRead).toEqual([realpathSync(a), realpathSync(b)].sort());
+});
+
+it("variables secrètes : noms reconnus sans tenir compte de la casse, triés", async () => {
+  const { dir } = tempProject();
+  const env = { github_token: "x", MY_API_KEY: "x", DB_PASSWORD: "x", PATH: "/bin", HOME: "/h", AWS_SECRET: "x", GIT_CREDENTIAL: "x" };
+  const result = await resolveDebateSandbox(dir, "darwin", "/h", env);
+  expect(result?.secretEnvNames).toEqual(["AWS_SECRET", "DB_PASSWORD", "GIT_CREDENTIAL", "MY_API_KEY", "github_token"]);
 });

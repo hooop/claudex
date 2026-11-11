@@ -138,7 +138,21 @@ not a guarantee, and the README says so. Not denied: `.gitconfig` (git breaks, m
 stays only if the verification shows `npm test` still runs with it denied; otherwise it is dropped
 and the reason is written in the spec and `limits.md`.
 
+Symlinks: a deny rule on a link path may not cover its target, and dotfiles managers make
+`~/.ssh` or even `~` a symlink. The adapter therefore resolves `home` with `realpath` (keeping the
+given value if that fails) and, for each entry that exists and whose real path differs, adds that
+real path to `denyRead` after the home-relative ones (`extraDenyRead`, sorted, deduplicated).
+
 This makes Claude stricter than Codex (whose reads are unrestricted); Codex is not changed here.
+
+### D4b — Secret environment variables are hidden from Bash
+
+Without this, `env` in the sandbox prints `ANTHROPIC_API_KEY`, `GITHUB_TOKEN` and the like. Measured
+on SDK 0.3.310 (2026-11-11): `sandbox.credentials.envVars: [{ name, mode: "deny" }]` hides the
+variable from the command (`$FAKE_API_KEY` empty, other variables untouched). The adapter denies
+every variable of its own environment whose name matches `/KEY|SECRET|TOKEN|PASSWORD|CREDENTIAL/i`
+(sorted), and omits the `credentials` key when none matches. Reason: parity with Codex, whose
+default shell environment policy drops variables whose name contains KEY, SECRET or TOKEN.
 
 ### D5 — `DEBATE_TOOLS` and the options function
 
@@ -228,6 +242,8 @@ the run's real `cwd`, so S cases carry a flag and the runner builds their option
   sessions; no option moved it (measured). Standard Claude Code sandbox behaviour.
 - Reads outside the deny list are unrestricted, as for Codex: a command can read any other file the
   account can, and its output goes into the transcript sent to both models.
+- The environment-variable name pattern (D4b) is a heuristic: a secret in a variable named
+  otherwise stays visible.
 - Linux, WSL and Windows: no Bash for Claude until measured.
 - Only one machine and account measured (macOS, `/` trusted in `~/.claude.json`).
 

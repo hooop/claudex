@@ -37,7 +37,12 @@ export const CREDENTIAL_READ_DENY: readonly string[] = [
 export interface DebateSandbox {
   /** Real absolute path of the analysed project. */
   cwd: string;
+  /** Real path of the home folder. */
   home: string;
+  /** Real targets of credential stores that are symlinks: the deny rule on the link may not cover them. */
+  extraDenyRead: string[];
+  /** Names of environment variables that look like secrets, hidden from Bash. */
+  secretEnvNames: string[];
 }
 
 // Typed here rather than imported from the SDK, which this module never loads at runtime.
@@ -50,6 +55,7 @@ export type DebateSandboxSettings = {
   autoAllowBashIfSandboxed: true;
   network: { allowedDomains: string[]; strictAllowlist: true };
   filesystem: { denyWrite: string[]; denyRead: string[] };
+  credentials?: { envVars: Array<{ name: string; mode: "deny" }> };
 };
 
 // Measured before this change: a hook of the analysed repository ran and MCP
@@ -125,7 +131,7 @@ export function debateQueryOptions(sandbox?: DebateSandbox | null): DebateQueryO
   } satisfies Options;
 }
 
-function sandboxSettings({ cwd, home }: DebateSandbox): DebateSandboxSettings {
+function sandboxSettings({ cwd, home, extraDenyRead, secretEnvNames }: DebateSandbox): DebateSandboxSettings {
   return {
     enabled: true,
     failIfUnavailable: true,
@@ -135,7 +141,10 @@ function sandboxSettings({ cwd, home }: DebateSandbox): DebateSandboxSettings {
     network: { allowedDomains: [], strictAllowlist: true },
     filesystem: {
       denyWrite: [cwd],
-      denyRead: CREDENTIAL_READ_DENY.map((entry) => join(home, entry)),
+      denyRead: [...CREDENTIAL_READ_DENY.map((entry) => join(home, entry)), ...extraDenyRead],
     },
+    ...(secretEnvNames.length > 0 && {
+      credentials: { envVars: secretEnvNames.map((name) => ({ name, mode: "deny" as const })) },
+    }),
   };
 }
