@@ -123,7 +123,7 @@ export function sameFindings(a: readonly SettingsFinding[], b: readonly Settings
 function escapeText(text: string): string {
   return text.replace(
     /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\u115f\u1160\u3164]/gu,
-    (char) => `\\u${char.charCodeAt(0).toString(16).padStart(4, "0")}`,
+    (char) => `\\u${(char.codePointAt(0) ?? 0).toString(16).padStart(4, "0")}`,
   );
 }
 
