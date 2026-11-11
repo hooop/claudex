@@ -69,6 +69,15 @@ when it is present with at least one key. The list lives in one exported constan
 pointing at `sdk.d.ts` and at this design; it must be re-read at every SDK upgrade (added to the
 upgrade checklist in AGENTS.md next to `verify:readonly`).
 
+Added after the final branch review: one nested command-bearing key,
+`extraKnownMarketplaces.<name>.source.headersHelper` (a command that prints HTTP headers for a
+plugin marketplace), is flagged with its raw value, the marketplace name escaped like an `env`
+name. A malformed `extraKnownMarketplaces`, entry or `source` is flagged raw rather than skipped.
+A settings object with a top-level `__proto__`, `constructor` or `prototype` key is "cannot be
+checked" ("unexpected key"). Not flagged, and recorded in `limits.md`: `statusLine.command`,
+`subagentStatusLine.command` and `fileSuggestion.command` (interactive UI features), and the
+repository's `permissions.allow` rules.
+
 Fail closed:
 - missing file: no finding;
 - file present but unreadable, not valid JSON, or not a JSON object: one finding "cannot be
@@ -82,10 +91,12 @@ directory's (git root's) `.claude/settings.json` or `.claude/settings.local.json
 the engine reads. If the measurement shows a file the function cannot locate deterministically,
 implementation stops and the maintainer is told.
 
-### D2 — A consent screen at launch, before the welcome screen
+### D2 — A consent prompt at launch, before the welcome screen
 
-When D1 returns findings at launch, Root shows a full screen before the welcome screen. In French,
-like the rest of the UI for now. It shows:
+When D1 returns findings at launch, `src/cli.tsx` asks for consent before Root is rendered: the
+list is printed as plain text to the normal screen, then a small Ink prompt (outside Root, not in
+the alternate screen) waits for the key. This design first had Root show a full screen; see the
+changes below. In French, like the rest of the UI for now. It shows:
 - one sentence: this project's Claude Code settings ask Claude Code to run these commands or set
   these environment variables when each Claude session starts; Claudex cannot turn them off;
 - per file: its path relative to the project, then each flagged entry with its exact value, not
@@ -94,7 +105,8 @@ like the rest of the UI for now. It shows:
 - two choices: continue with these settings, or quit. **Quit is the default** (Enter, Escape and
   Ctrl+C quit); continuing needs a distinct key (`y`), so a reflex Enter cannot consent.
 
-Changes made during implementation (Claude's calls; the last two came from the code review):
+Changes made during implementation, all Claude's calls (the first while building, the other two
+raised by the code review):
 - The key is `y`, not `o` as this design first said, for consistency with the permission prompt.
 - A file Claudex cannot read or parse can no longer be consented to: only quit is offered, because
   Claude Code may parse what Claudex cannot (JSON with comments, a BOM), and approving it would
@@ -144,9 +156,14 @@ reload its settings while a session runs (it has a `ConfigChange` hook event, an
 apply before D3 runs again. This branch does not close or measure it, for a stated reason: the
 threat this branch addresses is the analysed repository, reviewed at launch. A mid-turn change is
 written by an agent during the implementation phase, which is trusted by design (decision
-2026-11-11, D4 of the isolation branch); every Claude write goes through `canUseTool`, so the human
-sees a write to `.claude/settings.json` before approving it. D3 remains a backstop for the following
-turns. `limits.md` and the README state this gap plainly, without calling it small.
+2026-11-11, D4 of the isolation branch). Nothing guarantees the human sees such a write first.
+Claude's permission prompt (`canUseTool`) shows a write only when no allow rule has already
+approved it: allow rules, the user's or the analysed repository's own `permissions.allow` (which the
+consent screen does not show), are resolved before `canUseTool`, and whether Claude Code shields its
+own settings files from them was not measured. A Bash write shows only the command, not the files it
+changes. With `/implement codex`, Codex writes with `approvalPolicy: "never"`
+(`src/agents/codexAgent.ts`): no prompt at all. In every case D3 catches the change only before the
+next Claude turn. `limits.md` and the README state this gap plainly, without calling it small.
 
 ### D4 — Measure which files the engine reads, and the `env` vector
 
@@ -194,9 +211,13 @@ The manual smoke test of the PR covers the screen once with a real helper.
   (no finding) and non-empty; non-string helper value; `env` not an object; invalid JSON; JSON array
   or scalar at top level; unreadable file (permission denied, a directory in place of the file);
   every file of the measured list; canonical comparison is order-independent for object keys.
-- Consent screen (Root, Ink render as in `root.test.tsx`): findings shown with exact values,
-  control characters escaped; Enter, Escape and Ctrl+C quit and no agent is ever called; `y`
-  (changed from `o` during implementation, see D2) continues to the welcome screen; no findings means no screen.
+  Added after the final review: marketplace header helper present (exact key and value), absent,
+  escaped name, malformed shapes; top-level `__proto__`, `constructor`, `prototype` keys.
+- Consent prompt (as shipped: `formatConsentText` and the `SettingsConsent` Ink prompt rendered by
+  `src/cli.tsx` outside Root, and `prepareLaunch` in `src/launch.ts`): findings shown with exact
+  values, control characters escaped; Enter, Escape and Ctrl+C quit and no agent is ever called;
+  `y` (changed from `o` during implementation, see D2) continues to the welcome screen; no findings
+  means no prompt.
 - `ClaudeAgent` (mocked `query`, as in the existing adapter tests): guard called before every
   `query()`, debate and implementation; a rejecting guard means `query()` never called and the turn
   fails with the message; an accepting guard leaves behaviour unchanged.
@@ -210,7 +231,7 @@ The manual smoke test of the PR covers the screen once with a real helper.
 1. Measurement cases L-parent, L-local, M and their unit tests; run them; record results.
 2. `projectSettings.ts` and its tests, file list from step 1.
 3. Guard and `ClaudeAgent` wiring, with tests.
-4. Consent screen in Root, with tests.
+4. Consent prompt (planned in Root, shipped in `src/cli.tsx`, see D2), with tests.
 5. Docs: README (known gap replaced by the consent behaviour, with what was measured), `limits.md`,
    `decisions.md` (this branch's decisions and rejected alternatives), AGENTS.md (constraint
    paragraph and the SDK-upgrade checklist).

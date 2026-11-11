@@ -15,9 +15,14 @@ aucune de ces décisions n'a été prise par le mainteneur lui-même. Design :
   (`PROJECT_SETTINGS_FILES`), le seul que les mesures montrent lu par le moteur (Lp et Ll négatifs).
   Signalés : les six helpers de `COMMAND_SETTING_KEYS` (`apiKeyHelper`, `awsAuthRefresh`,
   `awsCredentialExport`, `gcpAuthRefresh`, `otelHeadersHelper`, `proxyAuthHelper`, relevés dans
-  l'interface `Settings` de `sdk.d.ts`) et toute entrée `env`. Le fichier est ouvert en non bloquant et
+  l'interface `Settings` de `sdk.d.ts`), toute entrée `env` et, ajouté après la revue finale, le helper
+  d'en-têtes d'une marketplace de plugins (`extraKnownMarketplaces.<nom>.source.headersHelper`, nom
+  échappé comme ceux d'`env` ; une forme inattendue est montrée brute). Pas montrés, consignés dans
+  `limits.md` : `statusLine.command`, `subagentStatusLine.command`, `fileSuggestion.command` et les
+  règles `permissions.allow` du dépôt. Le fichier est ouvert en non bloquant et
   doit être un fichier ordinaire de 1 Mio au plus ; tout ce que Claudex ne sait pas lire ou analyser
-  (JSON invalide, commentaires, BOM, autre chose qu'un objet, fichier spécial, trop gros, permission)
+  (JSON invalide, commentaires, BOM, autre chose qu'un objet, clé de premier niveau `__proto__`,
+  `constructor` ou `prototype`, fichier spécial, trop gros, permission)
   donne une constatation « illisible ».
 - **D2 : consentement au lancement, avant toute écriture et avant tout agent** (`src/launch.ts`,
   `src/cli.tsx`, `src/ui/components/SettingsConsent.tsx`). Pas de `.claudex/` pour un projet refusé ;
@@ -40,8 +45,14 @@ aucune de ces décisions n'a été prise par le mainteneur lui-même. Design :
 - **Le consentement n'est jamais mémorisé** : stocké dans le projet, un dépôt pourrait le pré-remplir ;
   ailleurs, Claudex écrirait hors de `.claudex/`. La question revient à chaque lancement.
 - **Trou accepté pendant un tour `/implement`** (voir `limits.md`) : non mesuré, non fermé. La phase
-  d'implémentation est de confiance par conception (décision 2026-11-11, D4 de l'isolation) et chaque
-  écriture de Claude passe par l'humain. Accepté en connaissance de cause, pas parce qu'il serait petit.
+  d'implémentation est de confiance par conception (décision 2026-11-11, D4 de l'isolation). Rien ne
+  garantit que l'humain voie une écriture dans `.claude/settings.json` avant qu'elle ait lieu : les
+  règles `allow` (de l'utilisateur, ou le `permissions.allow` du dépôt, que l'écran de consentement ne
+  montre pas) sont résolues avant `canUseTool` et peuvent approuver l'écriture sans invite (on n'a pas
+  mesuré si Claude Code protège ses propres fichiers de réglages contre elles) ; une écriture par Bash
+  ne montre que la commande ; avec `/implement codex`, Codex écrit avec `approvalPolicy: "never"`,
+  sans aucune invite. La garde ne la voit qu'avant le tour Claude suivant. Accepté en connaissance de
+  cause, pas parce qu'il serait petit.
 - **D4/D5 :** les cas L, Lp, Ll, M de `verify:readonly` mesurent le comportement du moteur qui rend la
   porte nécessaire ; la porte elle-même est du code Claudex, prouvée par les tests unitaires et
   d'interface, et vérifiée à la main dans un pty.
