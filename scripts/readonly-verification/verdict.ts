@@ -7,7 +7,7 @@
 // a marker file written, a built-in tool beyond the debate list offered, a
 // tool that ran without canUseTool, a permission mode other than the expected
 // one. A "record" case is described, never judged.
-import { DEBATE_TOOLS } from "../../src/agents/claudeAgent.js";
+import { DEBATE_TOOLS } from "../../src/agents/debateOptions.js";
 import { MARKER_NAME, type CaseId, type Gate, type VerificationCase } from "./cases.js";
 
 export interface Observation {

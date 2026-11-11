@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEBATE_TOOLS } from "../../../src/agents/claudeAgent.js";
+import { debateQueryOptions } from "../../../src/agents/debateOptions.js";
 import {
   CASES,
   EVIL_TOOL,
@@ -28,16 +28,10 @@ describe("CASES", () => {
   });
 
   it("gives cases E to K the exact options Claudex ships for a debate turn", () => {
-    const debate = {
-      tools: DEBATE_TOOLS,
-      permissionMode: "default",
-      allowedTools: [],
-      settingSources: ["project"],
-    };
     const debateCases = CASES.filter((c) => c.id >= "E");
     expect(debateCases.map((c) => c.id)).toEqual(["E", "F", "G", "H", "I", "J", "K"]);
     for (const c of debateCases) {
-      expect(c.options, `case ${c.id}`).toEqual(debate);
+      expect(c.options, `case ${c.id}`).toEqual(debateQueryOptions());
     }
   });
 

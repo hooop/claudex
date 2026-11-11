@@ -228,4 +228,43 @@ describe("ClaudeAgent — réglages par phase", () => {
     expect(options.settingSources).toEqual(["project"]);
     expect(typeof options.canUseTool).toBe("function");
   });
+
+  it("relaie chaque demande d'outil à l'humain et applique sa réponse", async () => {
+    queryMock.mockReturnValue(messages([successResult()]));
+    const onPermissionRequest = vi
+      .fn()
+      .mockResolvedValueOnce({ behavior: "allow" })
+      .mockResolvedValueOnce({ behavior: "deny", message: "non" })
+      .mockResolvedValueOnce({ behavior: "deny" });
+    const onActivity = vi.fn();
+    const agent = new ClaudeAgent();
+    await agent.send("Sujet", { cwd: "/tmp", writeAccess: false, onPermissionRequest, onActivity });
+
+    const canUseTool = queryMock.mock.calls[0]?.[0]?.options.canUseTool as (
+      name: string,
+      input: unknown,
+      opts: { toolUseID: string },
+    ) => Promise<unknown>;
+    const input = { file_path: "/tmp/a" };
+    const results = [
+      await canUseTool("Read", input, { toolUseID: "tu-1" }),
+      await canUseTool("Read", input, { toolUseID: "tu-2" }),
+      await canUseTool("Read", input, { toolUseID: "tu-3" }),
+    ];
+
+    expect(onPermissionRequest.mock.calls[0]?.[0]).toEqual({
+      id: "tu-1",
+      agent: "claude",
+      toolName: "Read",
+      input,
+    });
+    expect(results).toEqual([
+      { behavior: "allow", updatedInput: input },
+      { behavior: "deny", message: "non" },
+      { behavior: "deny", message: "Refused by user" },
+    ]);
+    expect(onActivity).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "tool", label: "lit /tmp/a", status: "running" }),
+    );
+  });
 });

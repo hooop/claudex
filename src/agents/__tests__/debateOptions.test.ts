@@ -1,0 +1,26 @@
+import { expect, it, vi } from "vitest";
+
+vi.mock("@anthropic-ai/claude-agent-sdk", () => {
+  throw new Error("debateOptions must not load the SDK");
+});
+import { DEBATE_TOOLS, debateQueryOptions } from "../debateOptions.js";
+
+it("gives the debate its read-only tools, the default mode, no pre-approved tool and project settings only", () => {
+  expect(debateQueryOptions()).toEqual({
+    tools: ["Read", "Grep", "Glob"],
+    permissionMode: "default",
+    allowedTools: [],
+    settingSources: ["project"],
+  });
+  expect(DEBATE_TOOLS).toEqual(["Read", "Grep", "Glob"]);
+});
+
+it("returns a fresh object on every call", () => {
+  const first = debateQueryOptions();
+  first.tools.push("Bash");
+  first.allowedTools.push("Bash");
+  first.settingSources.push("project");
+  expect(debateQueryOptions().tools).toEqual(["Read", "Grep", "Glob"]);
+  expect(debateQueryOptions().allowedTools).toEqual([]);
+  expect(debateQueryOptions().settingSources).toEqual(["project"]);
+});
