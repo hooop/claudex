@@ -2,8 +2,11 @@ import { constants } from "node:fs";
 import { open } from "node:fs/promises";
 import { join } from "node:path";
 
-// From the 0.3.310 sdk.d.ts `Settings`: the keys whose value is a command the
-// engine runs. Re-read at every SDK upgrade.
+// From the 0.3.310 sdk.d.ts `Settings`: the top-level keys whose value is a
+// command the engine runs. The one nested command, a marketplace's
+// `extraKnownMarketplaces.<name>.source.headersHelper`, is handled in
+// `marketplaceEntries`. Interactive-UI commands (statusLine, subagentStatusLine,
+// fileSuggestion) are not shown (see limits.md). Re-read at every SDK upgrade.
 export const COMMAND_SETTING_KEYS = [
   "apiKeyHelper",
   "awsAuthRefresh",
@@ -27,6 +30,32 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function escapedName(name: string): string {
+  return escapeText(JSON.stringify(name).slice(1, -1));
+}
+
+// Any shape that is not the documented one is shown raw rather than skipped,
+// like `env`: the engine may still read it.
+function marketplaceEntries(marketplaces: unknown): Array<{ key: string; value: unknown }> {
+  if (marketplaces === undefined) return [];
+  if (!isPlainObject(marketplaces)) return [{ key: "extraKnownMarketplaces", value: marketplaces }];
+  const entries: Array<{ key: string; value: unknown }> = [];
+  for (const [name, marketplace] of Object.entries(marketplaces)) {
+    const key = `extraKnownMarketplaces.${escapedName(name)}`;
+    if (!isPlainObject(marketplace)) {
+      entries.push({ key, value: marketplace });
+      continue;
+    }
+    const source = marketplace.source;
+    if (source === undefined) continue;
+    if (!isPlainObject(source)) entries.push({ key: `${key}.source`, value: source });
+    else if (Object.hasOwn(source, "headersHelper")) {
+      entries.push({ key: `${key}.source.headersHelper`, value: source.headersHelper });
+    }
+  }
+  return entries;
+}
+
 function flaggedEntries(settings: Record<string, unknown>): Array<{ key: string; value: unknown }> {
   const entries: Array<{ key: string; value: unknown }> = [];
   for (const key of COMMAND_SETTING_KEYS) {
@@ -34,14 +63,16 @@ function flaggedEntries(settings: Record<string, unknown>): Array<{ key: string;
   }
   const env = settings.env;
   if (isPlainObject(env)) {
-    for (const [name, value] of Object.entries(env)) entries.push({ key: `env.${escapeText(JSON.stringify(name).slice(1, -1))}`, value });
+    for (const [name, value] of Object.entries(env)) entries.push({ key: `env.${escapedName(name)}`, value });
   } else if (env !== undefined) {
     entries.push({ key: "env", value: env });
   }
+  entries.push(...marketplaceEntries(settings.extraKnownMarketplaces));
   return entries;
 }
 
 const MAX_SETTINGS_BYTES = 1_048_576;
+const UNEXPECTED_KEYS = ["__proto__", "constructor", "prototype"];
 
 function errorCode(error: unknown): string {
   const code = (error as NodeJS.ErrnoException | undefined)?.code;
@@ -76,6 +107,10 @@ async function inspectFile(projectDir: string, file: string): Promise<SettingsFi
   // A file we cannot interpret may still be read differently by the engine, so
   // it is reported instead of being treated as empty.
   if (!isPlainObject(parsed)) return { file, kind: "unreadable", reason: "not a JSON object" };
+  // No settings key has these names; they could only confuse property lookups.
+  if (UNEXPECTED_KEYS.some((key) => Object.hasOwn(parsed, key))) {
+    return { file, kind: "unreadable", reason: "unexpected key" };
+  }
   const entries = flaggedEntries(parsed);
   return entries.length > 0 ? { file, kind: "entries", entries } : null;
 }

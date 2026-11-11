@@ -215,6 +215,94 @@ describe("inspectProjectSettings", () => {
       await rm(outside, { recursive: true, force: true });
     }
   });
+
+  it.each(["__proto__", "constructor", "prototype"])("reports a top-level %s key as unreadable", async (key) => {
+    await writeSettings(`{"${key}": {"apiKeyHelper": "x"}}`);
+    unreadable(await inspectProjectSettings(dir), "unexpected key");
+  });
+});
+
+describe("inspectProjectSettings: marketplace header helpers", () => {
+  const marketplace = (source: unknown): string =>
+    JSON.stringify({ extraKnownMarketplaces: { team: { source } } });
+
+  it("flags a marketplace header helper with its raw value", async () => {
+    await writeSettings(marketplace({ source: "url", url: "https://x/m.json", headersHelper: "print-token" }));
+    expect(await inspectProjectSettings(dir)).toEqual([
+      {
+        file: FILE,
+        kind: "entries",
+        entries: [{ key: "extraKnownMarketplaces.team.source.headersHelper", value: "print-token" }],
+      },
+    ]);
+  });
+
+  it("flags a header helper whose value is not a string", async () => {
+    await writeSettings(marketplace({ source: "url", url: "https://x/m.json", headersHelper: null }));
+    expect(await inspectProjectSettings(dir)).toEqual([
+      {
+        file: FILE,
+        kind: "entries",
+        entries: [{ key: "extraKnownMarketplaces.team.source.headersHelper", value: null }],
+      },
+    ]);
+  });
+
+  it("finds nothing in a marketplace without a header helper", async () => {
+    await writeSettings(marketplace({ source: "url", url: "https://x/m.json", headers: { A: "b" } }));
+    expect(await inspectProjectSettings(dir)).toEqual([]);
+    await writeSettings(marketplace({ source: "github", repo: "o/r" }));
+    expect(await inspectProjectSettings(dir)).toEqual([]);
+    await writeSettings(JSON.stringify({ extraKnownMarketplaces: {} }));
+    expect(await inspectProjectSettings(dir)).toEqual([]);
+  });
+
+  it("escapes control and bidirectional characters in a marketplace name", async () => {
+    await writeSettings(
+      JSON.stringify({ extraKnownMarketplaces: { "A\u001b[1A‮B": { source: { source: "url", url: "u", headersHelper: "h" } } } }),
+    );
+    const [finding] = await inspectProjectSettings(dir);
+    const key = finding?.kind === "entries" ? finding.entries[0]?.key : undefined;
+    expect(key).toBe("extraKnownMarketplaces.A\\u001b[1A\\u202eB.source.headersHelper");
+  });
+
+  it.each([
+    ["a string", "x"],
+    ["null", null],
+    ["an array", []],
+  ])("flags extraKnownMarketplaces as %s with its raw value", async (_name, value) => {
+    await writeSettings(JSON.stringify({ extraKnownMarketplaces: value }));
+    expect(await inspectProjectSettings(dir)).toEqual([
+      { file: FILE, kind: "entries", entries: [{ key: "extraKnownMarketplaces", value }] },
+    ]);
+  });
+
+  it.each([
+    ["a string", "x"],
+    ["null", null],
+    ["an array", [{ source: { headersHelper: "h" } }]],
+  ])("flags a marketplace entry that is %s with its raw value", async (_name, value) => {
+    await writeSettings(JSON.stringify({ extraKnownMarketplaces: { team: value } }));
+    expect(await inspectProjectSettings(dir)).toEqual([
+      { file: FILE, kind: "entries", entries: [{ key: "extraKnownMarketplaces.team", value }] },
+    ]);
+  });
+
+  it.each([
+    ["a string", "x"],
+    ["null", null],
+    ["an array", [{ headersHelper: "h" }]],
+  ])("flags a marketplace source that is %s with its raw value", async (_name, value) => {
+    await writeSettings(marketplace(value));
+    expect(await inspectProjectSettings(dir)).toEqual([
+      { file: FILE, kind: "entries", entries: [{ key: "extraKnownMarketplaces.team.source", value }] },
+    ]);
+  });
+
+  it("finds nothing in a marketplace entry without a source", async () => {
+    await writeSettings(JSON.stringify({ extraKnownMarketplaces: { team: {} } }));
+    expect(await inspectProjectSettings(dir)).toEqual([]);
+  });
 });
 
 describe("sameFindings", () => {
