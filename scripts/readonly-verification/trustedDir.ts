@@ -113,10 +113,10 @@ export async function cleanupToSnapshot(
 ): Promise<{ unaccounted: string[] }> {
   const now = await snapshotTree(dir);
   await rm(join(dir, extraFile), { force: true });
-  const unaccounted = [...now]
-    .filter(([path, type]) => path !== extraFile && snapshot.get(path) !== type)
-    .map(([path]) => path)
-    .sort();
+  // A snapshot path now missing (deleted by the engine) is unaccounted too.
+  const changed = [...now].filter(([path, type]) => path !== extraFile && snapshot.get(path) !== type).map(([path]) => path);
+  const missing = [...snapshot.keys()].filter((path) => !now.has(path));
+  const unaccounted = [...changed, ...missing].sort();
   if (unaccounted.length > 0) return { unaccounted };
 
   // Checked again right before each deletion, parents included, in case the
@@ -127,7 +127,7 @@ export async function cleanupToSnapshot(
       const sub = parts.slice(0, i).join("/");
       const info = await lstat(join(dir, sub));
       const type = info.isDirectory() ? "dir" : info.isSymbolicLink() ? "link" : "file";
-      if (type !== snapshot.get(sub)) throw new TrustedDirError(`${sub} changed type during the cleanup in ${dir}, nothing deleted`);
+      if (type !== snapshot.get(sub)) throw new TrustedDirError(`${sub} changed type during the cleanup in ${dir}; the cleanup stopped, and the marker and some snapshot entries may already be removed`);
     }
   };
   const files = [...snapshot].filter(([, type]) => type !== "dir").map(([path]) => path);

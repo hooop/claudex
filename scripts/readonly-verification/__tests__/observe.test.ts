@@ -670,6 +670,20 @@ describe("runCase — trusted folder", () => {
     expect(existsSync(join(dir, "README.md"))).toBe(true);
   });
 
+  it("stops, naming it, when the engine deleted a file the snapshot accounts for", async () => {
+    const query: QueryFn = async function* ({ options }) {
+      rmSync(join(options.cwd as string, "README.md"));
+      writeFileSync(join(options.cwd as string, MARKER_NAME), "pwned");
+      yield init();
+    };
+
+    const error = await runCase(query, caseOf("E"), trusted).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(TrustedDirError);
+    expect((error as Error).message).toContain("README.md");
+    expect(existsSync(join(dir, MARKER_NAME))).toBe(false);
+  });
+
   it("names the changed project entry keys, never values, when it stops", async () => {
     const query: QueryFn = async function* ({ options }) {
       writeFileSync(join(options.cwd as string, "other.txt"), "x");
