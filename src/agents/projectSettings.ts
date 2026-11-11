@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 
 // From the 0.3.310 sdk.d.ts `Settings`: the keys whose value is a command the
@@ -33,27 +33,40 @@ function flaggedEntries(settings: Record<string, unknown>): Array<{ key: string;
   }
   const env = settings.env;
   if (isPlainObject(env)) {
-    for (const [name, value] of Object.entries(env)) entries.push({ key: `env.${name}`, value });
+    for (const [name, value] of Object.entries(env)) entries.push({ key: `env.${escapeText(name)}`, value });
   } else if (env !== undefined) {
     entries.push({ key: "env", value: env });
   }
   return entries;
 }
 
+const MAX_SETTINGS_BYTES = 1_048_576;
+
+function errorCode(error: unknown): string {
+  const code = (error as NodeJS.ErrnoException | undefined)?.code;
+  return typeof code === "string" ? code : "cannot be read";
+}
+
+// Reasons are fixed texts or error codes: a parse message would embed
+// repository-supplied content.
 async function inspectFile(projectDir: string, file: string): Promise<SettingsFinding | null> {
+  const path = join(projectDir, file);
   let raw: string;
   try {
-    raw = await readFile(join(projectDir, file), "utf8");
+    // stat before reading so that a FIFO or a device cannot block or flood us.
+    const info = await stat(path);
+    if (!info.isFile()) return { file, kind: "unreadable", reason: "not a regular file" };
+    if (info.size > MAX_SETTINGS_BYTES) return { file, kind: "unreadable", reason: "larger than 1 MiB" };
+    raw = await readFile(path, "utf8");
   } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code;
-    if (code === "ENOENT") return null;
-    return { file, kind: "unreadable", reason: code ?? (error as Error).message };
+    if ((error as NodeJS.ErrnoException | undefined)?.code === "ENOENT") return null;
+    return { file, kind: "unreadable", reason: errorCode(error) };
   }
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
-  } catch (error) {
-    return { file, kind: "unreadable", reason: `invalid JSON: ${(error as Error).message}` };
+  } catch {
+    return { file, kind: "unreadable", reason: "invalid JSON" };
   }
   // A file we cannot interpret may still be read differently by the engine, so
   // it is reported instead of being treated as empty.
@@ -103,12 +116,17 @@ export function sameFindings(a: readonly SettingsFinding[], b: readonly Settings
   return canonicalFindings(a) === canonicalFindings(b);
 }
 
-// Settings come from the analysed project, so a value must not be able to move
-// the cursor, hide text or reorder it once shown in the terminal.
-export function formatSettingValue(value: unknown): string {
-  const json = JSON.stringify(value) ?? String(value);
-  return json.replace(
-    /[\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069\u200e\u200f]/g,
+// Settings come from the analysed project, so any text taken from them must not
+// be able to move the cursor, hide text or reorder it once shown in the
+// terminal: control, format and line/paragraph separator characters, plus the
+// invisible Hangul fillers, are shown as \uXXXX.
+function escapeText(text: string): string {
+  return text.replace(
+    /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\u115f\u1160\u3164]/gu,
     (char) => `\\u${char.charCodeAt(0).toString(16).padStart(4, "0")}`,
   );
+}
+
+export function formatSettingValue(value: unknown): string {
+  return escapeText(JSON.stringify(value) ?? String(value));
 }

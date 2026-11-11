@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { chmod, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -30,12 +31,15 @@ async function writeSettings(content: string): Promise<void> {
   await writeFile(join(dir, FILE), content);
 }
 
-function unreadable(findings: SettingsFinding[]): void {
+function unreadable(findings: SettingsFinding[], expectedReason?: string): void {
   expect(findings).toHaveLength(1);
   const finding = findings[0];
   expect(finding?.file).toBe(FILE);
   expect(finding?.kind).toBe("unreadable");
-  if (finding?.kind === "unreadable") expect(finding.reason.length).toBeGreaterThan(0);
+  if (finding?.kind === "unreadable") {
+    expect(finding.reason.length).toBeGreaterThan(0);
+    if (expectedReason !== undefined) expect(finding.reason).toBe(expectedReason);
+  }
 }
 
 describe("inspectProjectSettings", () => {
@@ -108,13 +112,74 @@ describe("inspectProjectSettings", () => {
 
   it("reports a directory in place of the file as unreadable", async () => {
     await mkdir(join(dir, FILE), { recursive: true });
-    unreadable(await inspectProjectSettings(dir));
+    unreadable(await inspectProjectSettings(dir), "not a regular file");
   });
 
   it.skipIf(process.getuid?.() === 0)("reports a file without read permission as unreadable", async () => {
     await writeSettings("{}");
     await chmod(join(dir, FILE), 0o000);
     unreadable(await inspectProjectSettings(dir));
+  });
+
+  it("never puts file content in the reason of a malformed file", async () => {
+    await writeSettings('{ "\u001b[1A\u202e": nope');
+    unreadable(await inspectProjectSettings(dir), "invalid JSON");
+  });
+
+  it("escapes control and bidirectional characters in an env variable name", async () => {
+    await writeSettings(JSON.stringify({ env: { "A\u001b[1A\u202eB": "1" } }));
+    const [finding] = await inspectProjectSettings(dir);
+    const key = finding?.kind === "entries" ? finding.entries[0]?.key : undefined;
+    expect(key).toBe("env.A\\u001b[1A\\u202eB");
+  });
+
+  it("reports a non-object top level with a fixed reason", async () => {
+    await writeSettings("[]");
+    unreadable(await inspectProjectSettings(dir), "not a JSON object");
+  });
+
+  it.skipIf(process.platform === "win32")("reports a symlink to a FIFO without hanging", async () => {
+    const outside = await mkdtemp(join(tmpdir(), "claudex-fifo-"));
+    try {
+      const fifo = join(outside, "pipe");
+      execFileSync("mkfifo", [fifo]);
+      await mkdir(join(dir, ".claude"));
+      await symlink(fifo, join(dir, FILE));
+      unreadable(await inspectProjectSettings(dir), "not a regular file");
+    } finally {
+      await rm(outside, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses a file larger than 1 MiB", async () => {
+    await writeSettings(" ".repeat(1_048_576 + 1));
+    unreadable(await inspectProjectSettings(dir), "larger than 1 MiB");
+  });
+
+  it("accepts a file of exactly 1 MiB", async () => {
+    await writeSettings("{}" + " ".repeat(1_048_576 - 2));
+    expect(await inspectProjectSettings(dir)).toEqual([]);
+  });
+
+  it("flags env: null with its raw value", async () => {
+    await writeSettings('{"env": null}');
+    expect(await inspectProjectSettings(dir)).toEqual([
+      { file: FILE, kind: "entries", entries: [{ key: "env", value: null }] },
+    ]);
+  });
+
+  it("flags env: [] with its raw value", async () => {
+    await writeSettings('{"env": []}');
+    expect(await inspectProjectSettings(dir)).toEqual([
+      { file: FILE, kind: "entries", entries: [{ key: "env", value: [] }] },
+    ]);
+  });
+
+  it("flags an env variable named __proto__", async () => {
+    await writeSettings('{"env": {"__proto__": "x"}}');
+    expect(await inspectProjectSettings(dir)).toEqual([
+      { file: FILE, kind: "entries", entries: [{ key: "env.__proto__", value: "x" }] },
+    ]);
   });
 
   it("reads through a symlink pointing outside the project", async () => {
@@ -177,6 +242,19 @@ describe("formatSettingValue", () => {
 
   it("escapes C1 controls, line separators and isolates", () => {
     expect(formatSettingValue("\u007f\u009b\u2028\u2066\u200f")).toBe('"\\u007f\\u009b\\u2028\\u2066\\u200f"');
+  });
+
+  it.each([
+    ["U+200B", "\u200b"],
+    ["U+FEFF", "\ufeff"],
+    ["U+061C", "\u061c"],
+    ["U+00AD", "\u00ad"],
+    ["U+3164", "\u3164"],
+    ["U+115F", "\u115f"],
+    ["U+1160", "\u1160"],
+  ])("escapes %s", (_name, char) => {
+    const code = char.charCodeAt(0).toString(16).padStart(4, "0");
+    expect(formatSettingValue(`a${char}b`)).toBe(`"a\\u${code}b"`);
   });
 
   it("formats objects as JSON", () => {
