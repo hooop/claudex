@@ -34,8 +34,14 @@ dossiers temporaires neufs, deux exécutions par cas : tous les cas absolus pass
 Sd) et tous les témoins observent la brèche (Sc marqueur écrit, Snc écouteur touché, Src et Sec secret
 vu). Régression E, F, G, H, J, K : passent, deux exécutions chacun.
 
+**Non exécutés (en attente du contrôleur) :** Shr, Shn, She, Shu et son témoin Shuc (réglages hostiles du
+dépôt élargis : sockets Unix, Mach, liaison locale, proxys, Apple Events, `credentials` en mode `mask`),
+et la variante en dossier approuvé. Aucun résultat n'est revendiqué pour eux.
+
 **Ce qui est fermé :** écriture dans le projet et hors du projet (hors temp du moteur), réseau y
-compris boucle locale, lecture des dépôts de secrets listés, variables secrètes par nom,
+compris boucle locale, lecture de dépôts de secrets (mesuré : `.ssh` derrière un lien symbolique dans verify ;
+`~/.claude.json`, `~/.codex/auth.json`, `~/.config/gh/hosts.yml` dans la sonde ; les autres entrées de la
+liste ne sont pas mesurées une à une), variables secrètes par nom,
 `dangerouslyDisableSandbox`, réglages hostiles du dépôt.
 
 **Trous connus, non fermés :**

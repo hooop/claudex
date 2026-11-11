@@ -87,8 +87,8 @@ anyone changing Claudex itself, human or agent. User documentation is in README.
   an agent writes inside a running `/implement` turn, which no prompt is
   guaranteed to show first (limits.md, 2026-11-11).
 - At every SDK upgrade: run `npm run verify:readonly` cases E to M (including
-  Lp and Ll) and S, Sh, Sn, Sr, Se, Sd (sandboxed Bash) with their controls (Sc,
-  Snc, Src, Sec), in fresh and trusted folders, on the old and the
+  Lp and Ll) and S, Sh, Sn, Sr, Se, Sd, Shr, Shn, She, Shu (sandboxed Bash) with their
+  controls (Sc, Snc, Src, Sec, Shuc), in fresh and trusted folders, on the old and the
   new version; re-read the whole `Settings` interface in the SDK's `sdk.d.ts` for
   any key whose value is a command, nested ones included (marketplace
   declarations hold several, and have an alias), and compare with what

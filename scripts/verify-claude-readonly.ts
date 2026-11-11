@@ -4,7 +4,7 @@
 // cases and verdict after the debate isolation: docs/superpowers/specs/2026-10-28-debate-isolation-design.md;
 // cases Lp, Ll and M (where the engine reads project credential helpers and env):
 // docs/superpowers/specs/2026-11-11-project-command-settings-design.md, section D4;
-// cases S, Sc, Sh, Sn, Snc, Sr, Src, Se, Sec and Sd (the sandboxed Bash of a debate turn, built
+// cases S, Sc, Sh, Sn, Snc, Sr, Src, Se, Sec, Sd, Shr, Shn, She, Shu and Shuc (the sandboxed Bash of a debate turn, built
 // at run time with a fake home): docs/superpowers/specs/2026-11-11-sandboxed-bash-design.md, section D7.
 //
 //   npm run verify:readonly -- --model <id> [--sdk-dir <dir>] [--cases E,F,G]
