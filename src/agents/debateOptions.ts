@@ -53,7 +53,14 @@ export type DebateSandboxSettings = {
   failIfUnavailable: true;
   allowUnsandboxedCommands: false;
   autoAllowBashIfSandboxed: true;
-  network: { allowedDomains: string[]; strictAllowlist: true };
+  network: {
+    allowedDomains: string[];
+    strictAllowlist: true;
+    allowAllUnixSockets: false;
+    allowLocalBinding: false;
+  };
+  enableWeakerNetworkIsolation: false;
+  allowAppleEvents: false;
   filesystem: { denyWrite: string[]; denyRead: string[] };
   credentials?: { envVars: Array<{ name: string; mode: "deny" }> };
 };
@@ -138,7 +145,16 @@ function sandboxSettings({ cwd, home, extraDenyRead, secretEnvNames }: DebateSan
     allowUnsandboxedCommands: false,
     autoAllowBashIfSandboxed: true,
     // No domain allowed, and no fallback to the user's own allowlist.
-    network: { allowedDomains: [], strictAllowlist: true },
+    // Switches pinned off even though they are the default: a project's own
+    // settings cannot widen the sandbox if these are set explicitly here.
+    network: {
+      allowedDomains: [],
+      strictAllowlist: true,
+      allowAllUnixSockets: false,
+      allowLocalBinding: false,
+    },
+    enableWeakerNetworkIsolation: false,
+    allowAppleEvents: false,
     filesystem: {
       denyWrite: [cwd],
       denyRead: [...CREDENTIAL_READ_DENY.map((entry) => join(home, entry)), ...extraDenyRead],

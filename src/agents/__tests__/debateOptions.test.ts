@@ -78,7 +78,14 @@ it("avec sandbox, le bloc sandbox est exactement celui du design", () => {
     failIfUnavailable: true,
     allowUnsandboxedCommands: false,
     autoAllowBashIfSandboxed: true,
-    network: { allowedDomains: [], strictAllowlist: true },
+    network: {
+      allowedDomains: [],
+      strictAllowlist: true,
+      allowAllUnixSockets: false,
+      allowLocalBinding: false,
+    },
+    enableWeakerNetworkIsolation: false,
+    allowAppleEvents: false,
     filesystem: {
       denyWrite: ["/private/tmp/p"],
       denyRead: DENY_READ_RELATIVE.map((e) => `/Users/u/${e}`),
