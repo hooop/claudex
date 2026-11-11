@@ -60,11 +60,18 @@ anyone changing Claudex itself, human or agent. User documentation is in README.
 - In the user's project, Claudex itself writes nothing outside `.claudex/` (the
   agents may, after `/implement`). It never creates or edits CLAUDE.md or AGENTS.md.
 - Agents are read-only until the implementation phase. Codex gets a read-only
-  sandbox. For Claude, only two things enforce it: the `tools` list
-  (`DEBATE_TOOLS` in `src/agents/debateOptions.ts`) and the human answering
-  `canUseTool`. `permissionMode: "plan"` and `allowedTools` do not (measured,
-  see limits.md). Claudex does not use the SDK sandbox; on 0.3.310 it can block
-  writes in `cwd`, measured once (limits.md, 2026-10-28). Re-check after every SDK upgrade by running
+  sandbox. For Claude, only these enforce it: the `tools` list
+  (`DEBATE_TOOLS` in `src/agents/debateOptions.ts`), the human answering
+  `canUseTool`, and, for Bash, the SDK sandbox. On macOS `resolveDebateSandbox`
+  returns a real `cwd` path and `debateQueryOptions` adds Bash with a `sandbox`
+  block (`failIfUnavailable`, `allowUnsandboxedCommands: false`, no network,
+  `denyWrite` on `cwd`, credential stores in `denyRead`, secret env vars
+  denied); elsewhere it returns the read-only options unchanged. There is no
+  unsandboxed Bash on any platform or in any failure mode. With the sandbox the
+  engine leaves empty directories in `cwd`; `src/agents/engineLeftovers.ts`
+  removes them (non-recursive `rmdir`, only those absent before the turn).
+  `permissionMode: "plan"` and `allowedTools` enforce nothing (measured, see
+  limits.md). Re-check after every SDK upgrade by running
   `npm run verify:readonly` on the old and the new version. The SDK is pinned to an
   exact version for that reason. Debate turns also carry `DEBATE_ISOLATION`
   (same module): no hook, no MCP server, no claude.ai connector (measured,
@@ -80,7 +87,8 @@ anyone changing Claudex itself, human or agent. User documentation is in README.
   an agent writes inside a running `/implement` turn, which no prompt is
   guaranteed to show first (limits.md, 2026-11-11).
 - At every SDK upgrade: run `npm run verify:readonly` cases E to M (including
-  Lp and Ll) and their controls, in fresh and trusted folders, on the old and the
+  Lp and Ll) and S, Sh, Sn, Sr, Se, Sd (sandboxed Bash) with their controls (Sc,
+  Snc, Src, Sec), in fresh and trusted folders, on the old and the
   new version; re-read the whole `Settings` interface in the SDK's `sdk.d.ts` for
   any key whose value is a command, nested ones included (marketplace
   declarations hold several, and have an alias), and compare with what

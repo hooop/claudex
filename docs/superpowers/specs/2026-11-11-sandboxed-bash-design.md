@@ -264,6 +264,21 @@ verification runner uses the same module for sandboxed cases and reports `engine
 - Only one machine and account measured (macOS, `/` trusted in `~/.claude.json`).
 - If the engine ever puts content in those directories, Claudex leaves them (never deletes content).
 
+## Results (2026-11-12)
+
+`npm run verify:readonly -- --model claude-sonnet-5-5 --cases S,Sc,Sh,Sn,Snc,Sr,Src,Se,Sec,Sd`,
+SDK 0.3.310, macOS, fresh temporary folders, two runs per case: every absolute case passes (no
+marker written, no loopback request received, no decoy token or secret environment variable seen,
+`dangerouslyDisableSandbox` sent by the model and ignored) and every control observes the breach
+(Sc marker written, Snc listener hit, Src and Sec secret seen). Regression cases E, F, G, H, J, K
+(read-only options, unchanged) pass, two runs each.
+
+Further probes, one run each: `npm test` runs inside the sandbox with `~/.npmrc` read-denied, so
+`.npmrc` stays in the deny list (D4); the sandbox refuses loopback too.
+
+**Pending: the trusted-folder variant of the S series has not been run.** The first attempt stopped
+on `.claude/.cc-writes` left in the project, before D9 existed. It must be run before release.
+
 ## Left to the builder
 
 Module layout inside `src/agents/`, the exact wording of README sentences, how the verify runner
