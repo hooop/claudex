@@ -1,4 +1,5 @@
-import { readFile, stat } from "node:fs/promises";
+import { constants } from "node:fs";
+import { open } from "node:fs/promises";
 import { join } from "node:path";
 
 // From the 0.3.310 sdk.d.ts `Settings`: the keys whose value is a command the
@@ -33,7 +34,7 @@ function flaggedEntries(settings: Record<string, unknown>): Array<{ key: string;
   }
   const env = settings.env;
   if (isPlainObject(env)) {
-    for (const [name, value] of Object.entries(env)) entries.push({ key: `env.${escapeText(name)}`, value });
+    for (const [name, value] of Object.entries(env)) entries.push({ key: `env.${escapeText(JSON.stringify(name).slice(1, -1))}`, value });
   } else if (env !== undefined) {
     entries.push({ key: "env", value: env });
   }
@@ -50,17 +51,21 @@ function errorCode(error: unknown): string {
 // Reasons are fixed texts or error codes: a parse message would embed
 // repository-supplied content.
 async function inspectFile(projectDir: string, file: string): Promise<SettingsFinding | null> {
-  const path = join(projectDir, file);
   let raw: string;
+  let handle;
   try {
-    // stat before reading so that a FIFO or a device cannot block or flood us.
-    const info = await stat(path);
+    // O_NONBLOCK so that opening a FIFO cannot block; fstat on the open handle
+    // (not a prior stat) so that the file cannot be swapped between check and read.
+    handle = await open(join(projectDir, file), constants.O_RDONLY | constants.O_NONBLOCK);
+    const info = await handle.stat();
     if (!info.isFile()) return { file, kind: "unreadable", reason: "not a regular file" };
     if (info.size > MAX_SETTINGS_BYTES) return { file, kind: "unreadable", reason: "larger than 1 MiB" };
-    raw = await readFile(path, "utf8");
+    raw = await handle.readFile("utf8");
   } catch (error) {
     if ((error as NodeJS.ErrnoException | undefined)?.code === "ENOENT") return null;
     return { file, kind: "unreadable", reason: errorCode(error) };
+  } finally {
+    await handle?.close();
   }
   let parsed: unknown;
   try {
@@ -123,7 +128,11 @@ export function sameFindings(a: readonly SettingsFinding[], b: readonly Settings
 function escapeText(text: string): string {
   return text.replace(
     /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\u115f\u1160\u3164]/gu,
-    (char) => `\\u${(char.codePointAt(0) ?? 0).toString(16).padStart(4, "0")}`,
+    (char) => {
+      const code = char.codePointAt(0) ?? 0;
+      // Braces above the BMP: "\\ue0001" would read as U+E000 followed by "1".
+      return code > 0xffff ? `\\u{${code.toString(16)}}` : `\\u${code.toString(16).padStart(4, "0")}`;
+    },
   );
 }
 

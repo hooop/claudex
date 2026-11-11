@@ -133,6 +133,24 @@ describe("inspectProjectSettings", () => {
     expect(key).toBe("env.A\\u001b[1A\\u202eB");
   });
 
+  it("keeps a literal backslash escape distinct from the real character in an env name", async () => {
+    await writeSettings(JSON.stringify({ env: { "a\\u202e": "1" } }));
+    const literal = await inspectProjectSettings(dir);
+    await writeSettings(JSON.stringify({ env: { "a\u202e": "1" } }));
+    const real = await inspectProjectSettings(dir);
+    const key = (f: SettingsFinding[]): string | undefined =>
+      f[0]?.kind === "entries" ? f[0].entries[0]?.key : undefined;
+    expect(key(literal)).not.toBe(key(real));
+    expect(sameFindings(literal, real)).toBe(false);
+  });
+
+  it("escapes an astral format character in an env name unambiguously", async () => {
+    await writeSettings(JSON.stringify({ env: { "a\u{e0001}": "1" } }));
+    const [finding] = await inspectProjectSettings(dir);
+    const key = finding?.kind === "entries" ? finding.entries[0]?.key : undefined;
+    expect(key).toBe("env.a\\u{e0001}");
+  });
+
   it("reports a non-object top level with a fixed reason", async () => {
     await writeSettings("[]");
     unreadable(await inspectProjectSettings(dir), "not a JSON object");
@@ -255,6 +273,12 @@ describe("formatSettingValue", () => {
   ])("escapes %s", (_name, char) => {
     const code = char.charCodeAt(0).toString(16).padStart(4, "0");
     expect(formatSettingValue(`a${char}b`)).toBe(`"a\\u${code}b"`);
+  });
+
+  it("escapes an astral code point with braces so it cannot be confused with a BMP escape", () => {
+    expect(formatSettingValue("\u{e0001}")).toBe('"\\u{e0001}"');
+    // U+E000 (private use, left as is) followed by "1" stays visibly different.
+    expect(formatSettingValue("\ue000" + "1")).toBe('"\ue0001"');
   });
 
   it("formats objects as JSON", () => {
