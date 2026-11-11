@@ -70,8 +70,9 @@ anyone changing Claudex itself, human or agent. User documentation is in README.
   (same module): no hook, no MCP server, no claude.ai connector (measured,
   limits.md, 2026-11-11).
 - The analysed project's command settings (the credential helpers in
-  `COMMAND_SETTING_KEYS`, any marketplace `source.headersHelper` and any `env`
-  entry of `<cwd>/.claude/settings.json`,
+  `COMMAND_SETTING_KEYS`, any `env` entry, and the marketplace declarations
+  `extraKnownMarketplaces` / `additionalMarketplaces` shown whole, in
+  `<cwd>/.claude/settings.json`,
   `src/agents/projectSettings.ts`) need the human's consent at launch, before
   Claudex writes anything or starts either agent; a file Claudex cannot read
   allows only quitting. Consent is never stored. Before every Claude query the
@@ -81,8 +82,8 @@ anyone changing Claudex itself, human or agent. User documentation is in README.
 - At every SDK upgrade: run `npm run verify:readonly` cases E to M (including
   Lp and Ll) and their controls, in fresh and trusted folders, on the old and the
   new version; re-read the whole `Settings` interface in the SDK's `sdk.d.ts` for
-  any key whose value is a command, nested ones included (like
-  `extraKnownMarketplaces.<name>.source.headersHelper`), and compare with what
+  any key whose value is a command, nested ones included (marketplace
+  declarations hold several, and have an alias), and compare with what
   `src/agents/projectSettings.ts` flags and what limits.md lists as not shown; if Lp or Ll now run their helper, `PROJECT_SETTINGS_FILES`
   is wrong and the upgrade stops.
 - The debate rules (`CONSENSUS_INSTRUCTIONS`) never name an agent outside the

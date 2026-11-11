@@ -15,9 +15,11 @@ aucune de ces décisions n'a été prise par le mainteneur lui-même. Design :
   (`PROJECT_SETTINGS_FILES`), le seul que les mesures montrent lu par le moteur (Lp et Ll négatifs).
   Signalés : les six helpers de `COMMAND_SETTING_KEYS` (`apiKeyHelper`, `awsAuthRefresh`,
   `awsCredentialExport`, `gcpAuthRefresh`, `otelHeadersHelper`, `proxyAuthHelper`, relevés dans
-  l'interface `Settings` de `sdk.d.ts`), toute entrée `env` et, ajouté après la revue finale, le helper
-  d'en-têtes d'une marketplace de plugins (`extraKnownMarketplaces.<nom>.source.headersHelper`, nom
-  échappé comme ceux d'`env` ; une forme inattendue est montrée brute). Pas montrés, consignés dans
+  l'interface `Settings` de `sdk.d.ts`), toute entrée `env` et, ajouté après la revue finale, les déclarations
+  de marketplaces de plugins (`extraKnownMarketplaces` et son alias documenté `additionalMarketplaces`),
+  montrées entières : elles portent commandes, URL et helpers à plusieurs niveaux, qu'une liste de
+  champs manquerait, et la garde réagit ainsi à tout changement (une URL déplacée). Non mesuré : que
+  le moteur récupère ou exécute quoi que ce soit d'une marketplace déclarée par le projet. Pas montrés, consignés dans
   `limits.md` : `statusLine.command`, `subagentStatusLine.command`, `fileSuggestion.command` et les
   règles `permissions.allow` du dépôt. Le fichier est ouvert en non bloquant et
   doit être un fichier ordinaire de 1 Mio au plus ; tout ce que Claudex ne sait pas lire ou analyser

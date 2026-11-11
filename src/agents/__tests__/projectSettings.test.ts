@@ -222,86 +222,65 @@ describe("inspectProjectSettings", () => {
   });
 });
 
-describe("inspectProjectSettings: marketplace header helpers", () => {
-  const marketplace = (source: unknown): string =>
-    JSON.stringify({ extraKnownMarketplaces: { team: { source } } });
+describe("inspectProjectSettings: marketplace declarations", () => {
+  const team = {
+    team: {
+      source: { source: "url", url: "https://x/m.json", headersHelper: "print-token" },
+      plugins: [{ name: "p", source: { source: "command", command: "run-me" } }],
+    },
+  };
 
-  it("flags a marketplace header helper with its raw value", async () => {
-    await writeSettings(marketplace({ source: "url", url: "https://x/m.json", headersHelper: "print-token" }));
-    expect(await inspectProjectSettings(dir)).toEqual([
-      {
-        file: FILE,
-        kind: "entries",
-        entries: [{ key: "extraKnownMarketplaces.team.source.headersHelper", value: "print-token" }],
-      },
-    ]);
+  it.each(["extraKnownMarketplaces", "additionalMarketplaces"])("flags %s whole with its raw value", async (key) => {
+    await writeSettings(JSON.stringify({ [key]: team }));
+    expect(await inspectProjectSettings(dir)).toEqual([{ file: FILE, kind: "entries", entries: [{ key, value: team }] }]);
   });
 
-  it("flags a header helper whose value is not a string", async () => {
-    await writeSettings(marketplace({ source: "url", url: "https://x/m.json", headersHelper: null }));
-    expect(await inspectProjectSettings(dir)).toEqual([
-      {
-        file: FILE,
-        kind: "entries",
-        entries: [{ key: "extraKnownMarketplaces.team.source.headersHelper", value: null }],
-      },
-    ]);
-  });
-
-  it("finds nothing in a marketplace without a header helper", async () => {
-    await writeSettings(marketplace({ source: "url", url: "https://x/m.json", headers: { A: "b" } }));
-    expect(await inspectProjectSettings(dir)).toEqual([]);
-    await writeSettings(marketplace({ source: "github", repo: "o/r" }));
-    expect(await inspectProjectSettings(dir)).toEqual([]);
-    await writeSettings(JSON.stringify({ extraKnownMarketplaces: {} }));
-    expect(await inspectProjectSettings(dir)).toEqual([]);
-  });
-
-  it("escapes control and bidirectional characters in a marketplace name", async () => {
-    await writeSettings(
-      JSON.stringify({ extraKnownMarketplaces: { "A\u001b[1A‮B": { source: { source: "url", url: "u", headersHelper: "h" } } } }),
-    );
-    const [finding] = await inspectProjectSettings(dir);
-    const key = finding?.kind === "entries" ? finding.entries[0]?.key : undefined;
-    expect(key).toBe("extraKnownMarketplaces.A\\u001b[1A\\u202eB.source.headersHelper");
-  });
-
-  it.each([
-    ["a string", "x"],
-    ["null", null],
-    ["an array", []],
-  ])("flags extraKnownMarketplaces as %s with its raw value", async (_name, value) => {
+  it.each([null, "x", [], {}])("flags a marketplace key whose value is %j", async (value) => {
     await writeSettings(JSON.stringify({ extraKnownMarketplaces: value }));
     expect(await inspectProjectSettings(dir)).toEqual([
       { file: FILE, kind: "entries", entries: [{ key: "extraKnownMarketplaces", value }] },
     ]);
   });
 
-  it.each([
-    ["a string", "x"],
-    ["null", null],
-    ["an array", [{ source: { headersHelper: "h" } }]],
-  ])("flags a marketplace entry that is %s with its raw value", async (_name, value) => {
-    await writeSettings(JSON.stringify({ extraKnownMarketplaces: { team: value } }));
+  it("flags both keys when both are present", async () => {
+    await writeSettings(JSON.stringify({ extraKnownMarketplaces: team, additionalMarketplaces: { other: {} } }));
     expect(await inspectProjectSettings(dir)).toEqual([
-      { file: FILE, kind: "entries", entries: [{ key: "extraKnownMarketplaces.team", value }] },
+      {
+        file: FILE,
+        kind: "entries",
+        entries: [
+          { key: "extraKnownMarketplaces", value: team },
+          { key: "additionalMarketplaces", value: { other: {} } },
+        ],
+      },
     ]);
   });
 
-  it.each([
-    ["a string", "x"],
-    ["null", null],
-    ["an array", [{ headersHelper: "h" }]],
-  ])("flags a marketplace source that is %s with its raw value", async (_name, value) => {
-    await writeSettings(marketplace(value));
-    expect(await inspectProjectSettings(dir)).toEqual([
-      { file: FILE, kind: "entries", entries: [{ key: "extraKnownMarketplaces.team.source", value }] },
-    ]);
-  });
-
-  it("finds nothing in a marketplace entry without a source", async () => {
-    await writeSettings(JSON.stringify({ extraKnownMarketplaces: { team: {} } }));
+  it("finds nothing without a marketplace key", async () => {
+    await writeSettings(JSON.stringify({ enabledPlugins: { "p@team": true } }));
     expect(await inspectProjectSettings(dir)).toEqual([]);
+  });
+
+  it("shows control and bidirectional characters of a marketplace name or URL escaped", async () => {
+    const value = { "A\u001b[1A\u202eB": { source: { source: "url", url: "https://x/\u202e\u001b[2J" } } };
+    await writeSettings(JSON.stringify({ extraKnownMarketplaces: value }));
+    const [finding] = await inspectProjectSettings(dir);
+    const entry = finding?.kind === "entries" ? finding.entries[0] : undefined;
+    expect(entry?.key).toBe("extraKnownMarketplaces");
+    const shown = formatSettingValue(entry?.value);
+    expect(shown).toBe(
+      '{"A\\u001b[1A\\u202eB":{"source":{"source":"url","url":"https://x/\\u202e\\u001b[2J"}}}',
+    );
+    expect(shown).not.toMatch(/[\u001b\u202e]/);
+  });
+
+  it("makes the guard refuse a turn when an approved marketplace URL changed", async () => {
+    await writeSettings(JSON.stringify({ extraKnownMarketplaces: team }));
+    const guard = createSettingsGuard(await inspectProjectSettings(dir));
+    expect(await guard(dir)).toBeNull();
+    const moved = { team: { ...team.team, source: { ...team.team.source, url: "https://evil/m.json" } } };
+    await writeSettings(JSON.stringify({ extraKnownMarketplaces: moved }));
+    expect(await guard(dir)).toBe(SETTINGS_CHANGED_MESSAGE);
   });
 });
 

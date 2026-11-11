@@ -3,9 +3,9 @@ import { open } from "node:fs/promises";
 import { join } from "node:path";
 
 // From the 0.3.310 sdk.d.ts `Settings`: the top-level keys whose value is a
-// command the engine runs. The one nested command, a marketplace's
-// `extraKnownMarketplaces.<name>.source.headersHelper`, is handled in
-// `marketplaceEntries`. Interactive-UI commands (statusLine, subagentStatusLine,
+// command the engine runs. Marketplace declarations carry commands, URLs and
+// helpers at several depths, so MARKETPLACE_KEYS are shown whole instead of
+// field by field. Interactive-UI commands (statusLine, subagentStatusLine,
 // fileSuggestion) are not shown (see limits.md). Re-read at every SDK upgrade.
 export const COMMAND_SETTING_KEYS = [
   "apiKeyHelper",
@@ -15,6 +15,9 @@ export const COMMAND_SETTING_KEYS = [
   "otelHeadersHelper",
   "proxyAuthHelper",
 ] as const;
+
+// `additionalMarketplaces` is a documented alias of `extraKnownMarketplaces`.
+const MARKETPLACE_KEYS = ["extraKnownMarketplaces", "additionalMarketplaces"] as const;
 
 // Relative to the project directory. This list was measured (see
 // `.claudex/memory/limits.md`): under Claudex's setting sources the engine reads
@@ -30,32 +33,6 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function escapedName(name: string): string {
-  return escapeText(JSON.stringify(name).slice(1, -1));
-}
-
-// Any shape that is not the documented one is shown raw rather than skipped,
-// like `env`: the engine may still read it.
-function marketplaceEntries(marketplaces: unknown): Array<{ key: string; value: unknown }> {
-  if (marketplaces === undefined) return [];
-  if (!isPlainObject(marketplaces)) return [{ key: "extraKnownMarketplaces", value: marketplaces }];
-  const entries: Array<{ key: string; value: unknown }> = [];
-  for (const [name, marketplace] of Object.entries(marketplaces)) {
-    const key = `extraKnownMarketplaces.${escapedName(name)}`;
-    if (!isPlainObject(marketplace)) {
-      entries.push({ key, value: marketplace });
-      continue;
-    }
-    const source = marketplace.source;
-    if (source === undefined) continue;
-    if (!isPlainObject(source)) entries.push({ key: `${key}.source`, value: source });
-    else if (Object.hasOwn(source, "headersHelper")) {
-      entries.push({ key: `${key}.source.headersHelper`, value: source.headersHelper });
-    }
-  }
-  return entries;
-}
-
 function flaggedEntries(settings: Record<string, unknown>): Array<{ key: string; value: unknown }> {
   const entries: Array<{ key: string; value: unknown }> = [];
   for (const key of COMMAND_SETTING_KEYS) {
@@ -63,11 +40,13 @@ function flaggedEntries(settings: Record<string, unknown>): Array<{ key: string;
   }
   const env = settings.env;
   if (isPlainObject(env)) {
-    for (const [name, value] of Object.entries(env)) entries.push({ key: `env.${escapedName(name)}`, value });
+    for (const [name, value] of Object.entries(env)) entries.push({ key: `env.${escapeText(JSON.stringify(name).slice(1, -1))}`, value });
   } else if (env !== undefined) {
     entries.push({ key: "env", value: env });
   }
-  entries.push(...marketplaceEntries(settings.extraKnownMarketplaces));
+  for (const key of MARKETPLACE_KEYS) {
+    if (Object.hasOwn(settings, key)) entries.push({ key, value: settings[key] });
+  }
   return entries;
 }
 

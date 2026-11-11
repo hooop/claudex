@@ -12,7 +12,7 @@ export const CONSENT_RENDER_OPTIONS = { ...RENDER_OPTIONS, alternateScreen: fals
 const INPUT_DELAY_MS = 250;
 
 const TITLE =
-  "Les réglages Claude Code de ce projet demandent à Claude Code d'exécuter ces commandes ou de définir ces variables d'environnement au démarrage de chaque session Claude. Claudex ne peut pas les désactiver.";
+  "Les réglages Claude Code de ce projet demandent à Claude Code d'exécuter ces commandes ou d'appliquer ces réglages pendant les sessions Claude. Claudex ne peut pas les désactiver.";
 
 const FIX_UNREADABLE =
   "Claudex ne peut pas lire ce qu'il faudrait approuver : corrigez .claude/settings.json pour que Claudex puisse le lire, puis relancez Claudex.";

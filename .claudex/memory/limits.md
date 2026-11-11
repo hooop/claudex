@@ -28,8 +28,9 @@ Depuis cette branche, l'écran de consentement montre cette entrée `env` avant 
 **Ce qui est fermé** (voir `decisions.md` 2026-11-11, réglages porteurs de commande) : au lancement,
 Claudex lit lui-même `<cwd>/.claude/settings.json` (`PROJECT_SETTINGS_FILES`, le seul fichier que les
 mesures montrent lu), sans rien exécuter, et demande le consentement de l'humain si le fichier déclare
-l'un des six helpers (`COMMAND_SETTING_KEYS`), le helper d'en-têtes d'une marketplace de plugins
-(`extraKnownMarketplaces.<nom>.source.headersHelper`, ajouté après la revue finale) ou une entrée `env`, ou s'il est illisible (alors seul
+l'un des six helpers (`COMMAND_SETTING_KEYS`), une déclaration de marketplace de plugins
+(`extraKnownMarketplaces` ou son alias `additionalMarketplaces`, montrée entière, ajoutée après la
+revue finale ; non mesuré : que le moteur en récupère ou exécute quoi que ce soit) ou une entrée `env`, ou s'il est illisible (alors seul
 « quitter » est offert). Rien n'est écrit, ni Codex ni Claude ne démarre avant la réponse. Avant chaque
 requête Claude, débat comme `/implement`, la garde relit le fichier et refuse le tour s'il diffère de
 l'approbation. Vérifié par les tests unitaires et d'interface, et à la main dans un pty : refus, pas de

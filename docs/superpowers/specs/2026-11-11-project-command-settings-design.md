@@ -69,11 +69,13 @@ when it is present with at least one key. The list lives in one exported constan
 pointing at `sdk.d.ts` and at this design; it must be re-read at every SDK upgrade (added to the
 upgrade checklist in AGENTS.md next to `verify:readonly`).
 
-Added after the final branch review: one nested command-bearing key,
-`extraKnownMarketplaces.<name>.source.headersHelper` (a command that prints HTTP headers for a
-plugin marketplace), is flagged with its raw value, the marketplace name escaped like an `env`
-name. A malformed `extraKnownMarketplaces`, entry or `source` is flagged raw rather than skipped.
-A settings object with a top-level `__proto__`, `constructor` or `prototype` key is "cannot be
+Added after the final branch review: plugin marketplace declarations, `extraKnownMarketplaces` and
+its documented alias `additionalMarketplaces`, are flagged whole when present (any value, `null`
+included): one entry per key with the raw value. They carry commands, URLs and helpers at several
+depths (`source.headersHelper`, plugin sources of type `command`, plugin `headersHelper`), so
+enumerating fields would miss some; the whole value also makes D3 react to any change, such as a
+moved URL. Whether the engine fetches or runs anything from a project-declared marketplace under
+the SDK was not measured. A settings object with a top-level `__proto__`, `constructor` or `prototype` key is "cannot be
 checked" ("unexpected key"). Not flagged, and recorded in `limits.md`: `statusLine.command`,
 `subagentStatusLine.command` and `fileSuggestion.command` (interactive UI features), and the
 repository's `permissions.allow` rules.
@@ -97,8 +99,9 @@ When D1 returns findings at launch, `src/cli.tsx` asks for consent before Root i
 list is printed as plain text to the normal screen, then a small Ink prompt (outside Root, not in
 the alternate screen) waits for the key. This design first had Root show a full screen; see the
 changes below. In French, like the rest of the UI for now. It shows:
-- one sentence: this project's Claude Code settings ask Claude Code to run these commands or set
-  these environment variables when each Claude session starts; Claudex cannot turn them off;
+- one sentence: this project's Claude Code settings ask Claude Code to run these commands or
+  apply these settings during Claude sessions; Claudex cannot turn them off (first said "set these
+  environment variables when each Claude session starts", inaccurate for marketplaces and `env`);
 - per file: its path relative to the project, then each flagged entry with its exact value, not
   truncated (wrapped if long). Control characters in values are shown escaped, so a value cannot
   rewrite the terminal;
@@ -211,8 +214,10 @@ The manual smoke test of the PR covers the screen once with a real helper.
   (no finding) and non-empty; non-string helper value; `env` not an object; invalid JSON; JSON array
   or scalar at top level; unreadable file (permission denied, a directory in place of the file);
   every file of the measured list; canonical comparison is order-independent for object keys.
-  Added after the final review: marketplace header helper present (exact key and value), absent,
-  escaped name, malformed shapes; top-level `__proto__`, `constructor`, `prototype` keys.
+  Added after the final review: each marketplace key present (one entry, whole raw value), both
+  present, absent, any value including `null`; control characters in a marketplace name or URL
+  escaped on display; the guard refuses a changed marketplace URL; top-level `__proto__`,
+  `constructor`, `prototype` keys.
 - Consent prompt (as shipped: `formatConsentText` and the `SettingsConsent` Ink prompt rendered by
   `src/cli.tsx` outside Root, and `prepareLaunch` in `src/launch.ts`): findings shown with exact
   values, control characters escaped; Enter, Escape and Ctrl+C quit and no agent is ever called;

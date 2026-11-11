@@ -85,6 +85,15 @@ const MANY: SettingsFinding[] = [
 ];
 
 describe("formatConsentText", () => {
+  it("dit que les réglages s'appliquent pendant les sessions, pas seulement au démarrage", () => {
+    const text = formatConsentText([
+      { file: ".claude/settings.json", kind: "entries", entries: [{ key: "env.FOO", value: "1" }] },
+    ]);
+    expect(text.split("\n")[0]).toBe(
+      "Les réglages Claude Code de ce projet demandent à Claude Code d'exécuter ces commandes ou d'appliquer ces réglages pendant les sessions Claude. Claudex ne peut pas les désactiver.",
+    );
+  });
+
   it("montre le fichier, la clé et la valeur entière d'une longue commande, d'un seul tenant", () => {
     const longCommand = `echo-${"x".repeat(295)}`;
     const text = formatConsentText([
