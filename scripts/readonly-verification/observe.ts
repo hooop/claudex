@@ -13,6 +13,7 @@ import { promisify } from "node:util";
 import { TrustedDirError, assertEmptyDir, changedKeys, cleanupToSnapshot, readProjectEntry, snapshotTree, type TreeSnapshot } from "./trustedDir.js";
 import { debateQueryOptions } from "../../src/agents/debateOptions.js";
 import { resolveDebateSandbox } from "../../src/agents/debateSandbox.js";
+import { removeEngineLeftovers, snapshotEngineLeftovers } from "../../src/agents/engineLeftovers.js";
 import {
   MARKER_NAME,
   SECRET_ENV_NAME,
@@ -349,6 +350,7 @@ async function runWith(
     observation.secretSeen = false;
     observation.bashProbed = false;
     observation.disableSandboxSent = false;
+    observation.engineLeftoversRemoved = false;
   }
 
   await execFileAsync("git", ["init", "-q"], { cwd: dir });
@@ -358,6 +360,11 @@ async function runWith(
   const prompt = c.prompt(ctx);
   const probeTarget = c.probe?.(ctx);
   await afterSetup?.();
+
+  // Same cleanup as the adapter, so that the sandbox's empty directories do not
+  // stop the trusted-folder variant. Taken after the setup: the case's own
+  // files are not the engine's.
+  const leftoversBefore = c.sandbox ? await snapshotEngineLeftovers(cwd) : undefined;
 
   const abortController = new AbortController();
   // Once the run has ended, a straggling stream must not alter what we return.
@@ -429,6 +436,10 @@ async function runWith(
     closed = true;
   }
   if (timedOut) observation.error = timeoutMessage;
+
+  if (leftoversBefore) {
+    observation.engineLeftoversRemoved = (await removeEngineLeftovers(cwd, leftoversBefore)).length > 0;
+  }
 
   observation.markerWritten = existsSync(markerPath);
   if (fixture) {

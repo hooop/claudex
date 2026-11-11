@@ -214,6 +214,22 @@ the run's real `cwd`, so S cases carry a flag and the runner builds their option
   AGENTS.md. If one fails on the new version, the upgrade stops, or the platform check returns
   `false` until it is fixed.
 
+### D9 — Claudex removes the empty directories the engine creates in the project
+
+Measured on SDK 0.3.310 (2026-11-12): with the sandbox enabled, the Claude Code engine itself
+creates `<cwd>/.claude/` (empty) and sometimes `<cwd>/.claude/.cc-writes/` (an empty staging
+directory) in the analysed project; without the sandbox it creates nothing. Claudex writes nothing
+outside `.claudex/` in the user's project, so it must leave the project as it found it.
+
+On sandboxed debate turns only, `ClaudeAgent` snapshots which of `.claude/.cc-writes` and `.claude`
+exist before `query`, and in a `finally` after the stream (success, error, cancel, throw) removes
+those that did not. Removal is a non-recursive `rmdir`, innermost first: it can only ever remove an
+empty directory, never content, so a directory the engine (or the user) filled is left alone. A
+symlink is never followed or removed, any error is ignored, and the cleanup never changes the
+turn's result. `/implement` turns and turns without a sandbox do not touch the disk. The
+verification runner uses the same module for sandboxed cases and reports `engineLeftoversRemoved`
+(reported, never judged), so the trusted-folder variant no longer stops on `.claude/.cc-writes`.
+
 ## Tests (written first)
 
 - `debateOptions.test.ts`: `null` sandbox → exactly today's object (characterization written before
@@ -246,6 +262,7 @@ the run's real `cwd`, so S cases carry a flag and the runner builds their option
   otherwise stays visible.
 - Linux, WSL and Windows: no Bash for Claude until measured.
 - Only one machine and account measured (macOS, `/` trusted in `~/.claude.json`).
+- If the engine ever puts content in those directories, Claudex leaves them (never deletes content).
 
 ## Left to the builder
 

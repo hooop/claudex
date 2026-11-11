@@ -314,4 +314,12 @@ describe("formatMarkdown — sandbox observations", () => {
     expect(md).toContain("- extra markers written: `sub`");
     expect(md).toContain("- secret seen: yes");
   });
+
+  it("reports whether engine leftovers were removed, and omits the line when the field is unset", () => {
+    const meta = { sdkVersion: "1", claudeCodeVersion: null, model: "m", folder: "f" };
+    const rows = (o: Observation) => [{ id: "S" as const, gate: "absolute" as const, observations: [o], verdict: { status: "pass" as const, reasons: [] } }];
+    expect(formatMarkdown(rows(observation({ engineLeftoversRemoved: true })), meta)).toContain("- engine leftovers removed: yes");
+    expect(formatMarkdown(rows(observation({ engineLeftoversRemoved: false })), meta)).toContain("- engine leftovers removed: no");
+    expect(formatMarkdown(rows(observation()), meta)).not.toContain("engine leftovers");
+  });
 });

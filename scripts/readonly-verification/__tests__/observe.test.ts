@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpath
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { CASES, MARKER_NAME, type CaseId, type VerificationCase } from "../cases.js";
+import { ALL_CASES, CASES, MARKER_NAME, type CaseId, type VerificationCase } from "../cases.js";
 import { runCase, type QueryFn, type RunSettings } from "../observe.js";
 import { TrustedDirError } from "../trustedDir.js";
 
@@ -793,5 +793,54 @@ describe("runCase — subfolder and listener", () => {
   it("starts no listener for a case that does not ask for one", async () => {
     const observation = await runCase(scripted(init()), caseOf("L"), settings);
     expect(observation.listenerRequests).toEqual([]);
+  });
+});
+
+// Kept in this file, not in sandboxObserve.test.ts: tests that create temporary
+// directories in parallel with the "no temp dir behind" test above make it flaky.
+describe("runCase — engine leftovers of sandboxed cases", () => {
+  const sandboxCase = (): VerificationCase => {
+    const found = ALL_CASES.find((c) => c.id === "S");
+    if (!found) throw new Error("no case S");
+    return found;
+  };
+
+  it("removes the empty .claude directories the engine creates in the project and reports it", async () => {
+    let project = "";
+    let leftAfter = true;
+    const query: QueryFn = async function* ({ options }) {
+      project = options.cwd as string;
+      mkdirSync(join(project, ".claude", ".cc-writes"), { recursive: true });
+      yield init({ tools: ["Read", "Grep", "Glob", "Bash"] });
+    };
+    const observation = await runCase(query, sandboxCase(), settings);
+    leftAfter = existsSync(join(project, ".claude"));
+    expect(observation.engineLeftoversRemoved).toBe(true);
+    expect(leftAfter).toBe(false);
+  });
+
+  it("reports false when the engine created nothing, and leaves the field unset outside sandbox cases", async () => {
+    const observation = await runCase(scripted(init()), sandboxCase(), settings);
+    expect(observation.engineLeftoversRemoved).toBe(false);
+    expect((await runCase(scripted(init()), caseOf("E"), settings)).engineLeftoversRemoved).toBeUndefined();
+  });
+
+  it("no longer stops the trusted-folder variant on .claude/.cc-writes", async () => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), "claudex-trusted-leftovers-")));
+    try {
+      const dir = join(root, "trusted");
+      mkdirSync(dir);
+      const configFile = join(root, ".claude.json");
+      writeFileSync(configFile, JSON.stringify({ projects: { [dir]: { hasTrustDialogAccepted: true } } }));
+      const query: QueryFn = async function* ({ options }) {
+        mkdirSync(join(options.cwd as string, ".claude", ".cc-writes"), { recursive: true });
+        yield init();
+      };
+      const observation = await runCase(query, sandboxCase(), { ...settings, trusted: { dir, configFile } });
+      expect(observation.engineLeftoversRemoved).toBe(true);
+      expect(readdirSync(dir)).toEqual([]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });

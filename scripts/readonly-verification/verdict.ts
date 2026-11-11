@@ -44,6 +44,8 @@ export interface Observation {
   bashProbed?: boolean;
   /** Sandbox cases: some Bash call carried dangerouslyDisableSandbox: true. */
   disableSandboxSent?: boolean;
+  /** Reported, never judged: the engine left empty directories that Claudex removed. */
+  engineLeftoversRemoved?: boolean;
   resultSubtype: string | null;
   error: string | null;
   /** Keys of the trusted folder's project entry the run changed; null outside the trusted variant. */
@@ -265,6 +267,7 @@ function describeRun(o: Observation): string[] {
     ...(o.secretSeen === undefined ? [] : [`- secret seen: ${o.secretSeen ? "yes" : "no"}`]),
     ...(o.bashProbed === undefined ? [] : [`- probe command run: ${o.bashProbed ? "yes" : "no"}`]),
     ...(o.disableSandboxSent === undefined ? [] : [`- dangerouslyDisableSandbox sent: ${o.disableSandboxSent ? "yes" : "no"}`]),
+    ...(o.engineLeftoversRemoved === undefined ? [] : [`- engine leftovers removed: ${o.engineLeftoversRemoved ? "yes" : "no"}`]),
     `- result: ${o.resultSubtype ?? "none"}`,
     `- error: ${o.error === null ? "none" : oneLine(o.error)}`,
     ...trustChanges,

@@ -404,3 +404,76 @@ describe("ClaudeAgent sandbox du débat", () => {
     expect(queryMock).not.toHaveBeenCalled();
   });
 });
+
+describe("ClaudeAgent — restes du moteur", () => {
+  beforeEach(() => queryMock.mockReset());
+
+  const sandbox = { cwd: "/r", home: "/h", extraDenyRead: [], secretEnvNames: [] };
+  const resolver = async () => sandbox;
+
+  function setup() {
+    const calls: string[] = [];
+    const snapshot = vi.fn(async (cwd: string) => {
+      calls.push(`snapshot:${cwd}`);
+      return new Set<string>([".claude"]) as ReadonlySet<string>;
+    });
+    const remove = vi.fn(async (cwd: string) => {
+      calls.push(`remove:${cwd}`);
+      return [] as string[];
+    });
+    const agent = new ClaudeAgent(undefined, undefined, undefined, resolver, { snapshot, remove });
+    return { agent, snapshot, remove, calls };
+  }
+
+  it("prend un instantané avant query et nettoie après, avec le cwd du tour", async () => {
+    const { agent, snapshot, remove, calls } = setup();
+    queryMock.mockImplementation(() => {
+      calls.push("query");
+      return messages([successResult()]);
+    });
+    const result = await agent.send("Sujet", { cwd: "/projet", writeAccess: false });
+    expect(result).toMatchObject({ kind: "success" });
+    expect(calls).toEqual(["snapshot:/projet", "query", "remove:/projet"]);
+    expect(remove).toHaveBeenCalledWith("/projet", await snapshot.mock.results[0]?.value);
+  });
+
+  it("nettoie aussi quand le flux lève, sans changer le résultat", async () => {
+    const { agent, remove } = setup();
+    queryMock.mockImplementation(async function* () {
+      yield { type: "system" };
+      throw new Error("flux cassé");
+    });
+    const result = await agent.send("Sujet", { cwd: "/projet", writeAccess: false });
+    expect(result).toMatchObject({ kind: "error" });
+    expect(remove).toHaveBeenCalledTimes(1);
+  });
+
+  it("ne touche pas au disque sans sandbox ni en phase d'implémentation", async () => {
+    const snapshot = vi.fn(async () => new Set<string>() as ReadonlySet<string>);
+    const remove = vi.fn(async () => [] as string[]);
+    queryMock.mockImplementation(() => messages([successResult()]));
+    await new ClaudeAgent(undefined, undefined, undefined, async () => null, { snapshot, remove }).send("Sujet", {
+      cwd: "/projet",
+      writeAccess: false,
+    });
+    await new ClaudeAgent(undefined, undefined, undefined, resolver, { snapshot, remove }).send("Sujet", {
+      cwd: "/projet",
+      writeAccess: true,
+    });
+    expect(snapshot).not.toHaveBeenCalled();
+    expect(remove).not.toHaveBeenCalled();
+  });
+
+  it("ne change pas le résultat si le nettoyage ou l'instantané lèvent", async () => {
+    const snapshot = vi.fn(async () => {
+      throw new Error("snapshot");
+    });
+    const remove = vi.fn(async () => {
+      throw new Error("remove");
+    });
+    queryMock.mockImplementation(() => messages([successResult()]));
+    const agent = new ClaudeAgent(undefined, undefined, undefined, resolver, { snapshot, remove });
+    const result = await agent.send("Sujet", { cwd: "/projet", writeAccess: false });
+    expect(result).toMatchObject({ kind: "success" });
+  });
+});

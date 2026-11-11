@@ -3,6 +3,7 @@ import type { AgentResult } from "../orchestrator/types.js";
 import type { AgentActivity } from "../types.js";
 import { formatClaudeModel } from "../util/projectStatus.js";
 import { type DebateSandbox, debateQueryOptions } from "./debateOptions.js";
+import { removeEngineLeftovers, snapshotEngineLeftovers } from "./engineLeftovers.js";
 import { SETTINGS_CHANGED_MESSAGE, type SessionGuard } from "./projectSettings.js";
 import { AUTO_MODEL_LABEL, type AgentSendOptions, type CodingAgent } from "./types.js";
 
@@ -12,6 +13,11 @@ import { AUTO_MODEL_LABEL, type AgentSendOptions, type CodingAgent } from "./typ
 const FULL_TOOLS = { type: "preset" as const, preset: "claude_code" as const };
 
 export type SandboxResolver = (cwd: string) => Promise<DebateSandbox | null>;
+
+export interface EngineLeftoverCleanup {
+  snapshot: (cwd: string) => Promise<ReadonlySet<string>>;
+  remove: (cwd: string, before: ReadonlySet<string>) => Promise<unknown>;
+}
 
 export const DEBATE_SANDBOX_ERROR =
   "Le sandbox du débat n'a pas pu être préparé (dossier du projet introuvable). Tour annulé.";
@@ -30,13 +36,16 @@ export class ClaudeAgent implements CodingAgent {
   private readonly guard: SessionGuard | undefined;
 
   private readonly resolveSandbox: SandboxResolver;
+  private readonly leftovers: EngineLeftoverCleanup;
 
   constructor(
     model?: string,
     initialDisplayModel?: string,
     guard?: SessionGuard,
     resolveSandbox: SandboxResolver = () => Promise.resolve(null),
+    leftovers: EngineLeftoverCleanup = { snapshot: snapshotEngineLeftovers, remove: removeEngineLeftovers },
   ) {
+    this.leftovers = leftovers;
     this.guard = guard;
     this.resolveSandbox = resolveSandbox;
     this.model = model;
@@ -132,6 +141,8 @@ export class ClaudeAgent implements CodingAgent {
       });
     };
 
+    let cleanupLeftovers: (() => Promise<void>) | undefined;
+
     try {
       if (this.guard) {
         // Fail closed: a guard that throws must not let the turn through.
@@ -149,6 +160,20 @@ export class ClaudeAgent implements CodingAgent {
           return { kind: "error", message: DEBATE_SANDBOX_ERROR };
         }
         if (abortController.signal.aborted) return { kind: "cancelled" };
+      }
+
+      if (sandbox) {
+        // The sandboxed engine leaves empty directories in the project. Best
+        // effort only: a failure here must never change the turn's result, and
+        // without a snapshot nothing is removed.
+        try {
+          const before = await this.leftovers.snapshot(options.cwd);
+          cleanupLeftovers = async () => {
+            await this.leftovers.remove(options.cwd, before);
+          };
+        } catch {
+          cleanupLeftovers = undefined;
+        }
       }
 
       const stream = query({
@@ -295,6 +320,7 @@ export class ClaudeAgent implements CodingAgent {
         partialText: text || undefined,
       };
     } finally {
+      await cleanupLeftovers?.().catch(() => undefined);
       options.signal?.removeEventListener("abort", externalAbort);
       this.abortController = null;
     }
