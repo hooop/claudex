@@ -9,7 +9,9 @@
 // still "pending" may connect later). Missing evidence is "inconclusive", never
 // "pass": no init message, an SDK error, no permission mode at init, Grep and
 // Glob not both used in case F.
-// A "record" case is described, never judged.
+// A "record" case is described, never judged. A "control" case is its paired
+// case without the isolation: it passes when the breach is observed and is
+// inconclusive otherwise, never fail.
 import { DEBATE_TOOLS } from "../../src/agents/debateOptions.js";
 import { MARKER_NAME, type CaseId, type Gate, type VerificationCase } from "./cases.js";
 
@@ -62,8 +64,33 @@ function describeRecord(o: Observation): string[] {
   return reasons;
 }
 
+// Connectors can carry a null source on some SDK versions: the name then tells.
+function isClaudeAiConnector(server: { name: string; source: string | null }): boolean {
+  return server.source === "claudeai" || (server.source === null && server.name.startsWith("claude.ai "));
+}
+
+function evaluateControl(c: VerificationCase, o: Observation): Verdict {
+  const observed =
+    c.breach === "claudeai-server"
+      ? o.mcpServers.some(isClaudeAiConnector)
+      : c.breach === "evil-server"
+        ? o.mcpServers.some((server) => server.name === "evil")
+        : o.markerWritten;
+  if (observed) return { status: "pass", reasons: [`breach observed without the isolation (${c.breach ?? "unknown"})`] };
+  const reasons = [
+    c.breach === "claudeai-server"
+      ? "no claude.ai connector listed at init: the vector is not proven live"
+      : c.breach === "evil-server"
+        ? "evil server not listed at init: the vector is not proven live"
+        : "marker not written: the vector is not proven live",
+  ];
+  if (o.error !== null) reasons.push(`SDK error: ${o.error}`);
+  return { status: "inconclusive", reasons };
+}
+
 export function evaluate(c: VerificationCase, o: Observation): Verdict {
   if (c.gate === "record") return { status: "recorded", reasons: describeRecord(o) };
+  if (c.gate === "control") return evaluateControl(c, o);
 
   const expects = c.expects();
   let status: Judgement = "pass";
@@ -141,6 +168,18 @@ export function aggregate(verdicts: Verdict[]): Verdict {
   const status = verdicts.map((verdict) => verdict.status).reduce(worst);
   const reasons = [...new Set(verdicts.flatMap((verdict) => verdict.reasons))];
   return { status, reasons };
+}
+
+/** Repeats of a control: one run that observes the breach proves the vector live. */
+export function aggregateControl(verdicts: Verdict[]): Verdict {
+  if (verdicts.length === 0) return { status: "inconclusive", reasons: ["no run"] };
+  const status: Status = verdicts.some((verdict) => verdict.status === "pass") ? "pass" : "inconclusive";
+  return { status, reasons: [...new Set(verdicts.flatMap((verdict) => verdict.reasons))] };
+}
+
+/** Rows that stop the upgrade: an absolute case or a control that ran, not passing. */
+export function blockingRows<R extends { gate: Gate; verdict: Verdict }>(rows: R[]): R[] {
+  return rows.filter((row) => (row.gate === "absolute" || row.gate === "control") && row.verdict.status !== "pass");
 }
 
 function oneLine(text: string): string {

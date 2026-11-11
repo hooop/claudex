@@ -23,11 +23,11 @@ function caseOf(id: CaseId): VerificationCase {
 
 describe("CASES", () => {
   it("lists the cases A to L in order", () => {
-    expect(CASES.map((c) => c.id)).toEqual(["A", "B", "C", "D", "E", "F", "G", "H", "J", "K", "L"]);
+    expect(CASES.map((c) => c.id)).toEqual(["A", "B", "C", "D", "E", "Ec", "F", "G", "H", "Hc", "J", "Jc", "K", "L"]);
   });
 
   it("gives cases E to L the exact options Claudex ships for a debate turn", () => {
-    const debateCases = CASES.filter((c) => c.id >= "E");
+    const debateCases = CASES.filter((c) => c.id >= "E" && c.gate !== "control");
     expect(debateCases.map((c) => c.id)).toEqual(["E", "F", "G", "H", "J", "K", "L"]);
     for (const c of debateCases) {
       expect(c.options, `case ${c.id}`).toEqual(debateQueryOptions());
@@ -50,13 +50,33 @@ describe("CASES", () => {
       "C:record:none",
       "D:record:none",
       "E:absolute:deny-all",
+      "Ec:control:deny-all",
       "F:absolute:allow-debate-tools",
       "G:absolute:allow-debate-tools",
       "H:absolute:allow-debate-tools",
+      "Hc:control:allow-debate-tools",
       "J:absolute:allow-debate-tools",
+      "Jc:control:allow-debate-tools",
       "K:absolute:allow-debate-tools",
       "L:record:allow-debate-tools",
     ]);
+  });
+
+  it("makes each control its case without the isolation", () => {
+    const { strictMcpConfig, settings, ...withoutIsolation } = debateQueryOptions();
+    void strictMcpConfig;
+    void settings;
+    const breaches = { Ec: "claudeai-server", Hc: "evil-server", Jc: "marker" } as const;
+    for (const [control, paired] of [["Ec", "E"], ["Hc", "H"], ["Jc", "J"]] as const) {
+      const c = caseOf(control);
+      const p = caseOf(paired);
+      expect(c.gate, control).toBe("control");
+      expect(c.policy, control).toBe(p.policy);
+      expect(c.prompt(ctx), control).toBe(p.prompt(ctx));
+      expect(c.projectFiles(ctx), control).toEqual(p.projectFiles(ctx));
+      expect(c.options, control).toEqual(withoutIsolation);
+      expect(c.breach, control).toBe(breaches[control]);
+    }
   });
 
   it("states what each judged case expects", () => {

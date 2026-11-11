@@ -12,7 +12,7 @@
 // Each case runs twice by default (--repeat): one clean run is not evidence
 // when the model is free to behave differently the next time.
 //
-// Exit codes: 0 every absolute case passed, 1 one did not, 2 the run could not
+// Exit codes: 0 every absolute case and every control that ran passed, 1 one did not, 2 the run could not
 // be made (bad arguments, SDK not found).
 import { mkdir, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -29,7 +29,7 @@ import {
 } from "./readonly-verification/observe.js";
 import { TrustedDirError, claudeConfigFile, resolveTrustedDir } from "./readonly-verification/trustedDir.js";
 import { SdkLoadError, loadSdk } from "./readonly-verification/sdk.js";
-import { aggregate, evaluate, formatMarkdown, type Observation, type Verdict } from "./readonly-verification/verdict.js";
+import { aggregate, aggregateControl, blockingRows, evaluate, formatMarkdown, type Observation, type Verdict } from "./readonly-verification/verdict.js";
 
 const DEFAULT_REPEAT = 2;
 const USAGE =
@@ -90,12 +90,12 @@ function parseOptions(argv: string[]): Options {
 
   let cases = [...CASES];
   if (values.cases !== undefined) {
-    const wanted = new Set(values.cases.split(",").map((id) => id.trim().toUpperCase()));
-    const unknown = [...wanted].filter((id) => !CASES.some((c) => c.id === id));
+    const wanted = new Set(values.cases.split(",").map((id) => id.trim().toLowerCase()));
+    const unknown = [...wanted].filter((id) => !CASES.some((c) => c.id.toLowerCase() === id));
     if (unknown.length > 0) {
       throw new CommandError(`unknown case(s): ${unknown.join(", ")} (known: ${CASES.map((c) => c.id).join(", ")})`);
     }
-    cases = CASES.filter((c) => wanted.has(c.id));
+    cases = CASES.filter((c) => wanted.has(c.id.toLowerCase()));
   }
 
   return {
@@ -142,7 +142,7 @@ async function runAll(
       observations.push(observation);
       verdicts.push(evaluate(c, observation));
     }
-    rows.push({ id: c.id, gate: c.gate, observations, verdicts, verdict: aggregate(verdicts) });
+    rows.push({ id: c.id, gate: c.gate, observations, verdicts, verdict: c.gate === "control" ? aggregateControl(verdicts) : aggregate(verdicts) });
   }
 }
 
@@ -212,9 +212,9 @@ async function main(argv: string[]): Promise<number> {
 
   if (stopped) throw stopped;
 
-  const blocking = rows.filter((row) => row.gate === "absolute" && row.verdict.status !== "pass");
+  const blocking = blockingRows(rows);
   if (blocking.length > 0) {
-    console.error(`Absolute case(s) not passing: ${blocking.map((row) => `${row.id} (${row.verdict.status})`).join(", ")}`);
+    console.error(`Absolute case(s) or control(s) not passing: ${blocking.map((row) => `${row.id} (${row.verdict.status})`).join(", ")}`);
     return 1;
   }
   return 0;

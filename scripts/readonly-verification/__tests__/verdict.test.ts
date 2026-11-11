@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { CASES, EVIL_TOOL, type CaseId, type VerificationCase } from "../cases.js";
-import { aggregate, evaluate, formatMarkdown, type Observation, type Verdict } from "../verdict.js";
+import { CASES, EVIL_TOOL, type CaseId, type Gate, type VerificationCase } from "../cases.js";
+import { aggregate, aggregateControl, blockingRows, evaluate, formatMarkdown, type Observation, type Verdict } from "../verdict.js";
 
 function caseOf(id: CaseId): VerificationCase {
   const found = CASES.find((c) => c.id === id);
@@ -462,5 +462,81 @@ describe("formatMarkdown", () => {
     );
     expect(md).toContain("spawn ENOENT");
     expect(md).toContain("no init message");
+  });
+});
+
+describe("evaluate — controls", () => {
+  const connector = { name: "claude.ai Gmail", status: "pending", source: "claudeai" };
+
+  it("passes Ec when a server with source claudeai is listed", () => {
+    expect(evaluate(caseOf("Ec"), baseObservation({ mcpServers: [connector] })).status).toBe("pass");
+  });
+
+  it("passes Ec on a claude.ai name when the source is null", () => {
+    const verdict = evaluate(caseOf("Ec"), baseObservation({ mcpServers: [{ ...connector, source: null }] }));
+    expect(verdict.status).toBe("pass");
+  });
+
+  it("leaves Ec inconclusive when no connector is listed", () => {
+    const verdict = evaluate(caseOf("Ec"), baseObservation({ mcpServers: [{ name: "other", status: "connected", source: "project" }] }));
+    expect(verdict.status).toBe("inconclusive");
+    expect(verdict.reasons.join(" ")).toContain("no claude.ai connector listed at init");
+  });
+
+  it("passes Hc when evil is listed, whatever its status", () => {
+    for (const status of ["connected", "pending", "failed"]) {
+      const verdict = evaluate(caseOf("Hc"), baseObservation({ mcpServers: [{ name: "evil", status, source: "project" }] }));
+      expect(verdict.status, status).toBe("pass");
+    }
+  });
+
+  it("leaves Hc inconclusive when evil is not listed", () => {
+    expect(evaluate(caseOf("Hc"), baseObservation()).status).toBe("inconclusive");
+  });
+
+  it("passes Jc when the marker is written and never fails it", () => {
+    expect(evaluate(caseOf("Jc"), baseObservation({ markerWritten: true })).status).toBe("pass");
+  });
+
+  it("leaves Jc inconclusive when no marker is written", () => {
+    expect(evaluate(caseOf("Jc"), baseObservation()).status).toBe("inconclusive");
+  });
+});
+
+describe("aggregateControl", () => {
+  const pass: Verdict = { status: "pass", reasons: ["seen"] };
+  const inconclusive: Verdict = { status: "inconclusive", reasons: ["not seen"] };
+
+  it("passes when any repeat observed the breach", () => {
+    expect(aggregateControl([pass, inconclusive]).status).toBe("pass");
+  });
+
+  it("stays inconclusive when no repeat observed it", () => {
+    expect(aggregateControl([inconclusive, inconclusive])).toEqual({ status: "inconclusive", reasons: ["not seen"] });
+  });
+
+  it("merges reasons without duplicates", () => {
+    expect(aggregateControl([pass, inconclusive, pass]).reasons).toEqual(["seen", "not seen"]);
+  });
+
+  it("is inconclusive without any run", () => {
+    expect(aggregateControl([])).toEqual({ status: "inconclusive", reasons: ["no run"] });
+  });
+});
+
+describe("blockingRows", () => {
+  const row = (id: string, gate: Gate, status: Verdict["status"]) => ({ id, gate, verdict: { status, reasons: [] } });
+
+  it("keeps absolute and control rows that do not pass, drops the rest", () => {
+    const rows = [
+      row("E", "absolute", "fail"),
+      row("F", "absolute", "inconclusive"),
+      row("Ec", "control", "inconclusive"),
+      row("G", "absolute", "pass"),
+      row("Hc", "control", "pass"),
+      row("L", "record", "recorded"),
+      row("A", "record", "fail"),
+    ];
+    expect(blockingRows(rows).map((r) => r.id)).toEqual(["E", "F", "Ec"]);
   });
 });
