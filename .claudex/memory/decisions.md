@@ -2,6 +2,38 @@
 
 Journal des décisions validées à l'issue d'un débat Claude ↔ Codex.
 
+## 2026-11-11 — Le débat de Claude n'exécute ni hook, ni serveur MCP, ni connecteur
+
+**Nature :** arbitrage délégué par le mainteneur (design approuvé le 2026-10-28, « décisions les plus
+professionnelles »). Mesures dans `limits.md` (2026-11-11).
+
+**Décisions :**
+- **D1 : quatre réglages, sur les seuls tours de débat** (`DEBATE_ISOLATION` dans
+  `src/agents/debateOptions.ts`) : `strictMcpConfig: true` sans `mcpServers` (aucun serveur MCP, quelle
+  que soit sa source), et `settings: { disableAllHooks, disableClaudeAiConnectors,
+  disableSkillShellExecution }` tous à `true`. Ces réglages passent par la couche « flag » du SDK, la
+  plus prioritaire des couches modifiables par l'utilisateur : elle l'emporte sur les réglages du dépôt
+  analysé, y compris un `disableAllHooks: false` posé par un dépôt hostile (mesuré, cas J).
+- **D4 : la phase d'implémentation garde hooks, serveurs MCP et connecteurs.** `/implement` est le
+  moment où l'humain confie le dépôt aux agents avec leurs outils habituels (formateurs, contrôles
+  qualité, serveurs MCP). Cette phase écrit déjà par conception ; les retirer casserait ce que les
+  utilisateurs attendent pour peu de gain. Le README dit que les hooks et serveurs stdio du dépôt y
+  tournent comme dans Claude Code, mais sans son dialogue de confiance.
+- **Cas L (`apiKeyHelper` du dépôt) hors de cette branche** (arbitrage humain direct) : aucun réglage
+  documenté ne le coupe ; il aura sa propre branche, et le README le signale comme trou connu.
+
+**Alternatives écartées :**
+- `managedSettings` (couche « policy ») : ignorée par défaut sur une machine qui a déjà une couche
+  gérée par un administrateur, et son `disableAllHooks` y devient `allowManagedHooksOnly`. La couche
+  « flag » s'applique sur toutes les machines.
+- Mesurer le chemin d'approbation des connecteurs (ancien cas I) : impossible à conclure ; les retirer
+  du débat est plus simple et vérifiable.
+- `settingSources: []` pendant le débat : couperait aussi le CLAUDE.md du projet, gardé exprès
+  (décision du 2026-10-26).
+
+**Fichiers concernés :** `src/agents/debateOptions.ts`, `src/agents/claudeAgent.ts`,
+`scripts/readonly-verification/`, `scripts/verify-claude-readonly.ts`, `README.md`, `AGENTS.md`.
+
 ## 2026-10-27 — Claudex garde le moteur Claude Code fourni par le SDK, à version exacte
 
 **Nature :** arbitrage délégué par le mainteneur, pendant la montée du SDK Claude Agent de 0.1.77 à
