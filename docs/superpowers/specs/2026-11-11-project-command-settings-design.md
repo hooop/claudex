@@ -92,7 +92,17 @@ like the rest of the UI for now. It shows:
   truncated (wrapped if long). Control characters in values are shown escaped, so a value cannot
   rewrite the terminal;
 - two choices: continue with these settings, or quit. **Quit is the default** (Enter, Escape and
-  Ctrl+C quit); continuing needs a distinct key (`o` for "oui"), so a reflex Enter cannot consent.
+  Ctrl+C quit); continuing needs a distinct key (`y`), so a reflex Enter cannot consent.
+
+Changes made during implementation (Claude's calls; the last two came from the code review):
+- The key is `y`, not `o` as this design first said, for consistency with the permission prompt.
+- A file Claudex cannot read or parse can no longer be consented to: only quit is offered, because
+  Claude Code may parse what Claudex cannot (JSON with comments, a BOM), and approving it would
+  approve content nobody saw. D1's "cannot be checked" finding still exists; it now blocks.
+- The list and the prompt are split: the consent runs in `src/cli.tsx`, not in Root. The full list is
+  printed as plain text to the normal screen, where the terminal's scrollback keeps it whatever its
+  length, then a small Ink prompt (not in the alternate screen) asks for the key. A long list inside
+  an Ink screen was lost when it overflowed the terminal.
 
 Continue records an in-memory approval: the exact findings (canonical JSON of the list). Quit exits
 Claudex with code 0 and a one-line message saying why nothing started.
@@ -185,8 +195,8 @@ The manual smoke test of the PR covers the screen once with a real helper.
   or scalar at top level; unreadable file (permission denied, a directory in place of the file);
   every file of the measured list; canonical comparison is order-independent for object keys.
 - Consent screen (Root, Ink render as in `root.test.tsx`): findings shown with exact values,
-  control characters escaped; Enter, Escape and Ctrl+C quit and no agent is ever called; `o`
-  continues to the welcome screen; no findings means no screen.
+  control characters escaped; Enter, Escape and Ctrl+C quit and no agent is ever called; `y`
+  (changed from `o` during implementation, see D2) continues to the welcome screen; no findings means no screen.
 - `ClaudeAgent` (mocked `query`, as in the existing adapter tests): guard called before every
   `query()`, debate and implementation; a rejecting guard means `query()` never called and the turn
   fails with the message; an accepting guard leaves behaviour unchanged.

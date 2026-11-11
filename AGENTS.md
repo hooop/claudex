@@ -68,8 +68,19 @@ anyone changing Claudex itself, human or agent. User documentation is in README.
   `npm run verify:readonly` on the old and the new version. The SDK is pinned to an
   exact version for that reason. Debate turns also carry `DEBATE_ISOLATION`
   (same module): no hook, no MCP server, no claude.ai connector (measured,
-  limits.md, 2026-11-11). The analysed project's `apiKeyHelper` still runs
-  during a debate: a known gap with its own branch to come.
+  limits.md, 2026-11-11).
+- The analysed project's command settings (the credential helpers in
+  `COMMAND_SETTING_KEYS` and any `env` entry of `<cwd>/.claude/settings.json`,
+  `src/agents/projectSettings.ts`) need the human's consent at launch, before
+  Claudex writes anything or starts either agent; a file Claudex cannot read
+  allows only quitting. Consent is never stored. Before every Claude query the
+  guard re-reads the file and refuses the turn if it changed. Not closed: a value
+  an agent writes inside a running `/implement` turn (limits.md, 2026-11-11).
+- At every SDK upgrade: run `npm run verify:readonly` cases E to M (including
+  Lp and Ll) and their controls, in fresh and trusted folders, on the old and the
+  new version; re-read `COMMAND_SETTING_KEYS` against the `Settings` interface in
+  the SDK's `sdk.d.ts`; if Lp or Ll now run their helper, `PROJECT_SETTINGS_FILES`
+  is wrong and the upgrade stops.
 - The debate rules (`CONSENSUS_INSTRUCTIONS`) never name an agent outside the
   self/other roles; a test checks the symmetry.
 - There is no unsupervised mode: `src/cli.tsx` refuses to start without a TTY.
