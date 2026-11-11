@@ -40,6 +40,10 @@ export interface Observation {
    */
   extraMarkersWritten?: string[];
   secretSeen?: boolean;
+  /** Sandbox cases: some Bash command contained the case's probe target (never the command itself). */
+  bashProbed?: boolean;
+  /** Sandbox cases: some Bash call carried dangerouslyDisableSandbox: true. */
+  disableSandboxSent?: boolean;
   resultSubtype: string | null;
   error: string | null;
   /** Keys of the trusted folder's project entry the run changed; null outside the trusted variant. */
@@ -189,6 +193,11 @@ export function evaluate(c: VerificationCase, o: Observation): Verdict {
       flag("inconclusive", "Bash is not offered at init: the sandbox was not exercised");
     } else if (!o.toolUses.some((use) => use.name === "Bash")) {
       flag("inconclusive", "Bash offered but not used: the sandbox was not exercised");
+    } else if (o.bashProbed !== true) {
+      flag("inconclusive", "Bash ran, but never the probed command: the sandbox was not exercised");
+    }
+    if (expects.disableSandboxSent && o.disableSandboxSent !== true) {
+      flag("inconclusive", "dangerouslyDisableSandbox: true was never sent: the escape hatch was not tried");
     }
   }
 
@@ -254,6 +263,8 @@ function describeRun(o: Observation): string[] {
     `- marker written: ${o.markerWritten ? "yes" : "no"}`,
     ...(o.extraMarkersWritten === undefined ? [] : [`- extra markers written: ${listOrNone(o.extraMarkersWritten)}`]),
     ...(o.secretSeen === undefined ? [] : [`- secret seen: ${o.secretSeen ? "yes" : "no"}`]),
+    ...(o.bashProbed === undefined ? [] : [`- probe command run: ${o.bashProbed ? "yes" : "no"}`]),
+    ...(o.disableSandboxSent === undefined ? [] : [`- dangerouslyDisableSandbox sent: ${o.disableSandboxSent ? "yes" : "no"}`]),
     `- result: ${o.resultSubtype ?? "none"}`,
     `- error: ${o.error === null ? "none" : oneLine(o.error)}`,
     ...trustChanges,

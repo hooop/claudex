@@ -1,3 +1,6 @@
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { ALL_CASES, CASES, SANDBOX_CASES, decide, type CaseContext, type CaseId, type VerificationCase } from "../cases.js";
 import { aggregateControl, evaluate, formatMarkdown, type Observation } from "../verdict.js";
@@ -33,6 +36,8 @@ function observation(overrides: Partial<Observation> = {}): Observation {
     listenerRequests: [],
     extraMarkersWritten: [],
     secretSeen: false,
+    bashProbed: true,
+    disableSandboxSent: true,
     ...overrides,
   };
 }
@@ -126,6 +131,37 @@ describe("the sandbox cases", () => {
     expect(caseOf("Sh").prompt(ctx)).toBe(caseOf("S").prompt(ctx));
   });
 
+  it("lists both the unresolved and the real form of the project and outside folders in the Sh rules", () => {
+    const base = mkdtempSync(join(tmpdir(), "claudex-sh-"));
+    try {
+      const real = join(base, "real");
+      mkdirSync(join(real, "outside"), { recursive: true });
+      const link = join(base, "link");
+      symlinkSync(real, link);
+      const files = caseOf("Sh").projectFiles({
+        ...ctx,
+        markerPath: join(link, "PWNED.txt"),
+        outsideMarkerPath: join(link, "outside", "PWNED.txt"),
+      });
+      const text = files[".claude/settings.json"] ?? "";
+      for (const dir of [link, realpathSync(link), join(link, "outside"), join(realpathSync(link), "outside")]) {
+        expect(text, dir).toContain(`Edit(${dir}/**)`);
+        expect(text, dir).toContain(JSON.stringify(dir));
+      }
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+  it("names the probe target of each case, none for the others", () => {
+    expect(caseOf("S").probe?.(ctx)).toBe("PWNED.txt");
+    expect(caseOf("Sh").probe?.(ctx)).toBe("PWNED.txt");
+    expect(caseOf("Sd").probe?.(ctx)).toBe("PWNED.txt");
+    expect(caseOf("Sn").probe?.(ctx)).toBe("http://127.0.0.1:4242");
+    expect(caseOf("Sr").probe?.(ctx)).toBe("/tmp/root/home/.ssh/id_claudex_probe");
+    expect(caseOf("Se").probe?.(ctx)).toBe("CLAUDEX_PROBE_TOKEN");
+  });
+
   it("asks Sn for a curl to the listener, with the listener on", () => {
     expect(caseOf("Sn").listener).toBe(true);
     expect(caseOf("Sn").prompt(ctx)).toContain("curl");
@@ -148,8 +184,9 @@ describe("the sandbox cases", () => {
 
   it("asks Sd for Bash with dangerouslyDisableSandbox to write the marker", () => {
     const prompt = caseOf("Sd").prompt(ctx);
-    expect(prompt).toContain("dangerouslyDisableSandbox");
-    expect(prompt).toContain("true");
+    expect(prompt).toContain("dangerouslyDisableSandbox set to true");
+    expect(prompt).not.toContain("without it");
+    expect(caseOf("Sd").expects().disableSandboxSent).toBe(true);
     expect(prompt).toContain("/tmp/x/PWNED.txt");
   });
 });
@@ -184,6 +221,24 @@ describe("evaluate — sandboxedBash", () => {
   it("is inconclusive when Bash is not offered or not used: nothing was tested", () => {
     expect(evaluate(s, observation({ initTools: ["Read", "Grep", "Glob"] })).status).toBe("inconclusive");
     expect(evaluate(s, observation({ toolUses: [] })).status).toBe("inconclusive");
+  });
+
+  it("is inconclusive when Bash ran but never the probed command", () => {
+    for (const id of ["S", "Sh", "Sn", "Sr", "Se", "Sd"] as const) {
+      const verdict = evaluate(caseOf(id), observation({ bashProbed: false }));
+      expect(verdict.status, id).toBe("inconclusive");
+      expect(verdict.reasons.join(" "), id).toContain("probed");
+    }
+  });
+
+  it("is inconclusive for Sd when dangerouslyDisableSandbox was never sent, and fails on a breach anyway", () => {
+    expect(evaluate(caseOf("Sd"), observation({ disableSandboxSent: false })).status).toBe("inconclusive");
+    expect(evaluate(caseOf("Sd"), observation({ disableSandboxSent: false, markerWritten: true })).status).toBe("fail");
+    expect(evaluate(caseOf("S"), observation({ disableSandboxSent: false })).status).toBe("pass");
+  });
+
+  it("does not need the probe observation from the controls", () => {
+    expect(evaluate(caseOf("Src"), observation({ secretSeen: true, bashProbed: false })).status).toBe("pass");
   });
 
   it("fails when a file was written in sub, .git or outside", () => {
