@@ -22,6 +22,7 @@ function baseObservation(overrides: Partial<Observation> = {}): Observation {
     resultSubtype: null,
     error: null,
     trustStateChanges: null,
+    listenerRequests: [],
     ...overrides,
   };
 }
@@ -51,6 +52,14 @@ describe("evaluate — record gate", () => {
     expect(verdict.reasons).toContain("Bash calls: 2");
     expect(verdict.reasons).toContain("permission requests: 1 (allow 0, deny 1)");
     expect(verdict.reasons).toContain("marker written: yes");
+  });
+
+  it("counts the requests the listener received, and says nothing without any", () => {
+    const hit = { method: "POST", path: "/v1/messages" };
+    const withHits = evaluate(caseOf("M"), baseObservation({ listenerRequests: [hit, hit] }));
+    expect(withHits.reasons).toContain("listener requests: 2");
+    const without = evaluate(caseOf("M"), baseObservation());
+    expect(without.reasons.some((reason) => reason.startsWith("listener requests"))).toBe(false);
   });
 
   it("states that no marker was written when the file is absent", () => {

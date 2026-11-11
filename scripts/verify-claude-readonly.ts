@@ -1,7 +1,9 @@
 // Measures whether Claude stays read-only under a given version of the Claude
 // Agent SDK. It makes REAL queries: it uses the maintainer's Claude account and
 // quota. Protocol and threat model: docs/superpowers/specs/2026-10-26-sdk-upgrade-design.md;
-// cases and verdict after the debate isolation: docs/superpowers/specs/2026-10-28-debate-isolation-design.md.
+// cases and verdict after the debate isolation: docs/superpowers/specs/2026-10-28-debate-isolation-design.md;
+// cases Lp, Ll and M (where the engine reads project credential helpers and env):
+// docs/superpowers/specs/2026-11-11-project-command-settings-design.md, section D4.
 //
 //   npm run verify:readonly -- --model <id> [--sdk-dir <dir>] [--cases E,F,G]
 //     [--repeat <n>] [--out <file.json>] [--trusted-dir <dir>]

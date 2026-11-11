@@ -5,6 +5,7 @@ const queryMock = vi.hoisted(() => vi.fn());
 vi.mock("@anthropic-ai/claude-agent-sdk", () => ({ query: queryMock }));
 
 import { ClaudeAgent } from "../claudeAgent.js";
+import { SETTINGS_CHANGED_MESSAGE } from "../projectSettings.js";
 
 async function* messages(items: unknown[]) {
   for (const item of items) yield item;
@@ -271,5 +272,55 @@ describe("ClaudeAgent — réglages par phase", () => {
     expect(onActivity).toHaveBeenCalledWith(
       expect.objectContaining({ kind: "tool", label: "lit /tmp/a", status: "running" }),
     );
+  });
+});
+
+describe("ClaudeAgent settings guard", () => {
+  beforeEach(() => queryMock.mockReset());
+
+  it.each([false, true])("refuses the turn without calling query (writeAccess %s)", async (writeAccess) => {
+    const guard = vi.fn(async () => SETTINGS_CHANGED_MESSAGE);
+    const agent = new ClaudeAgent(undefined, undefined, guard);
+    const result = await agent.send("Sujet", { cwd: "/projet", writeAccess });
+    expect(result).toEqual({ kind: "error", message: SETTINGS_CHANGED_MESSAGE });
+    expect(guard).toHaveBeenCalledWith("/projet");
+    expect(queryMock).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when the guard itself rejects", async () => {
+    const agent = new ClaudeAgent(undefined, undefined, async () => {
+      throw new Error("boom");
+    });
+    const result = await agent.send("Sujet", { cwd: "/projet", writeAccess: false });
+    expect(result).toEqual({ kind: "error", message: SETTINGS_CHANGED_MESSAGE });
+    expect(queryMock).not.toHaveBeenCalled();
+  });
+
+  it("returns cancelled before consulting the guard when already aborted", async () => {
+    const guard = vi.fn(async () => SETTINGS_CHANGED_MESSAGE);
+    const controller = new AbortController();
+    controller.abort();
+    const agent = new ClaudeAgent(undefined, undefined, guard);
+    const result = await agent.send("Sujet", { cwd: "/projet", writeAccess: false, signal: controller.signal });
+    expect(result).toEqual({ kind: "cancelled" });
+    expect(guard).not.toHaveBeenCalled();
+  });
+
+  it("sends the turn when the guard returns null, with the same options as without a guard", async () => {
+    queryMock.mockReturnValue(messages([successResult()]) as never);
+    await new ClaudeAgent().send("Sujet", { cwd: "/projet", writeAccess: false });
+    const unguarded = queryMock.mock.calls[0]?.[0];
+
+    queryMock.mockReset();
+    queryMock.mockReturnValue(messages([successResult()]) as never);
+    const guard = vi.fn(async () => null);
+    const result = await new ClaudeAgent(undefined, undefined, guard).send("Sujet", {
+      cwd: "/projet",
+      writeAccess: false,
+    });
+    expect(result).toMatchObject({ kind: "success" });
+    expect(guard).toHaveBeenCalledWith("/projet");
+    expect(queryMock).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(queryMock.mock.calls[0]?.[0])).toBe(JSON.stringify(unguarded));
   });
 });

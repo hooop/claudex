@@ -2,6 +2,77 @@
 
 Contraintes, boundaries et choses explicitement écartées.
 
+## 2026-11-11 — Les réglages porteurs de commande du dépôt passent par le consentement de l'humain (mesuré)
+
+**Constat :** mesuré avec `npm run verify:readonly -- --model claude-sonnet-5-5 --cases L,Lp,Ll,M
+--out <fichier>` (plus `--trusted-dir ~/claudex-trusted-probe` pour le dossier approuvé), SDK 0.3.310
+(Claude Code 2.1.310), options de débat (`settingSources: ["project"]`), chaque cas deux fois, sur la
+machine et le compte du mainteneur (macOS), depuis le shell sandboxé d'une session Claude Code, dans
+les deux sortes de dossier de l'entrée suivante (« neuf » et « approuvé » ; `/` est approuvé sur cette
+machine, donc **un dossier jamais approuvé n'a pas été mesuré**). Les rapports complets n'ont pas
+été versionnés ; le tableau en reprend les résultats.
+
+| Cas | Montage | Neuf | Approuvé |
+| --- | --- | --- | --- |
+| L | `apiKeyHelper` dans `<cwd>/.claude/settings.json` | témoin **écrit**, `apiKeySource: apiKeyHelper`, le tour échoue (« apiKeyHelper script is failing ») | idem |
+| Lp | même helper dans le `.claude/settings.json` de la racine git, `cwd` = sous-dossier | témoin non écrit, `apiKeySource: none` | idem |
+| Ll | même helper dans `<cwd>/.claude/settings.local.json` | témoin non écrit | idem |
+| M | `env.ANTHROPIC_BASE_URL` = écouteur local dans `<cwd>/.claude/settings.json` | l'écouteur a reçu des `POST /v1/messages` (environ 21 par exécution), le tour échoue en 503 | écouteur touché (environ 20), une exécution hors délai (180 s) |
+
+**Ce que M veut dire :** avant cette branche, un dépôt pouvait, par ses seuls réglages et pendant un
+débat, détourner le trafic API de Claude Code vers un serveur de son choix : la conversation, donc le
+code que Claude a lu. La requête porte très probablement l'identifiant de l'utilisateur ; **non
+vérifié** (l'écouteur ne lit jamais les en-têtes). Signalé au mainteneur, qui a dit de continuer.
+Depuis cette branche, l'écran de consentement montre cette entrée `env` avant tout démarrage.
+
+**Ce qui est fermé** (voir `decisions.md` 2026-11-11, réglages porteurs de commande) : au lancement,
+Claudex lit lui-même `<cwd>/.claude/settings.json` (`PROJECT_SETTINGS_FILES`, le seul fichier que les
+mesures montrent lu), sans rien exécuter, et demande le consentement de l'humain si le fichier déclare
+l'un des six helpers (`COMMAND_SETTING_KEYS`), une déclaration de marketplace de plugins
+(`extraKnownMarketplaces` ou son alias `additionalMarketplaces`, montrée entière, ajoutée après la
+revue finale ; non mesuré : que le moteur en récupère ou exécute quoi que ce soit) ou une entrée `env`, ou s'il est illisible (alors seul
+« quitter » est offert). Rien n'est écrit, ni Codex ni Claude ne démarre avant la réponse. Avant chaque
+requête Claude, débat comme `/implement`, la garde relit le fichier et refuse le tour s'il diffère de
+l'approbation. Vérifié par les tests unitaires et d'interface, et à la main dans un pty : refus, pas de
+helper exécuté, pas de `.claudex/` ; acceptation, helper non exécuté avant un tour de Claude ; liste de
+122 entrées entière dans l'historique du terminal ; fichier JSON avec commentaire, seul `[n]` offert.
+
+**Trou restant, non fermé et non mesuré : pendant un tour `/implement`.** Claude Code peut recharger
+ses réglages pendant une session en cours (il a un événement de hook `ConfigChange`, et relance
+`apiKeyHelper` selon une durée de validité). Un helper ou une entrée `env` qu'un agent écrit pendant un
+tour `/implement` peut donc s'appliquer avant que la garde ne relise le fichier au tour suivant. Rien
+ne garantit que l'humain voie cette écriture avant qu'elle ait lieu. L'invite de permission de Claude
+(`canUseTool`) ne montre une écriture que si aucune règle d'autorisation ne l'a déjà approuvée : les
+règles `allow`, celles de l'utilisateur ou le `permissions.allow` du dépôt analysé lui-même (que
+l'écran de consentement ne montre pas), sont résolues avant `canUseTool`, et on n'a pas mesuré si
+Claude Code protège ses propres fichiers de réglages contre elles. Une écriture faite par Bash ne
+montre que la commande, pas les fichiers qu'elle modifie. Avec `/implement codex`, Codex écrit avec
+`approvalPolicy: "never"` (`src/agents/codexAgent.ts`) : aucune invite. Dans tous ces cas, la garde
+ne voit le changement qu'avant le tour Claude suivant. Ce n'est pas un détail : c'est exactement le
+vecteur que cette branche ferme au lancement.
+
+**Fenêtre connue :** entre la lecture de la garde et celle du moteur au début de la requête. Pendant un
+débat, rien ne peut écrire le fichier ; après `/implement`, la fenêtre est le temps entre deux étapes.
+
+**Autres limites :** la configuration de projet de Codex n'est pas mesurée ; ni un dossier jamais
+approuvé, ni Linux, ni Windows ; les cinq helpers autres que `apiKeyHelper` (`awsAuthRefresh`, `awsCredentialExport`,
+`gcpAuthRefresh`, `otelHeadersHelper`, `proxyAuthHelper`) ne sont pas mesurés mais signalés quand
+même ; Lp et Ll ne sont mesurés qu'avec les options de débat (`/implement` charge
+`["project", "user"]`, mêmes fichiers de projet : affirmé, pas mesuré). Dans un terminal sans collage
+encadré (bracketed paste), un `y` seul collé après 250 ms vaut consentement. Un terminal très bas, ou
+rétréci pendant l'invite, peut faire effacer par Ink une partie de la liste imprimée.
+L'interface `Settings` de 0.3.310 a d'autres clés porteuses de commande que l'écran de consentement ne
+montre pas : `statusLine.command`, `subagentStatusLine.command`, `fileSuggestion.command`. Ce sont des
+fonctions de l'interface interactive ; `statusLine` est en plus couvert par `disableAllHooks` pendant
+le débat. Non mesuré : ni si le SDK les exécute, ni dans quelle phase. Les règles `permissions.allow`
+du dépôt analysé ne sont pas montrées non plus, alors qu'elles peuvent approuver un outil sans invite
+après `/implement` (voir le trou restant ci-dessus).
+
+**Comment appliquer :** à chaque montée du SDK, relancer les cas E à M (dont Lp, Ll) et les contrôles
+dans les deux sortes de dossier ; relire `COMMAND_SETTING_KEYS` contre l'interface `Settings` de
+`sdk.d.ts` ; si Lp ou Ll écrivent leur témoin, `PROJECT_SETTINGS_FILES` est faux et la montée
+s'arrête. Le README ne doit pas dire plus que ce tableau.
+
 ## 2026-11-11 — Le débat de Claude est isolé des hooks, des serveurs MCP et des connecteurs (mesuré)
 
 **Constat :** mesuré avec `npm run verify:readonly -- --model claude-sonnet-5-5 --cases ... --out
@@ -48,20 +119,24 @@ changé pendant les exécutions. Test manuel complémentaire (script hors dépô
 un tour de débat lit et répond, un tour d'implémentation écrit un fichier après une demande de
 permission `Write` et suit le CLAUDE.md global de l'utilisateur.
 
-**Trou restant, non corrigé (cas L) :** un `apiKeyHelper` déclaré dans le `.claude/settings.json` du
+**Trou restant à la date de cette entrée (cas L) :** un `apiKeyHelper` déclaré dans le `.claude/settings.json` du
 dépôt est une commande que le moteur exécute au démarrage, sans invite, isolation ou non. Aucun
 réglage documenté du SDK ne le coupe. Décision du mainteneur (2026-11-11) : branche à part. Les
 autres réglages porteurs de commande (`awsAuthRefresh`, `awsCredentialExport`, `gcpAuthRefresh`,
 `otelHeadersHelper`, `proxyAuthHelper`) n'agissent qu'avec Bedrock, Vertex, la télémétrie ou un
 proxy configurés : non mesurés.
 
+Mise à jour : ce trou a depuis été traité par le consentement au lancement. Ce qui reste ouvert est
+décrit dans l'entrée « Les réglages porteurs de commande du dépôt passent par le consentement de
+l'humain » ci-dessus.
+
 **Non mesuré :** un dossier jamais approuvé (voir plus haut) ; `disableSkillShellExecution` (aucun cas
 ne l'atteint sans une invite commençant par `/`) ; Linux et Windows ; les hooks des réglages gérés par
 un administrateur ; la configuration propre de Codex (`~/.codex/config.toml`) pendant un débat.
 
 **Comment appliquer :** J et H sont fermés pour le débat, sur cette machine et dans ces deux sortes de
-dossier. À chaque montée du SDK, relancer les cas E à L et les contrôles dans les deux sortes de
-dossier ; un contrôle qui ne passe plus rend son cas muet et arrête la montée. Le README ne doit pas
+dossier. À chaque montée du SDK, relancer les cas E à M (dont Lp, Ll) et les contrôles dans les
+deux sortes de dossier (voir aussi l'entrée ci-dessus sur le consentement) ; un contrôle qui ne passe plus rend son cas muet et arrête la montée. Le README ne doit pas
 dire plus que ce tableau.
 
 ## 2026-10-28 — Le sandbox du SDK 0.3.310 peut rendre `cwd` non-inscriptible (mesure ponctuelle)

@@ -1,0 +1,414 @@
+import { execFileSync } from "node:child_process";
+import { chmod, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("@anthropic-ai/claude-agent-sdk", () => {
+  throw new Error("projectSettings must not load the SDK");
+});
+import {
+  COMMAND_SETTING_KEYS,
+  PROJECT_SETTINGS_FILES,
+  SETTINGS_CHANGED_MESSAGE,
+  type SettingsFinding,
+  createSettingsGuard,
+  formatSettingValue,
+  inspectProjectSettings,
+  sameFindings,
+} from "../projectSettings.js";
+
+const FILE = ".claude/settings.json";
+let dir: string;
+
+beforeEach(async () => {
+  dir = await mkdtemp(join(tmpdir(), "claudex-settings-"));
+});
+afterEach(async () => {
+  await rm(dir, { recursive: true, force: true });
+});
+
+async function writeSettings(content: string): Promise<void> {
+  await mkdir(join(dir, ".claude"), { recursive: true });
+  await writeFile(join(dir, FILE), content);
+}
+
+function unreadable(findings: SettingsFinding[], expectedReason?: string): void {
+  expect(findings).toHaveLength(1);
+  const finding = findings[0];
+  expect(finding?.file).toBe(FILE);
+  expect(finding?.kind).toBe("unreadable");
+  if (finding?.kind === "unreadable") {
+    expect(finding.reason.length).toBeGreaterThan(0);
+    if (expectedReason !== undefined) expect(finding.reason).toBe(expectedReason);
+  }
+}
+
+describe("inspectProjectSettings", () => {
+  it("reads only the measured settings file", () => {
+    expect(PROJECT_SETTINGS_FILES).toEqual([FILE]);
+  });
+
+  it("finds nothing without a .claude directory", async () => {
+    expect(await inspectProjectSettings(dir)).toEqual([]);
+  });
+
+  it("finds nothing in an empty object or in unrelated settings", async () => {
+    await writeSettings("{}");
+    expect(await inspectProjectSettings(dir)).toEqual([]);
+    await writeSettings(JSON.stringify({ permissions: { allow: ["Read"] }, model: "x" }));
+    expect(await inspectProjectSettings(dir)).toEqual([]);
+  });
+
+  it.each(COMMAND_SETTING_KEYS)("flags %s", async (key) => {
+    await writeSettings(JSON.stringify({ [key]: "run-me --now" }));
+    expect(await inspectProjectSettings(dir)).toEqual([
+      { file: FILE, kind: "entries", entries: [{ key, value: "run-me --now" }] },
+    ]);
+  });
+
+  it("flags a helper whose value is not a string", async () => {
+    await writeSettings(JSON.stringify({ apiKeyHelper: 42 }));
+    expect(await inspectProjectSettings(dir)).toEqual([
+      { file: FILE, kind: "entries", entries: [{ key: "apiKeyHelper", value: 42 }] },
+    ]);
+  });
+
+  it("ignores an empty env", async () => {
+    await writeSettings(JSON.stringify({ env: {} }));
+    expect(await inspectProjectSettings(dir)).toEqual([]);
+  });
+
+  it("flags every env variable separately", async () => {
+    await writeSettings(JSON.stringify({ env: { ANTHROPIC_BASE_URL: "http://x", FOO: "1" } }));
+    expect(await inspectProjectSettings(dir)).toEqual([
+      {
+        file: FILE,
+        kind: "entries",
+        entries: [
+          { key: "env.ANTHROPIC_BASE_URL", value: "http://x" },
+          { key: "env.FOO", value: "1" },
+        ],
+      },
+    ]);
+  });
+
+  it("flags a non-object env with its raw value", async () => {
+    await writeSettings(JSON.stringify({ env: "x" }));
+    expect(await inspectProjectSettings(dir)).toEqual([
+      { file: FILE, kind: "entries", entries: [{ key: "env", value: "x" }] },
+    ]);
+  });
+
+  it.each([
+    ["invalid JSON", "{ nope"],
+    ["a leading BOM", "\ufeff{}"],
+    ["a comment", '{\n// hi\n"model": "x"}'],
+    ["a top-level array", "[]"],
+    ["a top-level string", '"string"'],
+    ["null", "null"],
+  ])("reports %s as unreadable", async (_name, content) => {
+    await writeSettings(content);
+    unreadable(await inspectProjectSettings(dir));
+  });
+
+  it("reports a directory in place of the file as unreadable", async () => {
+    await mkdir(join(dir, FILE), { recursive: true });
+    unreadable(await inspectProjectSettings(dir), "not a regular file");
+  });
+
+  it.skipIf(process.getuid?.() === 0)("reports a file without read permission as unreadable", async () => {
+    await writeSettings("{}");
+    await chmod(join(dir, FILE), 0o000);
+    unreadable(await inspectProjectSettings(dir));
+  });
+
+  it("never puts file content in the reason of a malformed file", async () => {
+    await writeSettings('{ "\u001b[1A\u202e": nope');
+    unreadable(await inspectProjectSettings(dir), "invalid JSON");
+  });
+
+  it("escapes control and bidirectional characters in an env variable name", async () => {
+    await writeSettings(JSON.stringify({ env: { "A\u001b[1A\u202eB": "1" } }));
+    const [finding] = await inspectProjectSettings(dir);
+    const key = finding?.kind === "entries" ? finding.entries[0]?.key : undefined;
+    expect(key).toBe("env.A\\u001b[1A\\u202eB");
+  });
+
+  it("keeps a literal backslash escape distinct from the real character in an env name", async () => {
+    await writeSettings(JSON.stringify({ env: { "a\\u202e": "1" } }));
+    const literal = await inspectProjectSettings(dir);
+    await writeSettings(JSON.stringify({ env: { "a\u202e": "1" } }));
+    const real = await inspectProjectSettings(dir);
+    const key = (f: SettingsFinding[]): string | undefined =>
+      f[0]?.kind === "entries" ? f[0].entries[0]?.key : undefined;
+    expect(key(literal)).not.toBe(key(real));
+    expect(sameFindings(literal, real)).toBe(false);
+  });
+
+  it("escapes an astral format character in an env name unambiguously", async () => {
+    await writeSettings(JSON.stringify({ env: { "a\u{e0001}": "1" } }));
+    const [finding] = await inspectProjectSettings(dir);
+    const key = finding?.kind === "entries" ? finding.entries[0]?.key : undefined;
+    expect(key).toBe("env.a\\u{e0001}");
+  });
+
+  it("reports a non-object top level with a fixed reason", async () => {
+    await writeSettings("[]");
+    unreadable(await inspectProjectSettings(dir), "not a JSON object");
+  });
+
+  it.skipIf(process.platform === "win32")("reports a symlink to a FIFO without hanging", async () => {
+    const outside = await mkdtemp(join(tmpdir(), "claudex-fifo-"));
+    try {
+      const fifo = join(outside, "pipe");
+      execFileSync("mkfifo", [fifo]);
+      await mkdir(join(dir, ".claude"));
+      await symlink(fifo, join(dir, FILE));
+      unreadable(await inspectProjectSettings(dir), "not a regular file");
+    } finally {
+      await rm(outside, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses a file larger than 1 MiB", async () => {
+    await writeSettings(" ".repeat(1_048_576 + 1));
+    unreadable(await inspectProjectSettings(dir), "larger than 1 MiB");
+  });
+
+  it("accepts a file of exactly 1 MiB", async () => {
+    await writeSettings("{}" + " ".repeat(1_048_576 - 2));
+    expect(await inspectProjectSettings(dir)).toEqual([]);
+  });
+
+  it("flags env: null with its raw value", async () => {
+    await writeSettings('{"env": null}');
+    expect(await inspectProjectSettings(dir)).toEqual([
+      { file: FILE, kind: "entries", entries: [{ key: "env", value: null }] },
+    ]);
+  });
+
+  it("flags env: [] with its raw value", async () => {
+    await writeSettings('{"env": []}');
+    expect(await inspectProjectSettings(dir)).toEqual([
+      { file: FILE, kind: "entries", entries: [{ key: "env", value: [] }] },
+    ]);
+  });
+
+  it("flags an env variable named __proto__", async () => {
+    await writeSettings('{"env": {"__proto__": "x"}}');
+    expect(await inspectProjectSettings(dir)).toEqual([
+      { file: FILE, kind: "entries", entries: [{ key: "env.__proto__", value: "x" }] },
+    ]);
+  });
+
+  it("reads through a symlink pointing outside the project", async () => {
+    const outside = await mkdtemp(join(tmpdir(), "claudex-outside-"));
+    try {
+      await writeFile(join(outside, "real.json"), JSON.stringify({ apiKeyHelper: "evil" }));
+      await mkdir(join(dir, ".claude"));
+      await symlink(join(outside, "real.json"), join(dir, FILE));
+      expect(await inspectProjectSettings(dir)).toEqual([
+        { file: FILE, kind: "entries", entries: [{ key: "apiKeyHelper", value: "evil" }] },
+      ]);
+    } finally {
+      await rm(outside, { recursive: true, force: true });
+    }
+  });
+
+  it.each(["__proto__", "constructor", "prototype"])("reports a top-level %s key as unreadable", async (key) => {
+    await writeSettings(`{"${key}": {"apiKeyHelper": "x"}}`);
+    unreadable(await inspectProjectSettings(dir), "unexpected key");
+  });
+});
+
+describe("inspectProjectSettings: marketplace declarations", () => {
+  const team = {
+    team: {
+      source: { source: "url", url: "https://x/m.json", headersHelper: "print-token" },
+      plugins: [{ name: "p", source: { source: "command", command: "run-me" } }],
+    },
+  };
+
+  it.each(["extraKnownMarketplaces", "additionalMarketplaces"])("flags %s whole with its raw value", async (key) => {
+    await writeSettings(JSON.stringify({ [key]: team }));
+    expect(await inspectProjectSettings(dir)).toEqual([{ file: FILE, kind: "entries", entries: [{ key, value: team }] }]);
+  });
+
+  it.each([null, "x", [], {}])("flags a marketplace key whose value is %j", async (value) => {
+    await writeSettings(JSON.stringify({ extraKnownMarketplaces: value }));
+    expect(await inspectProjectSettings(dir)).toEqual([
+      { file: FILE, kind: "entries", entries: [{ key: "extraKnownMarketplaces", value }] },
+    ]);
+  });
+
+  it("flags both keys when both are present", async () => {
+    await writeSettings(JSON.stringify({ extraKnownMarketplaces: team, additionalMarketplaces: { other: {} } }));
+    expect(await inspectProjectSettings(dir)).toEqual([
+      {
+        file: FILE,
+        kind: "entries",
+        entries: [
+          { key: "extraKnownMarketplaces", value: team },
+          { key: "additionalMarketplaces", value: { other: {} } },
+        ],
+      },
+    ]);
+  });
+
+  it("finds nothing without a marketplace key", async () => {
+    await writeSettings(JSON.stringify({ enabledPlugins: { "p@team": true } }));
+    expect(await inspectProjectSettings(dir)).toEqual([]);
+  });
+
+  it("shows control and bidirectional characters of a marketplace name or URL escaped", async () => {
+    const value = { "A\u001b[1A\u202eB": { source: { source: "url", url: "https://x/\u202e\u001b[2J" } } };
+    await writeSettings(JSON.stringify({ extraKnownMarketplaces: value }));
+    const [finding] = await inspectProjectSettings(dir);
+    const entry = finding?.kind === "entries" ? finding.entries[0] : undefined;
+    expect(entry?.key).toBe("extraKnownMarketplaces");
+    const shown = formatSettingValue(entry?.value);
+    expect(shown).toBe(
+      '{"A\\u001b[1A\\u202eB":{"source":{"source":"url","url":"https://x/\\u202e\\u001b[2J"}}}',
+    );
+    expect(shown).not.toMatch(/[\u001b\u202e]/);
+  });
+
+  it("makes the guard refuse a turn when an approved marketplace URL changed", async () => {
+    await writeSettings(JSON.stringify({ extraKnownMarketplaces: team }));
+    const guard = createSettingsGuard(await inspectProjectSettings(dir));
+    expect(await guard(dir)).toBeNull();
+    const moved = { team: { ...team.team, source: { ...team.team.source, url: "https://evil/m.json" } } };
+    await writeSettings(JSON.stringify({ extraKnownMarketplaces: moved }));
+    expect(await guard(dir)).toBe(SETTINGS_CHANGED_MESSAGE);
+  });
+});
+
+describe("sameFindings", () => {
+  const a: SettingsFinding[] = [
+    { file: "b.json", kind: "entries", entries: [{ key: "x", value: { p: 1, q: 2 } }, { key: "y", value: 1 }] },
+    { file: "a.json", kind: "unreadable", reason: "EISDIR" },
+  ];
+
+  it("ignores the order of files, entries and object keys", () => {
+    const b: SettingsFinding[] = [
+      { file: "a.json", kind: "unreadable", reason: "EISDIR" },
+      { file: "b.json", kind: "entries", entries: [{ key: "y", value: 1 }, { key: "x", value: { q: 2, p: 1 } }] },
+    ];
+    expect(sameFindings(a, b)).toBe(true);
+  });
+
+  it("treats two empty lists as the same", () => {
+    expect(sameFindings([], [])).toBe(true);
+  });
+
+  it("detects a changed value", () => {
+    const b: SettingsFinding[] = [
+      { file: "b.json", kind: "entries", entries: [{ key: "x", value: { p: 1, q: 3 } }, { key: "y", value: 1 }] },
+      a[1] as SettingsFinding,
+    ];
+    expect(sameFindings(a, b)).toBe(false);
+  });
+
+  it("detects an added entry, an added file and a different kind", () => {
+    const entry: SettingsFinding = { file: "b.json", kind: "entries", entries: [{ key: "x", value: 1 }] };
+    expect(sameFindings([entry], [{ ...entry, entries: [...entry.entries, { key: "z", value: 1 }] }])).toBe(false);
+    expect(sameFindings([entry], [entry, { file: "c.json", kind: "unreadable", reason: "EISDIR" }])).toBe(false);
+    expect(sameFindings([entry], [{ file: "b.json", kind: "unreadable", reason: "EISDIR" }])).toBe(false);
+  });
+});
+
+describe("formatSettingValue", () => {
+  it("escapes control characters", () => {
+    expect(formatSettingValue("a\u001b[2Jb\n")).toBe('"a\\u001b[2Jb\\n"');
+  });
+
+  it("escapes bidirectional overrides", () => {
+    expect(formatSettingValue("x\u202ey")).toBe('"x\\u202ey"');
+  });
+
+  it("escapes C1 controls, line separators and isolates", () => {
+    expect(formatSettingValue("\u007f\u009b\u2028\u2066\u200f")).toBe('"\\u007f\\u009b\\u2028\\u2066\\u200f"');
+  });
+
+  it.each([
+    ["U+200B", "\u200b"],
+    ["U+FEFF", "\ufeff"],
+    ["U+061C", "\u061c"],
+    ["U+00AD", "\u00ad"],
+    ["U+3164", "\u3164"],
+    ["U+115F", "\u115f"],
+    ["U+1160", "\u1160"],
+  ])("escapes %s", (_name, char) => {
+    const code = char.charCodeAt(0).toString(16).padStart(4, "0");
+    expect(formatSettingValue(`a${char}b`)).toBe(`"a\\u${code}b"`);
+  });
+
+  it("escapes an astral code point with braces so it cannot be confused with a BMP escape", () => {
+    expect(formatSettingValue("\u{e0001}")).toBe('"\\u{e0001}"');
+    // U+E000 (private use, left as is) followed by "1" stays visibly different.
+    expect(formatSettingValue("\ue000" + "1")).toBe('"\ue0001"');
+  });
+
+  it("formats objects as JSON", () => {
+    expect(formatSettingValue({ b: 1 })).toBe('{"b":1}');
+  });
+});
+
+describe("createSettingsGuard", () => {
+  const approved: SettingsFinding[] = [
+    {
+      file: FILE,
+      kind: "entries",
+      entries: [
+        { key: "apiKeyHelper", value: "helper.sh" },
+        { key: "env.A", value: "1" },
+      ],
+    },
+  ];
+  const guardFor = (current: SettingsFinding[], base: SettingsFinding[] = approved) =>
+    createSettingsGuard(base, async () => current)("/project");
+
+  it("proceeds when nothing was approved and nothing is found", async () => {
+    expect(await guardFor([], [])).toBeNull();
+  });
+
+  it("proceeds when the same findings come back reordered", async () => {
+    const reordered: SettingsFinding[] = [
+      { file: FILE, kind: "entries", entries: [{ key: "env.A", value: "1" }, { key: "apiKeyHelper", value: "helper.sh" }] },
+    ];
+    expect(await guardFor(reordered)).toBeNull();
+  });
+
+  it("proceeds when the approved settings were removed", async () => {
+    expect(await guardFor([])).toBeNull();
+  });
+
+  it("refuses a changed value, an added key, an added file or an unreadable file", async () => {
+    const entries = approved[0] as Extract<SettingsFinding, { kind: "entries" }>;
+    const cases: SettingsFinding[][] = [
+      [{ ...entries, entries: [{ key: "apiKeyHelper", value: "other.sh" }, { key: "env.A", value: "1" }] }],
+      [{ ...entries, entries: [...entries.entries, { key: "proxyAuthHelper", value: "p.sh" }] }],
+      [...approved, { file: "other.json", kind: "entries", entries: [{ key: "env.B", value: "2" }] }],
+      [{ file: FILE, kind: "unreadable", reason: "invalid JSON" }],
+    ];
+    for (const current of cases) expect(await guardFor(current)).toBe(SETTINGS_CHANGED_MESSAGE);
+  });
+
+  it("refuses new findings when none were approved", async () => {
+    expect(await guardFor(approved, [])).toBe(SETTINGS_CHANGED_MESSAGE);
+  });
+
+  it("refuses when the inspection fails", async () => {
+    const guard = createSettingsGuard(approved, async () => {
+      throw new Error("boom");
+    });
+    expect(await guard("/project")).toBe(SETTINGS_CHANGED_MESSAGE);
+  });
+
+  it("inspects the directory it is given", async () => {
+    const inspect = vi.fn(async () => []);
+    await createSettingsGuard([], inspect)("/some/dir");
+    expect(inspect).toHaveBeenCalledWith("/some/dir");
+  });
+});

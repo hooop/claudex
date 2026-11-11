@@ -2,6 +2,86 @@
 
 Journal des décisions validées à l'issue d'un débat Claude ↔ Codex.
 
+## 2026-11-11 — Les réglages porteurs de commande du dépôt demandent le consentement de l'humain
+
+**Nature :** arbitrage délégué par le mainteneur (« décisions les plus professionnelles », 2026-11-11) ;
+aucune de ces décisions n'a été prise par le mainteneur lui-même. Design :
+`docs/superpowers/specs/2026-11-11-project-command-settings-design.md`. Mesures dans `limits.md`
+(2026-11-11, consentement).
+
+**Décisions :**
+- **D1 : Claudex lit lui-même les réglages du projet, sans jamais rien exécuter**
+  (`src/agents/projectSettings.ts`). Fichier lu : `<cwd>/.claude/settings.json` seulement
+  (`PROJECT_SETTINGS_FILES`), le seul que les mesures montrent lu par le moteur (Lp et Ll négatifs).
+  Signalés : les six helpers de `COMMAND_SETTING_KEYS` (`apiKeyHelper`, `awsAuthRefresh`,
+  `awsCredentialExport`, `gcpAuthRefresh`, `otelHeadersHelper`, `proxyAuthHelper`, relevés dans
+  l'interface `Settings` de `sdk.d.ts`), toute entrée `env` et, ajouté après la revue finale, les déclarations
+  de marketplaces de plugins (`extraKnownMarketplaces` et son alias documenté `additionalMarketplaces`),
+  montrées entières : elles portent commandes, URL et helpers à plusieurs niveaux, qu'une liste de
+  champs manquerait, et la garde réagit ainsi à tout changement (une URL déplacée). Non mesuré : que
+  le moteur récupère ou exécute quoi que ce soit d'une marketplace déclarée par le projet. Pas montrés, consignés dans
+  `limits.md` : `statusLine.command`, `subagentStatusLine.command`, `fileSuggestion.command` et les
+  règles `permissions.allow` du dépôt. Le fichier est ouvert en non bloquant et
+  doit être un fichier ordinaire de 1 Mio au plus ; tout ce que Claudex ne sait pas lire ou analyser
+  (JSON invalide, commentaires, BOM, autre chose qu'un objet, clé de premier niveau `__proto__`,
+  `constructor` ou `prototype`, fichier spécial, trop gros, permission)
+  donne une constatation « illisible ».
+- **D2 : consentement au lancement, avant toute écriture et avant tout agent** (`src/launch.ts`,
+  `src/cli.tsx`, `src/ui/components/SettingsConsent.tsx`). Pas de `.claudex/` pour un projet refusé ;
+  ni Root ni Codex ne démarrent avant la réponse. La liste complète est imprimée en texte simple dans
+  l'écran normal (l'historique du terminal la garde, quelle que soit sa longueur), puis une petite
+  invite Ink : `y` continue (sans Alt ni Ctrl ; les collages sont ignorés grâce au collage encadré ; les
+  touches des 250 premières ms sont ignorées) ; `n`, `q`, Entrée, Échap, Ctrl+C quittent ; quitter est
+  le défaut. Touche `y` et non `o` comme le disait le design : cohérence avec l'invite de permission.
+  Tout texte venu du dépôt est échappé (caractères de contrôle, de format, bidi, de largeur nulle,
+  affichés en `\uXXXX` / `\u{...}`).
+- **Une constatation « illisible » rend le consentement impossible** (seul « quitter » est offert) :
+  Claude Code peut analyser ce que Claudex ne sait pas lire (JSON avec commentaires, BOM) ; l'approuver
+  reviendrait à approuver un contenu que personne n'a vu. Le design permettait d'y consentir ; resserré
+  pendant la revue. Coût : un projet aux réglages JSONC ne peut pas être débattu tant qu'il n'est pas
+  corrigé.
+- **D3 : la garde relit le fichier avant chaque requête Claude** (débat et `/implement`,
+  `createSettingsGuard`, appelée par `ClaudeAgent` avant `query()`). Aucune constatation, ou identique à
+  l'approbation : le tour part. Sinon le tour n'est pas envoyé et échoue avec un message en français qui
+  demande de quitter et relancer. Une garde qui lève une erreur refuse aussi le tour.
+- **Le consentement n'est jamais mémorisé** : stocké dans le projet, un dépôt pourrait le pré-remplir ;
+  ailleurs, Claudex écrirait hors de `.claudex/`. La question revient à chaque lancement.
+- **Trou accepté pendant un tour `/implement`** (voir `limits.md`) : non mesuré, non fermé. La phase
+  d'implémentation est de confiance par conception (décision 2026-11-11, D4 de l'isolation). Rien ne
+  garantit que l'humain voie une écriture dans `.claude/settings.json` avant qu'elle ait lieu : les
+  règles `allow` (de l'utilisateur, ou le `permissions.allow` du dépôt, que l'écran de consentement ne
+  montre pas) sont résolues avant `canUseTool` et peuvent approuver l'écriture sans invite (on n'a pas
+  mesuré si Claude Code protège ses propres fichiers de réglages contre elles) ; une écriture par Bash
+  ne montre que la commande ; avec `/implement codex`, Codex écrit avec `approvalPolicy: "never"`,
+  sans aucune invite. La garde ne la voit qu'avant le tour Claude suivant. Accepté en connaissance de
+  cause, pas parce qu'il serait petit.
+- **D4/D5 :** les cas L, Lp, Ll, M de `verify:readonly` mesurent le comportement du moteur qui rend la
+  porte nécessaire ; la porte elle-même est du code Claudex, prouvée par les tests unitaires et
+  d'interface, et vérifiée à la main dans un pty.
+
+**Alternatives écartées :**
+- Neutraliser les helpers dans la couche « flag » (`settings: { apiKeyHelper: "" }`) : le sens d'un
+  helper vide n'est pas documenté ; ne peut pas neutraliser une entrée `env` quelconque ; écraserait en
+  `/implement` un helper légitime des réglages de l'utilisateur.
+- Retirer `"project"` de `settingSources` : perd le CLAUDE.md du projet (décision du 2026-10-26), et
+  `/implement` charge de toute façon la couche projet.
+- Refuser tout projet qui déclare un helper : bloque des installations d'entreprise légitimes ; le
+  principe est de laisser l'humain décider.
+- Avertir sans bloquer : la commande tournerait déjà quand l'humain lit l'avertissement.
+- Mémoriser le consentement par projet : voir plus haut.
+- Redemander le consentement en cours de session : un nouvel état modal du scheduler pour un cas rare ;
+  relancer réutilise l'écran du lancement, et la mémoire du débat survit à une relance.
+
+**Fichiers concernés :** `src/agents/projectSettings.ts`, `src/agents/claudeAgent.ts`, `src/launch.ts`,
+`src/cli.tsx`, `src/ui/Root.tsx`, `src/ui/components/SettingsConsent.tsx`,
+`scripts/readonly-verification/`, `README.md`, `AGENTS.md`.
+
+**Comment appliquer :** ne pas rouvrir la mémorisation du consentement ni le consentement à un fichier
+illisible sans raison nouvelle. À chaque montée du SDK, relire `COMMAND_SETTING_KEYS` contre `sdk.d.ts`
+et relancer Lp et Ll pour confirmer `PROJECT_SETTINGS_FILES` (voir `limits.md`).
+
+---
+
 ## 2026-11-11 — Le débat de Claude n'exécute ni hook, ni serveur MCP, ni connecteur
 
 **Nature :** arbitrage délégué par le mainteneur (design approuvé le 2026-10-28, « décisions les plus

@@ -31,6 +31,8 @@ export interface Observation {
   error: string | null;
   /** Keys of the trusted folder's project entry the run changed; null outside the trusted variant. */
   trustStateChanges: string[] | null;
+  /** Requests received by the loopback listener (method and path only, never headers or bodies). */
+  listenerRequests: Array<{ method: string; path: string }>;
 }
 
 export type Status = "pass" | "fail" | "inconclusive" | "recorded";
@@ -60,6 +62,7 @@ function describeRecord(o: Observation): string[] {
     `marker written: ${o.markerWritten ? "yes" : "no"}`,
   ];
   if (o.apiKeySource !== null) reasons.push(`api key source: ${o.apiKeySource}`);
+  if (o.listenerRequests.length > 0) reasons.push(`listener requests: ${o.listenerRequests.length}`);
   if (o.error !== null) reasons.push(`error: ${o.error}`);
   return reasons;
 }
