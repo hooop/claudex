@@ -2,6 +2,68 @@
 
 Contraintes, boundaries et choses explicitement écartées.
 
+## 2026-11-11 — Le débat de Claude est isolé des hooks, des serveurs MCP et des connecteurs (mesuré)
+
+**Constat :** mesuré avec `npm run verify:readonly -- --model claude-sonnet-5-5 --cases ... --out
+<fichier>`, SDK 0.3.310 (Claude Code 2.1.310), chaque cas deux fois, sur la machine et le compte du
+mainteneur (macOS), depuis le shell sandboxé d'une session Claude Code. Deux sortes de dossier :
+- « neuf » : un dossier temporaire neuf par exécution ;
+- « approuvé » : `~/claudex-trusted-probe`, réutilisé par toutes les exécutions (`--trusted-dir`).
+
+Sur cette machine, `/` est marqué approuvé dans `~/.claude.json` (choix du mainteneur) : Claude Code
+n'affiche aucun dialogue de confiance et traite tout dossier comme approuvé. Les dossiers « neufs »
+sont donc eux aussi sous un parent approuvé. **La situation d'un dossier jamais approuvé n'a pas été
+mesurée.** L'outil accepte désormais une approbation héritée d'un dossier parent, et l'en-tête du
+rapport nomme l'entrée qui l'accorde (`trust from /`).
+
+Avant l'isolation (options de débat de `main`) :
+
+| Cas | Neuf | Approuvé |
+| --- | --- | --- |
+| E | inconclusive (1 exécution sur 2 hors délai, 180 s) | **fail** : connecteurs claude.ai listés |
+| F, G | pass | pass |
+| H, K | **fail** : `evil` et 5 connecteurs claude.ai listés, 32 outils MCP proposés | **fail** : idem |
+| J | **fail** : le hook `SessionStart` du dépôt a écrit le fichier témoin | **fail** : idem, plus connecteurs listés |
+| L | témoin **écrit** | témoin **écrit** |
+
+Dans H et K, l'appel de `mcp__evil__write_file` est bien passé par `canUseTool` (refusé). Seul le
+démarrage du serveur échappe à l'arbitrage.
+
+Après l'isolation (`strictMcpConfig: true`, `settings: { disableAllHooks, disableClaudeAiConnectors,
+disableSkillShellExecution }`, voir `decisions.md` 2026-11-11), avec les contrôles :
+
+| Cas | Neuf | Approuvé |
+| --- | --- | --- |
+| E, F, G, H, J, K | pass | pass |
+| Ec (E sans isolation) | pass (connecteurs listés dans 1 exécution sur 2) | pass |
+| Hc (H sans isolation) | pass (`evil` listé) | pass |
+| Jc (J sans isolation) | pass (témoin écrit) | pass |
+| L | témoin **écrit** | témoin **écrit** |
+
+Les contrôles montrent que chaque vecteur était actif dans ce même environnement : les réussites de
+E, H et J ne sont pas vides. Réserve : pour E, les connecteurs n'apparaissent pas à chaque init (Ec les a vus dans 1 exécution
+neuve sur 2). Plugins listés à l'init : uniquement ceux intégrés au moteur
+(`builtin`), avant comme après. Aucune clé de l'entrée du dossier approuvé dans `~/.claude.json` n'a
+changé pendant les exécutions. Test manuel complémentaire (script hors dépôt, vrai `ClaudeAgent`) :
+un tour de débat lit et répond, un tour d'implémentation écrit un fichier après une demande de
+permission `Write` et suit le CLAUDE.md global de l'utilisateur.
+
+**Trou restant, non corrigé (cas L) :** un `apiKeyHelper` déclaré dans le `.claude/settings.json` du
+dépôt est une commande que le moteur exécute au démarrage, sans invite, isolation ou non. Aucun
+réglage documenté du SDK ne le coupe. Décision du mainteneur (2026-11-11) : branche à part. Les
+autres réglages porteurs de commande (`awsAuthRefresh`, `awsCredentialExport`, `gcpAuthRefresh`,
+`otelHeadersHelper`, `proxyAuthHelper`) n'agissent qu'avec Bedrock, Vertex, la télémétrie ou un
+proxy configurés : non mesurés.
+
+**Non mesuré :** un dossier jamais approuvé (voir plus haut) ; `disableSkillShellExecution` (aucun cas
+ne l'atteint sans une invite commençant par `/`) ; Linux et Windows ; les hooks des réglages gérés par
+un administrateur ; la configuration propre de Codex (`~/.codex/config.toml`) pendant un débat.
+
+**Comment appliquer :** J et H sont fermés pour le débat, sur cette machine et dans ces deux sortes de
+dossier. À chaque montée du SDK, relancer les cas E à L et les contrôles dans les deux sortes de
+dossier ; un contrôle qui ne passe plus rend son cas muet et arrête la montée. Le README ne doit pas
+dire plus que ce tableau.
+
 ## 2026-10-28 — Le sandbox du SDK 0.3.310 peut rendre `cwd` non-inscriptible (mesure ponctuelle)
 
 **Constat :** re-mesure de la limite du 2026-08-07, avec un script exploratoire hors du dépôt (pas
@@ -151,8 +213,9 @@ comme A. A et D sont identiques. La conclusion du 2026-08-29 tient toujours : se
   le test), pas son démarrage.
 - Suite acceptée par le mainteneur le 2026-10-28 : une branche `fix/` qui isole le débat (aucun hook,
   aucun serveur MCP, aucun connecteur claude.ai), après la fusion de cette montée de version.
+- Fermés pour le débat le 2026-11-11 (J et H), voir l'entrée du 2026-11-11 en haut de ce fichier.
 
-**Comment appliquer :** relancer `npm run verify:readonly` à chaque montée de version du SDK, sur
+**Comment appliquer :** (Remplacé par l'entrée du 2026-11-11 pour les cas E à L.) relancer `npm run verify:readonly` à chaque montée de version du SDK, sur
 l'ancienne et sur la nouvelle version (`--sdk-dir` désigne une installation isolée de chacune), avec
 le même modèle. Le critère est la présence du fichier sur disque, pas le message du modèle. E, F et G
 doivent réussir sur la nouvelle version ; un `inconclusive` (par exemple des outils de connecteurs

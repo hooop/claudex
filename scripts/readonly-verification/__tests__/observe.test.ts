@@ -1,9 +1,10 @@
-import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { CASES, MARKER_NAME, type CaseId, type VerificationCase } from "../cases.js";
 import { runCase, type QueryFn, type RunSettings } from "../observe.js";
+import { TrustedDirError } from "../trustedDir.js";
 
 function caseOf(id: CaseId): VerificationCase {
   const found = CASES.find((c) => c.id === id);
@@ -45,7 +46,13 @@ describe("runCase — what the stream tells", () => {
       init({
         tools: ["Read", "Grep", "Glob", "mcp__evil__write_file"],
         permissionMode: "plan",
-        mcp_servers: [{ name: "evil", status: "connected" }],
+        mcp_servers: [
+          { name: "evil", status: "connected", source: "project" },
+          { name: "old", status: "pending" },
+        ],
+        plugins: [{ name: "p", path: "/x/p" }],
+        skills: ["s"],
+        apiKeySource: "none",
       }),
       { type: "result", subtype: "success" },
     );
@@ -54,9 +61,36 @@ describe("runCase — what the stream tells", () => {
 
     expect(observation.initTools).toEqual(["Read", "Grep", "Glob", "mcp__evil__write_file"]);
     expect(observation.initPermissionMode).toBe("plan");
-    expect(observation.mcpServers).toEqual([{ name: "evil", status: "connected" }]);
+    expect(observation.mcpServers).toEqual([
+      { name: "evil", status: "connected", source: "project" },
+      { name: "old", status: "pending", source: null },
+    ]);
+    expect(observation.initPlugins).toEqual([{ name: "p", path: "/x/p" }]);
+    expect(observation.initSkills).toEqual(["s"]);
+    expect(observation.apiKeySource).toBe("none");
     expect(observation.resultSubtype).toBe("success");
     expect(observation.error).toBeNull();
+  });
+
+  it("never drops an MCP server entry it cannot parse", async () => {
+    const query = scripted(
+      init({ mcp_servers: [{ name: "x" }, { status: "pending" }, "weird", null] }),
+    );
+
+    const observation = await runCase(query, caseOf("E"), settings);
+
+    expect(observation.mcpServers).toEqual([
+      { name: "x", status: "unknown", source: null },
+      { name: "(unparsed)", status: "pending", source: null },
+      { name: "(unparsed)", status: "unknown", source: null },
+      { name: "(unparsed)", status: "unknown", source: null },
+    ]);
+  });
+
+  it("records a placeholder server when mcp_servers is not an array", async () => {
+    const observation = await runCase(scripted(init({ mcp_servers: { evil: {} } })), caseOf("E"), settings);
+
+    expect(observation.mcpServers).toEqual([{ name: "(unparsed mcp_servers)", status: "unknown", source: null }]);
   });
 
   it("collects tool uses from assistant messages", async () => {
@@ -112,11 +146,15 @@ describe("runCase — what the stream tells", () => {
       initTools: null,
       initPermissionMode: null,
       mcpServers: [],
+      initPlugins: [],
+      initSkills: [],
+      apiKeySource: null,
       toolUses: [],
       permissionRequests: [],
       markerWritten: false,
       resultSubtype: null,
       error: null,
+      trustStateChanges: null,
     });
   });
 });
@@ -356,24 +394,17 @@ describe("runCase — query call", () => {
     expect(server.args[1]).toBe(join(cwd, MARKER_NAME));
   });
 
-  it("gives case I its probe tool", async () => {
-    let prompt = "";
-    const query: QueryFn = async function* (params) {
-      prompt = params.prompt;
-      yield init();
-    };
-
-    await runCase(query, caseOf("I"), { ...settings, probeTool: "mcp__vault__whoami" });
-
-    expect(prompt).toContain("mcp__vault__whoami");
-  });
-
   it("rejects, and leaves no temp dir behind, when the case cannot be set up", async () => {
     const leftovers = () => readdirSync(tmpdir()).filter((name) => name.startsWith("claudex-readonly-"));
     const before = leftovers();
 
-    // Case I throws while building its prompt without a probe tool.
-    await expect(runCase(scripted(init()), caseOf("I"), settings)).rejects.toThrow("probe tool");
+    const broken: VerificationCase = {
+      ...caseOf("E"),
+      projectFiles: () => {
+        throw new Error("cannot build project");
+      },
+    };
+    await expect(runCase(scripted(init()), broken, settings)).rejects.toThrow("cannot build project");
 
     expect(leftovers()).toEqual(before);
   });
@@ -504,5 +535,214 @@ describe("runCase — failures", () => {
     await new Promise((resolve) => setTimeout(resolve, 300));
 
     expect(observation.toolUses).toEqual([]);
+  });
+});
+
+describe("runCase — trusted folder", () => {
+  let root: string;
+  let dir: string;
+  let configFile: string;
+  let trusted: RunSettings;
+
+  beforeEach(() => {
+    root = realpathSync(mkdtempSync(join(tmpdir(), "claudex-trusted-run-")));
+    dir = join(root, "trusted");
+    mkdirSync(dir);
+    configFile = join(root, ".claude.json");
+    writeFileSync(configFile, JSON.stringify({ projects: { [dir]: { hasTrustDialogAccepted: true } } }));
+    trusted = { ...settings, trusted: { dir, configFile } };
+  });
+
+  afterEach(() => {
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it("runs in the trusted folder and leaves it empty", async () => {
+    let cwd = "";
+    const query: QueryFn = async function* ({ options }) {
+      cwd = options.cwd as string;
+      yield init();
+    };
+
+    const observation = await runCase(query, caseOf("L"), trusted);
+
+    expect(cwd).toBe(dir);
+    expect(readdirSync(dir)).toEqual([]);
+    expect(observation.trustStateChanges).toEqual([]);
+  });
+
+  it("removes the marker the case's breach wrote", async () => {
+    const query: QueryFn = async function* ({ options }) {
+      writeFileSync(join(options.cwd as string, MARKER_NAME), "pwned");
+      yield init();
+    };
+
+    const observation = await runCase(query, caseOf("E"), trusted);
+
+    expect(observation.markerWritten).toBe(true);
+    expect(readdirSync(dir)).toEqual([]);
+  });
+
+  it("refuses a folder that is not empty before the case, and touches nothing", async () => {
+    writeFileSync(join(dir, "keep.txt"), "mine");
+
+    await expect(runCase(scripted(init()), caseOf("E"), trusted)).rejects.toThrow(TrustedDirError);
+
+    expect(readdirSync(dir)).toEqual(["keep.txt"]);
+    expect(readFileSync(join(dir, "keep.txt"), "utf8")).toBe("mine");
+  });
+
+  it("stops when the engine left a file it cannot account for", async () => {
+    const query: QueryFn = async function* ({ options }) {
+      writeFileSync(join(options.cwd as string, "other.txt"), "x");
+      yield init();
+    };
+
+    await expect(runCase(query, caseOf("E"), trusted)).rejects.toThrow(/other\.txt/);
+
+    expect(existsSync(join(dir, "other.txt"))).toBe(true);
+    expect(existsSync(join(dir, "README.md"))).toBe(true);
+  });
+
+  it.each([".claude/settings.local.json", ".git/hooks/x"])(
+    "stops and keeps %s when the engine wrote it inside a directory the run created",
+    async (relative) => {
+      const query: QueryFn = async function* ({ options }) {
+        const path = join(options.cwd as string, relative);
+        mkdirSync(join(path, ".."), { recursive: true });
+        writeFileSync(path, "x");
+        yield init();
+      };
+
+      await expect(runCase(query, caseOf("L"), trusted)).rejects.toThrow(relative);
+
+      expect(existsSync(join(dir, relative))).toBe(true);
+    },
+  );
+
+  it("stops when the engine swaps a directory for a symlink, and deletes nothing outside", async () => {
+    const outside = join(root, "outside");
+    mkdirSync(outside);
+    writeFileSync(join(outside, "settings.json"), "precious");
+    const query: QueryFn = async function* ({ options }) {
+      const cwd = options.cwd as string;
+      rmSync(join(cwd, ".claude"), { recursive: true });
+      symlinkSync(outside, join(cwd, ".claude"));
+      yield init();
+    };
+
+    await expect(runCase(query, caseOf("L"), trusted)).rejects.toThrow(/\.claude/);
+
+    expect(readFileSync(join(outside, "settings.json"), "utf8")).toBe("precious");
+  });
+
+  it("keeps the original error in the message when the run failed and files were left", async () => {
+    // Throws after the snapshot, having written a file the snapshot lacks.
+    const failing: VerificationCase = {
+      ...caseOf("E"),
+      options: Object.defineProperty({}, "boom", {
+        enumerable: true,
+        get: () => {
+          writeFileSync(join(dir, "other.txt"), "x");
+          throw new Error("options exploded");
+        },
+      }) as VerificationCase["options"],
+    };
+
+    const error = await runCase(scripted(init()), failing, trusted).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(TrustedDirError);
+    expect((error as Error).message).toContain("other.txt");
+    expect((error as Error).message).toContain("options exploded");
+    expect((error as Error).message).toContain("nothing deleted but the marker");
+  });
+
+  it("removes only the marker when it stops on an unaccounted file", async () => {
+    const query: QueryFn = async function* ({ options }) {
+      writeFileSync(join(options.cwd as string, "other.txt"), "x");
+      writeFileSync(join(options.cwd as string, MARKER_NAME), "pwned");
+      yield init();
+    };
+
+    await expect(runCase(query, caseOf("E"), trusted)).rejects.toThrow(/other\.txt/);
+
+    expect(existsSync(join(dir, MARKER_NAME))).toBe(false);
+    expect(existsSync(join(dir, "README.md"))).toBe(true);
+  });
+
+  it("stops, naming it, when the engine deleted a file the snapshot accounts for", async () => {
+    const query: QueryFn = async function* ({ options }) {
+      rmSync(join(options.cwd as string, "README.md"));
+      writeFileSync(join(options.cwd as string, MARKER_NAME), "pwned");
+      yield init();
+    };
+
+    const error = await runCase(query, caseOf("E"), trusted).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(TrustedDirError);
+    expect((error as Error).message).toContain("README.md");
+    expect(existsSync(join(dir, MARKER_NAME))).toBe(false);
+  });
+
+  it("names the changed project entry keys, never values, when it stops", async () => {
+    const query: QueryFn = async function* ({ options }) {
+      writeFileSync(join(options.cwd as string, "other.txt"), "x");
+      writeFileSync(
+        configFile,
+        JSON.stringify({ projects: { [dir]: { hasTrustDialogAccepted: true, enabledMcpjsonServers: ["sEcReT"] } } }),
+      );
+      yield init();
+    };
+
+    const error = await runCase(query, caseOf("E"), trusted).catch((e: unknown) => e);
+
+    expect((error as Error).message).toContain("enabledMcpjsonServers");
+    expect((error as Error).message).not.toContain("sEcReT");
+  });
+
+  it("leaves the folder empty and propagates the error when the setup throws", async () => {
+    const broken: VerificationCase = {
+      ...caseOf("E"),
+      projectFiles: () => {
+        throw new Error("cannot build project");
+      },
+    };
+
+    await expect(runCase(scripted(init()), broken, trusted)).rejects.toThrow("cannot build project");
+
+    expect(readdirSync(dir)).toEqual([]);
+  });
+
+  it.each(["/abs.txt", "../up.txt", "a/../b.txt", "a//b.txt", "./c.txt", ""])(
+    "rejects the case file path %j at setup",
+    async (bad) => {
+      const evil: VerificationCase = { ...caseOf("E"), projectFiles: () => ({ [bad]: "x" }) };
+
+      await expect(runCase(scripted(init()), evil, trusted)).rejects.toThrow(/invalid case file path/);
+
+      expect(readdirSync(dir)).toEqual([]);
+      expect(existsSync(join(root, "up.txt"))).toBe(false);
+    },
+  );
+
+  it("removes the project directories of the case, not only its files", async () => {
+    await runCase(scripted(init()), caseOf("L"), trusted);
+
+    expect(existsSync(join(dir, ".claude"))).toBe(false);
+    expect(existsSync(join(dir, ".git"))).toBe(false);
+  });
+
+  it("reports the project entry keys the run changed", async () => {
+    const query: QueryFn = async function* () {
+      writeFileSync(
+        configFile,
+        JSON.stringify({ projects: { [dir]: { hasTrustDialogAccepted: true, enabledMcpjsonServers: ["evil"] } } }),
+      );
+      yield init();
+    };
+
+    const observation = await runCase(query, caseOf("E"), trusted);
+
+    expect(observation.trustStateChanges).toEqual(["enabledMcpjsonServers"]);
   });
 });

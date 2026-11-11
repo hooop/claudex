@@ -2,14 +2,8 @@ import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { AgentResult } from "../orchestrator/types.js";
 import type { AgentActivity } from "../types.js";
 import { formatClaudeModel } from "../util/projectStatus.js";
+import { debateQueryOptions } from "./debateOptions.js";
 import { AUTO_MODEL_LABEL, type AgentSendOptions, type CodingAgent } from "./types.js";
-
-/**
- * Strictly read-only tools for debate phase.
- * Bash is explicitly excluded — it can write even with "read-only" intent,
- * and a permissive rule or distracted human approval could violate the invariant.
- */
-export const DEBATE_TOOLS = ["Read", "Grep", "Glob"];
 
 /**
  * Full tool access for implementation phase.
@@ -128,26 +122,15 @@ export class ClaudeAgent implements CodingAgent {
           model: this.model,
           cwd: options.cwd,
           resume: this.sessionId,
-          // Measured on this machine: loading user settings costs 13 300 tokens
-          // of system prompt per call — plugin and skill catalogues an agent
-          // restricted to Read/Grep/Glob can never use. A debate turn makes
-          // dozens of calls, so it is paid dozens of times. The one field
-          // Claudex needs from those settings is the default model, which it
-          // reads itself and passes as `model` above.
-          //
-          // Project settings stay in both phases: that is where the user's own
-          // CLAUDE.md lives, and their instructions apply during a debate too.
-          settingSources: options.writeAccess ? ["project", "user"] : ["project"],
-          // Deliberately always "default", never "plan": plan mode carries its own
-          // built-in ritual (present a plan, call ExitPlanMode) that conflicts with
-          // the debate's own instructions and has been observed to confuse the model
-          // about which protocol to follow. Read-only enforcement during the debate
-          // comes from `tools` (real availability restriction) below.
-          permissionMode: "default",
+          ...(options.writeAccess
+            ? {
+                // The user's own settings apply when the agent implements.
+                settingSources: ["project" as const, "user" as const],
+                permissionMode: "default" as const,
+                tools: FULL_TOOLS,
+              }
+            : debateQueryOptions()),
           includePartialMessages: true,
-          tools: options.writeAccess ? FULL_TOOLS : DEBATE_TOOLS,
-          // No auto-approved tools in debate — everything requires human approval
-          allowedTools: options.writeAccess ? undefined : [],
           canUseTool: options.onPermissionRequest
             ? async (
                 toolName: string,

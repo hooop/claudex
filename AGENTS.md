@@ -61,13 +61,15 @@ anyone changing Claudex itself, human or agent. User documentation is in README.
   agents may, after `/implement`). It never creates or edits CLAUDE.md or AGENTS.md.
 - Agents are read-only until the implementation phase. Codex gets a read-only
   sandbox. For Claude, only two things enforce it: the `tools` list
-  (`DEBATE_TOOLS` in `src/agents/claudeAgent.ts`) and the human answering
+  (`DEBATE_TOOLS` in `src/agents/debateOptions.ts`) and the human answering
   `canUseTool`. `permissionMode: "plan"` and `allowedTools` do not (measured,
   see limits.md). Claudex does not use the SDK sandbox; on 0.3.310 it can block
   writes in `cwd`, measured once (limits.md, 2026-10-28). Re-check after every SDK upgrade by running
   `npm run verify:readonly` on the old and the new version. The SDK is pinned to an
-  exact version for that reason. The analysed project's own hooks and MCP servers
-  are a known gap (limits.md, 2026-10-27).
+  exact version for that reason. Debate turns also carry `DEBATE_ISOLATION`
+  (same module): no hook, no MCP server, no claude.ai connector (measured,
+  limits.md, 2026-11-11). The analysed project's `apiKeyHelper` still runs
+  during a debate: a known gap with its own branch to come.
 - The debate rules (`CONSENSUS_INSTRUCTIONS`) never name an agent outside the
   self/other roles; a test checks the symmetry.
 - There is no unsupervised mode: `src/cli.tsx` refuses to start without a TTY.
