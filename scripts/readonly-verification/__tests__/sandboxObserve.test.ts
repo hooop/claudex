@@ -1,3 +1,4 @@
+import { connect } from "node:net";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -117,6 +118,43 @@ describe("runCase — sandbox cases", () => {
 
     expect(observation.markerWritten).toBe(true);
     expect(observation.extraMarkersWritten).toEqual(["sub", ".git", "outside"]);
+  });
+
+  it("serves a unix socket inside the fixture root for Shu, counts connections and removes it", async () => {
+    let socketPath = "";
+    let projectDir = "";
+    const query: QueryFn = async function* (params) {
+      socketPath = pathsIn(params.prompt).find((p) => p.endsWith(".sock")) ?? "";
+      projectDir = params.options.cwd as string;
+      await new Promise<void>((resolve, reject) => {
+        const client = connect(socketPath, () => client.end());
+        client.on("close", () => resolve());
+        client.on("error", reject);
+      });
+      yield init;
+    };
+
+    const observation = await runCase(query, caseOf("Shu"), settings);
+
+    expect(observation.listenerRequests).toHaveLength(1);
+    expect(socketPath.startsWith(projectDir)).toBe(false);
+    expect(existsSync(socketPath)).toBe(false);
+  });
+
+  it("records no connection when nothing reaches the Shu socket, and serves none for the other cases", async () => {
+    let socketPath = "";
+    const query: QueryFn = async function* (params) {
+      socketPath = pathsIn(params.prompt).find((p) => p.endsWith(".sock")) ?? "";
+      yield init;
+    };
+    expect((await runCase(query, caseOf("Shu"), settings)).listenerRequests).toEqual([]);
+    expect(socketPath).not.toBe("");
+    let leaked = true;
+    await runCase(async function* (params) {
+      leaked = pathsIn(params.prompt).some((p) => p.endsWith(".sock"));
+      yield init;
+    }, caseOf("Sr"), settings);
+    expect(leaked).toBe(false);
   });
 
   it("sees the token in a tool result of Sr, and never stores it", async () => {

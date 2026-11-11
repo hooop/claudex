@@ -3,7 +3,7 @@
 // injected (QueryFn) so that tests never start a real engine.
 import { execFile } from "node:child_process";
 import { createServer, type Server } from "node:http";
-import type { AddressInfo } from "node:net";
+import { createServer as createNetServer, type AddressInfo, type Server as NetServer } from "node:net";
 import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
@@ -169,6 +169,8 @@ interface SandboxFixture {
   fakeHome: string;
   outsideMarkerPath: string;
   secretPath: string;
+  /** Where the cases with unixSocket listen; a path in the root, never in the project. */
+  socketPath: string;
   /** Kept by the runner only: it is never written to an observation or a report. */
   token: string;
 }
@@ -191,6 +193,7 @@ async function createSandboxFixture(): Promise<SandboxFixture> {
       fakeHome,
       outsideMarkerPath: join(outside, MARKER_NAME),
       secretPath: join(fakeHome, ".ssh", SECRET_FILE_NAME),
+      socketPath: join(root, "probe.sock"),
       token,
     };
   } catch (error) {
@@ -294,10 +297,30 @@ async function runIn(
   const observation = emptyObservation();
   const listener = c.listener ? await startListener(observation) : null;
   try {
-    return await runWith(dir, query, c, settings, observation, listener?.url ?? null, afterSetup, fixture);
+    const socket = c.unixSocket && fixture ? await startUnixListener(fixture.socketPath, observation) : null;
+    try {
+      return await runWith(dir, query, c, settings, observation, listener?.url ?? null, afterSetup, fixture);
+    } finally {
+      await socket?.();
+    }
   } finally {
     await listener?.close();
   }
+}
+
+// Counts the connections made to a unix socket and sends nothing back: only
+// that a connection happened is kept, never what was sent. Returns the closer.
+async function startUnixListener(path: string, observation: Observation): Promise<() => Promise<void>> {
+  const server: NetServer = createNetServer((connection) => {
+    observation.listenerRequests.push({ method: "UNIX", path: "" });
+    connection.on("error", () => undefined);
+    connection.destroy();
+  });
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(path, resolve);
+  });
+  return () => new Promise<void>((resolve) => server.close(() => resolve()));
 }
 
 // Serves the loopback URL a case points the engine at. Only the method and the
@@ -342,7 +365,7 @@ async function runWith(
     markerPath,
     evilServerPath: settings.evilServerPath,
     listenerUrl,
-    ...(fixture ? { outsideMarkerPath: fixture.outsideMarkerPath, secretPath: fixture.secretPath } : {}),
+    ...(fixture ? { outsideMarkerPath: fixture.outsideMarkerPath, secretPath: fixture.secretPath, socketPath: fixture.socketPath } : {}),
   };
 
   if (fixture) {
