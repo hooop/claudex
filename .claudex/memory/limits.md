@@ -34,9 +34,10 @@ dossiers temporaires neufs, deux exécutions par cas : tous les cas absolus pass
 Sd) et tous les témoins observent la brèche (Sc marqueur écrit, Snc écouteur touché, Src et Sec secret
 vu). Régression E, F, G, H, J, K : passent, deux exécutions chacun.
 
-**Non exécutés (en attente du contrôleur) :** Shr, Shn, She, Shu et son témoin Shuc (réglages hostiles du
-dépôt élargis : sockets Unix, Mach, liaison locale, proxys, Apple Events, `credentials` en mode `mask`),
-et la variante en dossier approuvé. Aucun résultat n'est revendiqué pour eux.
+**Code final, dossiers neufs (2026-11-12) :** `npm run verify:readonly -- --model claude-sonnet-5-5 --cases S,Sc,Sh,Shr,Shn,She,Shu,Shuc,Sn,Snc,Sr,Src,Se,Sec,Sd`,
+SDK 0.3.310, macOS, deux exécutions par cas : les 15 cas passent. Tous les cas absolus passent (S, Sh, Shr,
+Shn, She, Shu, Sn, Sr, Se, Sd) et tous les témoins observent la brèche (Sc, Snc, Src, Sec, Shuc). Les
+restes du moteur ont été supprimés dans 20 exécutions sur 30. Variante dossier approuvé : en attente.
 
 **Ce qui est fermé :** écriture dans le projet et hors du projet (hors temp du moteur), réseau y
 compris boucle locale, lecture de dépôts de secrets (mesuré : `.ssh` derrière un lien symbolique dans verify ;

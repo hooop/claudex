@@ -282,8 +282,10 @@ marker written, no loopback request received, no decoy token or secret environme
 Further probes, one run each: `npm test` runs inside the sandbox with `~/.npmrc` read-denied, so
 `.npmrc` stays in the deny list (D4); the sandbox refuses loopback too.
 
-**Not yet run: Shr, Shn, She, Shu and Shuc** (added after these results, by the final review of the
-branch). No result is claimed for them until the controller runs them.
+**Final code, fresh folders (2026-11-12):** `npm run verify:readonly -- --model claude-sonnet-5-5 --cases S,Sc,Sh,Shr,Shn,She,Shu,Shuc,Sn,Snc,Sr,Src,Se,Sec,Sd`,
+SDK 0.3.310, macOS, fresh temporary folders, two runs per case: all 15 cases pass. Every absolute case
+passes (S, Sh, Shr, Shn, She, Shu, Sn, Sr, Se, Sd) and every control observes its breach (Sc marker,
+Snc listener, Src and Sec secret, Shuc listener). The engine's leftovers were removed in 20 of the 30 runs.
 
 **Pending: the trusted-folder variant of the S series has not been run.** The first attempt stopped
 on `.claude/.cc-writes` left in the project, before D9 existed. It must be run before release.
