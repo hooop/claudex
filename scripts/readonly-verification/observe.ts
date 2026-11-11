@@ -2,6 +2,8 @@
 // against it and reports what the stream and canUseTool showed. The SDK is
 // injected (QueryFn) so that tests never start a real engine.
 import { execFile } from "node:child_process";
+import { createServer, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -58,6 +60,7 @@ function emptyObservation(): Observation {
     resultSubtype: null,
     error: null,
     trustStateChanges: null,
+    listenerRequests: [],
   };
 }
 
@@ -221,15 +224,61 @@ async function runIn(
   settings: RunSettings,
   afterSetup?: () => Promise<void>,
 ): Promise<Observation> {
+  const observation = emptyObservation();
+  const listener = c.listener ? await startListener(observation) : null;
+  try {
+    return await runWith(dir, query, c, settings, observation, listener?.url ?? null, afterSetup);
+  } finally {
+    await listener?.close();
+  }
+}
+
+// Serves the loopback URL a case points the engine at. Only the method and the
+// path (without query string) are kept: a request may carry the maintainer's
+// credential, so headers and bodies are drained and never stored or printed.
+async function startListener(observation: Observation): Promise<{ url: string; close: () => Promise<void> }> {
+  const server: Server = createServer((request, response) => {
+    const path = (request.url ?? "").split("?")[0] ?? "";
+    observation.listenerRequests.push({ method: request.method ?? "", path });
+    request.resume();
+    response.statusCode = 503;
+    response.end();
+  });
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const { port } = server.address() as AddressInfo;
+  return {
+    url: `http://127.0.0.1:${port}`,
+    close: () =>
+      new Promise<void>((resolve) => {
+        // Keep-alive connections would hold close() open until they time out.
+        server.closeAllConnections();
+        server.close(() => resolve());
+      }),
+  };
+}
+
+async function runWith(
+  dir: string,
+  query: QueryFn,
+  c: VerificationCase,
+  settings: RunSettings,
+  observation: Observation,
+  listenerUrl: string | null,
+  afterSetup?: () => Promise<void>,
+): Promise<Observation> {
   const markerPath = join(dir, MARKER_NAME);
-  const ctx: CaseContext = { markerPath, evilServerPath: settings.evilServerPath };
+  const ctx: CaseContext = { markerPath, evilServerPath: settings.evilServerPath, listenerUrl };
 
   await execFileAsync("git", ["init", "-q"], { cwd: dir });
   await writeProjectFiles(dir, { ...SHARED_FILES, ...c.projectFiles(ctx) });
+  const cwd = c.cwdSubdir === undefined ? dir : join(dir, c.cwdSubdir);
+  await mkdir(cwd, { recursive: true });
   const prompt = c.prompt(ctx);
   await afterSetup?.();
 
-  const observation = emptyObservation();
   const abortController = new AbortController();
   // Once the run has ended, a straggling stream must not alter what we return.
   let closed = false;
@@ -251,7 +300,7 @@ async function runIn(
 
   const queryOptions: Record<string, unknown> = {
     ...c.options,
-    cwd: dir,
+    cwd,
     model: settings.model,
     maxTurns: settings.maxTurns,
     abortController,

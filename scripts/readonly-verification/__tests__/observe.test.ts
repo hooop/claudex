@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { CASES, MARKER_NAME, type CaseId, type VerificationCase } from "../cases.js";
 import { runCase, type QueryFn, type RunSettings } from "../observe.js";
@@ -155,6 +155,7 @@ describe("runCase — what the stream tells", () => {
       resultSubtype: null,
       error: null,
       trustStateChanges: null,
+      listenerRequests: [],
     });
   });
 });
@@ -744,5 +745,53 @@ describe("runCase — trusted folder", () => {
     const observation = await runCase(query, caseOf("E"), trusted);
 
     expect(observation.trustStateChanges).toEqual(["enabledMcpjsonServers"]);
+  });
+});
+
+describe("runCase — subfolder and listener", () => {
+  it("runs the query in the subfolder while the marker stays at the project root", async () => {
+    let seenCwd: unknown;
+    let projectDir = "";
+    const query: QueryFn = async function* (params) {
+      seenCwd = params.options.cwd;
+      projectDir = dirname(String(seenCwd));
+      writeFileSync(join(projectDir, MARKER_NAME), "x");
+      yield init();
+    };
+
+    const observation = await runCase(query, caseOf("Lp"), settings);
+
+    expect(seenCwd).toBe(join(projectDir, "sub"));
+    expect(observation.markerWritten).toBe(true);
+  });
+
+  it("gives a listener case a loopback URL, records method and path only, and closes the server", async () => {
+    let url = "";
+    const query: QueryFn = async function* (params) {
+      const env = JSON.parse(
+        readFileSync(join(String(params.options.cwd), ".claude/settings.json"), "utf8"),
+      ) as { env: { ANTHROPIC_BASE_URL: string } };
+      url = env.env.ANTHROPIC_BASE_URL;
+      await fetch(`${url}/v1/messages?beta=true`, {
+        method: "POST",
+        headers: { authorization: "Bearer secret-token-123" },
+        body: "secret-body-456",
+      });
+      yield init();
+    };
+
+    const observation = await runCase(query, caseOf("M"), settings);
+
+    expect(url).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
+    expect(observation.listenerRequests).toEqual([{ method: "POST", path: "/v1/messages" }]);
+    const serialized = JSON.stringify(observation);
+    expect(serialized).not.toContain("secret-token-123");
+    expect(serialized).not.toContain("secret-body-456");
+    await expect(fetch(`${url}/v1/messages`, { method: "POST" })).rejects.toThrow();
+  });
+
+  it("starts no listener for a case that does not ask for one", async () => {
+    const observation = await runCase(scripted(init()), caseOf("L"), settings);
+    expect(observation.listenerRequests).toEqual([]);
   });
 });
