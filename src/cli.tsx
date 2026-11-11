@@ -3,12 +3,14 @@ import { render } from "ink";
 import type { SettingsFinding } from "./agents/projectSettings.js";
 import { prepareLaunch, SETTINGS_REFUSED_MESSAGE } from "./launch.js";
 import { hasInteractiveTerminal, RENDER_OPTIONS } from "./renderOptions.js";
-import { SettingsConsent } from "./ui/components/SettingsConsent.js";
+import { CONSENT_RENDER_OPTIONS, formatConsentText, SettingsConsent } from "./ui/components/SettingsConsent.js";
 import { Root } from "./ui/Root.js";
 
-// The consent screen gets its own Ink instance, fully unmounted before Root
-// renders, so the two alternate-screen sessions never overlap.
+// The list is printed as plain text so it stays in scrollback however long it
+// is; Ink then draws only a short prompt in the normal screen. That instance is
+// fully unmounted before Root takes the alternate screen.
 async function askInInk(findings: SettingsFinding[]): Promise<boolean> {
+  process.stdout.write(`${formatConsentText(findings)}\n`);
   let accepted = false;
   const app = render(
     <SettingsConsent
@@ -18,7 +20,7 @@ async function askInInk(findings: SettingsFinding[]): Promise<boolean> {
         app.unmount();
       }}
     />,
-    RENDER_OPTIONS,
+    CONSENT_RENDER_OPTIONS,
   );
   await app.waitUntilExit();
   return accepted;
