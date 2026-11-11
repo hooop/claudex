@@ -41,7 +41,8 @@ disableSkillShellExecution }`, voir `decisions.md` 2026-11-11), avec les contrô
 | L | témoin **écrit** | témoin **écrit** |
 
 Les contrôles montrent que chaque vecteur était actif dans ce même environnement : les réussites de
-E, H et J ne sont pas vides. Plugins listés à l'init : uniquement ceux intégrés au moteur
+E, H et J ne sont pas vides. Réserve : pour E, les connecteurs n'apparaissent pas à chaque init (Ec les a vus dans 1 exécution
+neuve sur 2). Plugins listés à l'init : uniquement ceux intégrés au moteur
 (`builtin`), avant comme après. Aucune clé de l'entrée du dossier approuvé dans `~/.claude.json` n'a
 changé pendant les exécutions. Test manuel complémentaire (script hors dépôt, vrai `ClaudeAgent`) :
 un tour de débat lit et répond, un tour d'implémentation écrit un fichier après une demande de
@@ -214,7 +215,7 @@ comme A. A et D sont identiques. La conclusion du 2026-08-29 tient toujours : se
   aucun serveur MCP, aucun connecteur claude.ai), après la fusion de cette montée de version.
 - Fermés pour le débat le 2026-11-11 (J et H), voir l'entrée du 2026-11-11 en haut de ce fichier.
 
-**Comment appliquer :** relancer `npm run verify:readonly` à chaque montée de version du SDK, sur
+**Comment appliquer :** (Remplacé par l'entrée du 2026-11-11 pour les cas E à L.) relancer `npm run verify:readonly` à chaque montée de version du SDK, sur
 l'ancienne et sur la nouvelle version (`--sdk-dir` désigne une installation isolée de chacune), avec
 le même modèle. Le critère est la présence du fichier sur disque, pas le message du modèle. E, F et G
 doivent réussir sur la nouvelle version ; un `inconclusive` (par exemple des outils de connecteurs
