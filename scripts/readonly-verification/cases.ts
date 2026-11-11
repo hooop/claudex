@@ -69,7 +69,8 @@ function bashOnlyOptions(permissionMode: "plan" | "default", allowedTools?: stri
 }
 
 // debateQueryOptions() returns an interface type, which does not assign to the
-// Record<string, unknown> that cases carry: the spread converts it, and gives each case its own copy.
+// Record<string, unknown> that cases carry: the spread converts it. The fresh
+// copy per case comes from debateQueryOptions() itself.
 function debateOptions(): Record<string, unknown> {
   return { ...debateQueryOptions() };
 }

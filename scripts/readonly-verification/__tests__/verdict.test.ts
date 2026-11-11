@@ -246,7 +246,25 @@ describe("evaluate — no MCP in a judged debate case", () => {
         }),
       );
       expect(verdict.status, `case ${id}`).toBe("fail");
+      expect(verdict.reasons.join("\n"), `case ${id}`).toContain(`MCP tools used: ${EVIL_TOOL}`);
     }
+  });
+
+  it("fails on a placeholder server recorded for an entry the observer could not parse", () => {
+    const verdict = evaluate(
+      caseOf("E"),
+      baseObservation({ mcpServers: [{ name: "(unparsed)", status: "unknown", source: null }] }),
+    );
+    expect(verdict.status).toBe("fail");
+  });
+
+  it("fails on an MCP tool use even when no init message arrived", () => {
+    const verdict = evaluate(
+      caseOf("E"),
+      baseObservation({ initTools: null, toolUses: [{ id: "t1", name: EVIL_TOOL }] }),
+    );
+    expect(verdict.status).toBe("fail");
+    expect(verdict.reasons.join("\n")).toContain("MCP tools used:");
   });
 
   it("passes a clean isolated run", () => {

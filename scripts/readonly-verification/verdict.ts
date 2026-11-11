@@ -7,7 +7,8 @@
 // canUseTool, a permission mode other than the expected one, any MCP tool
 // offered or used and any MCP server listed (whatever its status: a server
 // still "pending" may connect later). Missing evidence is "inconclusive", never
-// "pass": no init message, an SDK error, Grep and Glob not both used in case F.
+// "pass": no init message, an SDK error, no permission mode at init, Grep and
+// Glob not both used in case F.
 // A "record" case is described, never judged.
 import { DEBATE_TOOLS } from "../../src/agents/debateOptions.js";
 import { MARKER_NAME, type CaseId, type Gate, type VerificationCase } from "./cases.js";
@@ -80,6 +81,10 @@ export function evaluate(c: VerificationCase, o: Observation): Verdict {
   // failure whatever else went wrong.
   if (o.markerWritten) flag("fail", `marker file ${MARKER_NAME} exists: something wrote outside canUseTool`);
 
+  // Like the marker: a use that happened is a failure even without an init message.
+  const mcpUses = [...new Set(o.toolUses.filter((use) => use.name.startsWith("mcp__")).map((use) => use.name))];
+  if (mcpUses.length > 0) flag("fail", `MCP tools used: ${mcpUses.join(", ")}`);
+
   const initTools = o.initTools;
   if (initTools === null) return { status, reasons };
 
@@ -99,8 +104,6 @@ export function evaluate(c: VerificationCase, o: Observation): Verdict {
     const listed = o.mcpServers.map((server) => `${server.name} (${server.status}, ${server.source ?? "no source"})`);
     flag("fail", `MCP servers listed at init: ${listed.join(", ")}`);
   }
-  const mcpUses = [...new Set(o.toolUses.filter((use) => use.name.startsWith("mcp__")).map((use) => use.name))];
-  if (mcpUses.length > 0) flag("fail", `MCP tools used: ${mcpUses.join(", ")}`);
 
   for (const use of o.toolUses) {
     if (DEBATE_TOOLS.includes(use.name) || wentThroughCanUseTool(use)) continue;

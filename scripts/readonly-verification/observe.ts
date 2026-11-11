@@ -67,12 +67,19 @@ function record(observation: Observation, message: unknown): void {
       observation.initTools = message.tools.filter((tool): tool is string => typeof tool === "string");
     }
     if (typeof message.permissionMode === "string") observation.initPermissionMode = message.permissionMode;
+    // Never dropped: an entry this code cannot read is still a listed server,
+    // and dropping it would let a shape change in the SDK pass the verdict.
     if (Array.isArray(message.mcp_servers)) {
-      observation.mcpServers = message.mcp_servers.flatMap((server: unknown) =>
-        isRecord(server) && typeof server.name === "string" && typeof server.status === "string"
-          ? [{ name: server.name, status: server.status, source: typeof server.source === "string" ? server.source : null }]
-          : [],
-      );
+      observation.mcpServers = (message.mcp_servers as unknown[]).map((server) => {
+        const entry = isRecord(server) ? server : {};
+        return {
+          name: typeof entry.name === "string" ? entry.name : "(unparsed)",
+          status: typeof entry.status === "string" ? entry.status : "unknown",
+          source: typeof entry.source === "string" ? entry.source : null,
+        };
+      });
+    } else if (message.mcp_servers !== undefined) {
+      observation.mcpServers = [{ name: "(unparsed mcp_servers)", status: "unknown", source: null }];
     }
     if (Array.isArray(message.plugins)) {
       observation.initPlugins = message.plugins.flatMap((plugin: unknown) =>

@@ -71,6 +71,27 @@ describe("runCase — what the stream tells", () => {
     expect(observation.error).toBeNull();
   });
 
+  it("never drops an MCP server entry it cannot parse", async () => {
+    const query = scripted(
+      init({ mcp_servers: [{ name: "x" }, { status: "pending" }, "weird", null] }),
+    );
+
+    const observation = await runCase(query, caseOf("E"), settings);
+
+    expect(observation.mcpServers).toEqual([
+      { name: "x", status: "unknown", source: null },
+      { name: "(unparsed)", status: "pending", source: null },
+      { name: "(unparsed)", status: "unknown", source: null },
+      { name: "(unparsed)", status: "unknown", source: null },
+    ]);
+  });
+
+  it("records a placeholder server when mcp_servers is not an array", async () => {
+    const observation = await runCase(scripted(init({ mcp_servers: { evil: {} } })), caseOf("E"), settings);
+
+    expect(observation.mcpServers).toEqual([{ name: "(unparsed mcp_servers)", status: "unknown", source: null }]);
+  });
+
   it("collects tool uses from assistant messages", async () => {
     const query = scripted(
       init(),

@@ -156,7 +156,7 @@ trust dialog Claude Code shows on first opening a folder (the SDK has none). Rec
 
 ### D5 — New verdict criterion: no MCP in a judged debate case
 
-For every judged case (E to L), any of these is a `fail`:
+For every judged case (E to K), any of these is a `fail`:
 - an `mcp__` tool in the init tools;
 - any entry in the init `mcp_servers`, whatever its status (`pending` included);
 - any `mcp__` tool use.
