@@ -10,7 +10,9 @@ vi.mock("@anthropic-ai/claude-agent-sdk", () => {
 import {
   COMMAND_SETTING_KEYS,
   PROJECT_SETTINGS_FILES,
+  SETTINGS_CHANGED_MESSAGE,
   type SettingsFinding,
+  createSettingsGuard,
   formatSettingValue,
   inspectProjectSettings,
   sameFindings,
@@ -283,5 +285,63 @@ describe("formatSettingValue", () => {
 
   it("formats objects as JSON", () => {
     expect(formatSettingValue({ b: 1 })).toBe('{"b":1}');
+  });
+});
+
+describe("createSettingsGuard", () => {
+  const approved: SettingsFinding[] = [
+    {
+      file: FILE,
+      kind: "entries",
+      entries: [
+        { key: "apiKeyHelper", value: "helper.sh" },
+        { key: "env.A", value: "1" },
+      ],
+    },
+  ];
+  const guardFor = (current: SettingsFinding[], base: SettingsFinding[] = approved) =>
+    createSettingsGuard(base, async () => current)("/project");
+
+  it("proceeds when nothing was approved and nothing is found", async () => {
+    expect(await guardFor([], [])).toBeNull();
+  });
+
+  it("proceeds when the same findings come back reordered", async () => {
+    const reordered: SettingsFinding[] = [
+      { file: FILE, kind: "entries", entries: [{ key: "env.A", value: "1" }, { key: "apiKeyHelper", value: "helper.sh" }] },
+    ];
+    expect(await guardFor(reordered)).toBeNull();
+  });
+
+  it("proceeds when the approved settings were removed", async () => {
+    expect(await guardFor([])).toBeNull();
+  });
+
+  it("refuses a changed value, an added key, an added file or an unreadable file", async () => {
+    const entries = approved[0] as Extract<SettingsFinding, { kind: "entries" }>;
+    const cases: SettingsFinding[][] = [
+      [{ ...entries, entries: [{ key: "apiKeyHelper", value: "other.sh" }, { key: "env.A", value: "1" }] }],
+      [{ ...entries, entries: [...entries.entries, { key: "proxyAuthHelper", value: "p.sh" }] }],
+      [...approved, { file: "other.json", kind: "entries", entries: [{ key: "env.B", value: "2" }] }],
+      [{ file: FILE, kind: "unreadable", reason: "invalid JSON" }],
+    ];
+    for (const current of cases) expect(await guardFor(current)).toBe(SETTINGS_CHANGED_MESSAGE);
+  });
+
+  it("refuses new findings when none were approved", async () => {
+    expect(await guardFor(approved, [])).toBe(SETTINGS_CHANGED_MESSAGE);
+  });
+
+  it("refuses when the inspection fails", async () => {
+    const guard = createSettingsGuard(approved, async () => {
+      throw new Error("boom");
+    });
+    expect(await guard("/project")).toBe(SETTINGS_CHANGED_MESSAGE);
+  });
+
+  it("inspects the directory it is given", async () => {
+    const inspect = vi.fn(async () => []);
+    await createSettingsGuard([], inspect)("/some/dir");
+    expect(inspect).toHaveBeenCalledWith("/some/dir");
   });
 });

@@ -3,6 +3,7 @@ import type { AgentResult } from "../orchestrator/types.js";
 import type { AgentActivity } from "../types.js";
 import { formatClaudeModel } from "../util/projectStatus.js";
 import { debateQueryOptions } from "./debateOptions.js";
+import { SETTINGS_CHANGED_MESSAGE, type SessionGuard } from "./projectSettings.js";
 import { AUTO_MODEL_LABEL, type AgentSendOptions, type CodingAgent } from "./types.js";
 
 /**
@@ -21,7 +22,10 @@ export class ClaudeAgent implements CodingAgent {
   private abortController: AbortController | null = null;
   private activeSend: Promise<AgentResult> | null = null;
 
-  constructor(model?: string, initialDisplayModel?: string) {
+  private readonly guard: SessionGuard | undefined;
+
+  constructor(model?: string, initialDisplayModel?: string, guard?: SessionGuard) {
+    this.guard = guard;
     this.model = model;
     this.initialDisplayModel = initialDisplayModel;
   }
@@ -116,6 +120,13 @@ export class ClaudeAgent implements CodingAgent {
     };
 
     try {
+      if (this.guard) {
+        // Fail closed: a guard that throws must not let the turn through.
+        const refusal = await this.guard(options.cwd).catch(() => SETTINGS_CHANGED_MESSAGE);
+        if (abortController.signal.aborted) return { kind: "cancelled" };
+        if (refusal !== null) return { kind: "error", message: refusal };
+      }
+
       const stream = query({
         prompt: message,
         options: {

@@ -139,3 +139,26 @@ function escapeText(text: string): string {
 export function formatSettingValue(value: unknown): string {
   return escapeText(JSON.stringify(value) ?? String(value));
 }
+
+export type SessionGuard = (cwd: string) => Promise<string | null>;
+
+export const SETTINGS_CHANGED_MESSAGE =
+  "Les réglages Claude Code du projet (.claude/settings.json) ont changé pendant la session : le tour n'a pas été envoyé. Quittez Claudex et relancez-le pour les revoir.";
+
+// Settings are approved once at launch, but the engine re-reads them at every
+// turn and the agents (or anything else) can edit the file in between. Removing
+// approved settings is safe; anything else that differs is refused. Failing to
+// inspect also refuses, so the guard fails closed.
+export function createSettingsGuard(
+  approved: readonly SettingsFinding[],
+  inspect: (dir: string) => Promise<SettingsFinding[]> = inspectProjectSettings,
+): SessionGuard {
+  return async (cwd) => {
+    try {
+      const current = await inspect(cwd);
+      return current.length === 0 || sameFindings(current, approved) ? null : SETTINGS_CHANGED_MESSAGE;
+    } catch {
+      return SETTINGS_CHANGED_MESSAGE;
+    }
+  };
+}

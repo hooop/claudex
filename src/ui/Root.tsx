@@ -2,6 +2,7 @@ import { useApp, useInput } from "ink";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ClaudeAgent } from "../agents/claudeAgent.js";
 import { CodexAgent } from "../agents/codexAgent.js";
+import { type SettingsFinding, createSettingsGuard } from "../agents/projectSettings.js";
 import type { CodingAgent } from "../agents/types.js";
 import {
   appendDevlog,
@@ -44,8 +45,12 @@ interface PendingTerminal {
   snapshot?: readonly TranscriptEntry[];
 }
 
-export function Root(props: { cwd: string; initialTopic?: string }) {
-  const { cwd, initialTopic } = props;
+export function Root(props: {
+  cwd: string;
+  initialTopic?: string;
+  approvedSettings?: readonly SettingsFinding[];
+}) {
+  const { cwd, initialTopic, approvedSettings = [] } = props;
   const { exit } = useApp();
 
   const [status, setStatus] = useState(() => getProjectStatus(cwd));
@@ -53,6 +58,7 @@ export function Root(props: { cwd: string; initialTopic?: string }) {
     claude: new ClaudeAgent(
       status.claudeConfiguredModel ?? undefined,
       status.claudeDefaultModel ?? undefined,
+      createSettingsGuard(approvedSettings),
     ),
     codex: new CodexAgent(undefined, codexInitialModelLabel(status)),
   }));
