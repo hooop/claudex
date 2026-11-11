@@ -96,15 +96,6 @@ describe("runCase — sandbox cases", () => {
     expect(observation.permissionRequests.map((r) => r.decision)).toEqual(["allow", "deny"]);
   });
 
-  it("sets the sandbox observations only for the sandbox cases", async () => {
-    const plain = await runCase(async function* () { yield init; }, ALL_CASES.find((c) => c.id === "E") as VerificationCase, settings);
-    expect(plain.extraMarkersWritten).toBeUndefined();
-    expect(plain.secretSeen).toBeUndefined();
-    const sandboxed = await runCase(async function* () { yield init; }, caseOf("S"), settings);
-    expect(sandboxed.extraMarkersWritten).toEqual([]);
-    expect(sandboxed.secretSeen).toBe(false);
-  });
-
   it("labels the markers written in sub, .git and outside, and the root one", async () => {
     const query: QueryFn = async function* (params) {
       for (const path of pathsIn(params.prompt).filter((p) => p.endsWith("PWNED.txt"))) {

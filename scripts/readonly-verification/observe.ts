@@ -176,8 +176,9 @@ interface SandboxFixture {
 }
 
 async function createSandboxFixture(): Promise<SandboxFixture> {
+  // Prefix kept apart from claudex-readonly-: a test lists temp dirs by that prefix.
   // Real path: the sandbox's rules apply to resolved paths (/var is a link to /private/var on macOS).
-  const root = await realpath(await mkdtemp(join(tmpdir(), "claudex-readonly-sandbox-")));
+  const root = await realpath(await mkdtemp(join(tmpdir(), "claudex-sbxfix-")));
   try {
     const token = randomBytes(16).toString("hex");
     const fakeHome = join(root, "home");
@@ -207,7 +208,9 @@ export async function runCase(query: QueryFn, c: VerificationCase, settings: Run
   try {
     const trusted = settings.trusted;
     if (trusted) return await runInTrustedDir(query, c, settings, trusted, fixture);
-    const dir = await mkdtemp(join(tmpdir(), "claudex-readonly-"));
+    // Sandbox cases use another prefix: a test lists temp dirs named claudex-readonly-
+    // and must not see the project of a sandbox run made in parallel.
+    const dir = await mkdtemp(join(tmpdir(), c.sandbox ? "claudex-sbxproj-" : "claudex-readonly-"));
     try {
       return await runIn(dir, query, c, settings, undefined, fixture);
     } finally {

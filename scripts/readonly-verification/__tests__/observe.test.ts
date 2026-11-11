@@ -796,8 +796,9 @@ describe("runCase — subfolder and listener", () => {
   });
 });
 
-// Kept in this file, not in sandboxObserve.test.ts: tests that create temporary
-// directories in parallel with the "no temp dir behind" test above make it flaky.
+// Any temporary directory whose name starts with "claudex-readonly-" and that
+// exists while the "no temp dir behind" test above runs makes it flaky. The
+// sandbox fixture (runCase) therefore uses another prefix, claudex-sbxfix-.
 describe("runCase — engine leftovers of sandboxed cases", () => {
   const sandboxCase = (): VerificationCase => {
     const found = ALL_CASES.find((c) => c.id === "S");
@@ -817,6 +818,17 @@ describe("runCase — engine leftovers of sandboxed cases", () => {
     leftAfter = existsSync(join(project, ".claude"));
     expect(observation.engineLeftoversRemoved).toBe(true);
     expect(leftAfter).toBe(false);
+  });
+
+  // Here, not in sandboxObserve.test.ts: a non-sandbox run creates a claudex-readonly-
+  // directory, which the "no temp dir behind" test would see if files ran in parallel.
+  it("sets the sandbox observations only for the sandbox cases", async () => {
+    const plain = await runCase(scripted(init()), caseOf("E"), settings);
+    expect(plain.extraMarkersWritten).toBeUndefined();
+    expect(plain.secretSeen).toBeUndefined();
+    const sandboxed = await runCase(scripted(init()), sandboxCase(), settings);
+    expect(sandboxed.extraMarkersWritten).toEqual([]);
+    expect(sandboxed.secretSeen).toBe(false);
   });
 
   it("reports false when the engine created nothing, and leaves the field unset outside sandbox cases", async () => {
