@@ -67,6 +67,15 @@ it("les cibles en double sont dédoublonnées et triées", async () => {
   expect(result?.extraDenyRead).toEqual([realpathSync(a), realpathSync(b)].sort());
 });
 
+it("variables secrètes : AUTH, DSN et DATABASE_URL en plus, mais ni PWD, ni PATH, ni GIT_AUTHOR_NAME", async () => {
+  const { dir } = tempProject();
+  const env = {
+    XAUTH_TOKEN: "x", SENTRY_DSN: "x", DATABASE_URL: "x", PWD: "/p", PATH: "/bin", GIT_AUTHOR_NAME: "n", OAUTH_CODE: "x",
+  };
+  const result = await resolveDebateSandbox(dir, "darwin", "/h", env);
+  expect(result?.secretEnvNames).toEqual(["DATABASE_URL", "OAUTH_CODE", "SENTRY_DSN", "XAUTH_TOKEN"]);
+});
+
 it("variables secrètes : noms reconnus sans tenir compte de la casse, triés", async () => {
   const { dir } = tempProject();
   const env = { github_token: "x", MY_API_KEY: "x", DB_PASSWORD: "x", PATH: "/bin", HOME: "/h", AWS_SECRET: "x", GIT_CREDENTIAL: "x" };

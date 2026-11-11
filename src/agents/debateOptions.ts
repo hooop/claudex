@@ -32,6 +32,14 @@ export const CREDENTIAL_READ_DENY: readonly string[] = [
   ".claude.json",
   ".codex",
   "Library/Keychains",
+  ".vault-token",
+  ".cargo/credentials.toml",
+  ".terraform.d/credentials.tfrc.json",
+  ".password-store",
+  ".config/op",
+  ".local/share/keyrings",
+  ".zsh_history",
+  ".bash_history",
 ];
 
 export interface DebateSandbox {

@@ -59,6 +59,7 @@ const sandboxed = { cwd: "/private/tmp/p", home: "/Users/u", extraDenyRead: [], 
 const DENY_READ_RELATIVE = [
   ".ssh", ".aws", ".azure", ".config/gcloud", ".kube", ".docker", ".gnupg", ".netrc", ".git-credentials",
   ".npmrc", ".pypirc", ".config/gh", ".claude", ".claude.json", ".codex", "Library/Keychains",
+  ".vault-token", ".cargo/credentials.toml", ".terraform.d/credentials.tfrc.json", ".password-store", ".config/op", ".local/share/keyrings", ".zsh_history", ".bash_history",
 ];
 
 it("avec sandbox, Bash s'ajoute aux outils et le mode reste default sans outil pré-approuvé", () => {
@@ -96,7 +97,7 @@ it("avec sandbox, le bloc sandbox est exactement celui du design", () => {
 
 it("ne protège jamais .gitconfig en lecture", () => {
   const denyRead = debateQueryOptions(sandboxed).sandbox?.filesystem.denyRead ?? [];
-  expect(denyRead).toHaveLength(16);
+  expect(denyRead).toHaveLength(24);
   expect(denyRead.some((p) => p.endsWith(".gitconfig"))).toBe(false);
 });
 
@@ -107,7 +108,7 @@ it("deux appels ne partagent aucun tableau de la sandbox", () => {
   first.sandbox?.network.allowedDomains.push("example.com");
   first.tools.push("Edit");
   const second = debateQueryOptions(sandboxed);
-  expect(second.sandbox?.filesystem.denyRead).toHaveLength(16);
+  expect(second.sandbox?.filesystem.denyRead).toHaveLength(24);
   expect(second.sandbox?.filesystem.denyWrite).toEqual(["/private/tmp/p"]);
   expect(second.sandbox?.network.allowedDomains).toEqual([]);
   expect(second.tools).toEqual(["Read", "Grep", "Glob", "Bash"]);
@@ -116,9 +117,9 @@ it("deux appels ne partagent aucun tableau de la sandbox", () => {
 it("ajoute les cibles réelles des liens après les chemins du home", () => {
   const o = debateQueryOptions({ ...sandboxed, extraDenyRead: ["/vault/ssh"] });
   const denyRead = o.sandbox?.filesystem.denyRead ?? [];
-  expect(denyRead).toHaveLength(17);
+  expect(denyRead).toHaveLength(25);
   expect(denyRead[0]).toBe("/Users/u/.ssh");
-  expect(denyRead[16]).toBe("/vault/ssh");
+  expect(denyRead[24]).toBe("/vault/ssh");
 });
 
 it("masque les variables secrètes à Bash, et seulement s'il y en a", () => {

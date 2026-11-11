@@ -133,7 +133,9 @@ those, exactly as with Read outside the project today. `allowedTools` stays `[]`
 
 `denyRead`, under the user's home directory: `.ssh`, `.aws`, `.azure`, `.config/gcloud`, `.kube`,
 `.docker`, `.gnupg`, `.netrc`, `.git-credentials`, `.npmrc`, `.pypirc`, `.config/gh`, `.claude`,
-`.claude.json`, `.codex`, `Library/Keychains`. A list, so incomplete by nature: it is a mitigation,
+`.claude.json`, `.codex`, `Library/Keychains`, `.vault-token`, `.cargo/credentials.toml`,
+`.terraform.d/credentials.tfrc.json`, `.password-store`, `.config/op`, `.local/share/keyrings`,
+`.zsh_history`, `.bash_history`. A list, so incomplete by nature: it is a mitigation,
 not a guarantee, and the README says so. Not denied: `.gitconfig` (git breaks, measured). `.npmrc`
 stays only if the verification shows `npm test` still runs with it denied; otherwise it is dropped
 and the reason is written in the spec and `limits.md`.
@@ -150,7 +152,8 @@ This makes Claude stricter than Codex (whose reads are unrestricted); Codex is n
 Without this, `env` in the sandbox prints `ANTHROPIC_API_KEY`, `GITHUB_TOKEN` and the like. Measured
 on SDK 0.3.310 (2026-11-11): `sandbox.credentials.envVars: [{ name, mode: "deny" }]` hides the
 variable from the command (`$FAKE_API_KEY` empty, other variables untouched). The adapter denies
-every variable of its own environment whose name matches `/KEY|SECRET|TOKEN|PASSWORD|CREDENTIAL/i`
+every variable of its own environment whose name matches `/KEY|SECRET|TOKEN|PASSWORD|CREDENTIAL|AUTH(?!OR)|DSN|DATABASE_URL/i` (not `PWD`, which would hide
+the shell's `$PWD`, nor `PAT`, which matches `PATH`; `AUTH(?!OR)` keeps `GIT_AUTHOR_NAME`)
 (sorted), and omits the `credentials` key when none matches. Reason: parity with Codex, whose
 default shell environment policy drops variables whose name contains KEY, SECRET or TOKEN.
 

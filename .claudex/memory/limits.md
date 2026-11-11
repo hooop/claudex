@@ -51,7 +51,7 @@ liste ne sont pas mesurées une à une), variables secrètes par nom,
   Code de l'utilisateur ; aucun réglage mesuré ne le déplace.
 - Les lectures hors de la liste de refus sont libres, comme pour Codex : la sortie entre dans le
   transcrit envoyé aux deux modèles.
-- L'heuristique de noms de variables (KEY, SECRET, TOKEN, PASSWORD, CREDENTIAL) rate un secret nommé
+- L'heuristique de noms de variables (KEY, SECRET, TOKEN, PASSWORD, CREDENTIAL, AUTH, DSN, DATABASE_URL) rate un secret nommé
   autrement.
 - Linux, WSL, Windows : pas de Bash pour Claude, non mesurés.
 - Une seule machine et un seul compte mesurés. Si le moteur met du contenu dans `.claude/`, Claudex le
