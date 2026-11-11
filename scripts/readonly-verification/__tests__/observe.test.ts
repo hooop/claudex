@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -619,6 +619,43 @@ describe("runCase — trusted folder", () => {
       expect(existsSync(join(dir, relative))).toBe(true);
     },
   );
+
+  it("stops when the engine swaps a directory for a symlink, and deletes nothing outside", async () => {
+    const outside = join(root, "outside");
+    mkdirSync(outside);
+    writeFileSync(join(outside, "settings.json"), "precious");
+    const query: QueryFn = async function* ({ options }) {
+      const cwd = options.cwd as string;
+      rmSync(join(cwd, ".claude"), { recursive: true });
+      symlinkSync(outside, join(cwd, ".claude"));
+      yield init();
+    };
+
+    await expect(runCase(query, caseOf("L"), trusted)).rejects.toThrow(/\.claude/);
+
+    expect(readFileSync(join(outside, "settings.json"), "utf8")).toBe("precious");
+  });
+
+  it("keeps the original error in the message when the run failed and files were left", async () => {
+    // Throws after the snapshot, having written a file the snapshot lacks.
+    const failing: VerificationCase = {
+      ...caseOf("E"),
+      options: Object.defineProperty({}, "boom", {
+        enumerable: true,
+        get: () => {
+          writeFileSync(join(dir, "other.txt"), "x");
+          throw new Error("options exploded");
+        },
+      }) as VerificationCase["options"],
+    };
+
+    const error = await runCase(scripted(init()), failing, trusted).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(TrustedDirError);
+    expect((error as Error).message).toContain("other.txt");
+    expect((error as Error).message).toContain("options exploded");
+    expect((error as Error).message).toContain("nothing deleted but the marker");
+  });
 
   it("removes only the marker when it stops on an unaccounted file", async () => {
     const query: QueryFn = async function* ({ options }) {

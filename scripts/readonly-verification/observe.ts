@@ -7,7 +7,7 @@ import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join } from "node:path";
 import { promisify } from "node:util";
-import { TrustedDirError, assertEmptyDir, changedKeys, cleanupToSnapshot, readProjectEntry, snapshotTree } from "./trustedDir.js";
+import { TrustedDirError, assertEmptyDir, changedKeys, cleanupToSnapshot, readProjectEntry, snapshotTree, type TreeSnapshot } from "./trustedDir.js";
 import { MARKER_NAME, decide, type CaseContext, type VerificationCase } from "./cases.js";
 import type { Observation } from "./verdict.js";
 
@@ -168,7 +168,7 @@ async function runInTrustedDir(
   const { dir, configFile } = trusted;
   await assertEmptyDir(dir);
   const before = await readProjectEntry(configFile, dir);
-  let snapshot: { files: string[]; dirs: string[] } | undefined;
+  let snapshot: TreeSnapshot | undefined;
   let observation: Observation | undefined;
   let runError: Error | undefined;
   try {
@@ -188,8 +188,9 @@ async function runInTrustedDir(
   const { unaccounted } = await cleanupToSnapshot(dir, snapshot, MARKER_NAME);
   if (unaccounted.length > 0) {
     throw new TrustedDirError(
-      `the run left what it cannot account for in ${dir}, nothing deleted: ${unaccounted.join(", ")}` +
-        (await describeTrustChanges(configFile, dir, before)),
+      `the run left what it cannot account for in ${dir}, nothing deleted but the marker: ${unaccounted.join(", ")}` +
+        (await describeTrustChanges(configFile, dir, before)) +
+        (runError ? `; the run itself failed: ${runError.message}` : ""),
     );
   }
   await assertEmptyDir(dir);

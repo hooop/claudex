@@ -70,43 +70,68 @@ export function changedKeys(before: Record<string, unknown> | null, after: Recor
   return [...keys].filter((key) => JSON.stringify(a[key]) !== JSON.stringify(b[key])).sort();
 }
 
-/** Every path under `dir` (relative, files and directories), without following symlinks. */
-export async function snapshotTree(dir: string): Promise<{ files: string[]; dirs: string[] }> {
-  const files: string[] = [];
-  const dirs: string[] = [];
+export type TreeSnapshot = Map<string, "file" | "dir" | "link">;
+
+/** Every path under `dir` (relative) with its type, without following symlinks. */
+export async function snapshotTree(dir: string): Promise<TreeSnapshot> {
+  const entries: TreeSnapshot = new Map();
   const walk = async (relative: string): Promise<void> => {
     for (const name of await readdir(join(dir, relative))) {
       const path = join(relative, name);
-      if ((await lstat(join(dir, path))).isDirectory()) {
-        dirs.push(path);
+      const info = await lstat(join(dir, path));
+      if (info.isDirectory()) {
+        entries.set(path, "dir");
         await walk(path);
       } else {
-        files.push(path);
+        entries.set(path, info.isSymbolicLink() ? "link" : "file");
       }
     }
   };
   await walk("");
-  return { files, dirs };
+  return entries;
 }
 
 /**
- * Removes what a snapshot accounts for, nothing else. Anything present that
- * the snapshot does not list (other than `extraFile`, the marker) stops the
- * cleanup with only the marker removed: the folder is left for the maintainer.
- * Directories go with a non-recursive rmdir, deepest first, so a directory
- * that still holds something throws instead of being emptied.
+ * Removes what a snapshot accounts for, nothing else. A path that is not in
+ * the snapshot, or whose type changed (a directory swapped for a symlink would
+ * make a deletion follow it out of the folder), is unaccounted: only the
+ * marker is removed and the folder is left for the maintainer. Directories go
+ * with a non-recursive rmdir, deepest first, so one that still holds something
+ * throws instead of being emptied.
  */
 export async function cleanupToSnapshot(
   dir: string,
-  snapshot: { files: string[]; dirs: string[] },
+  snapshot: TreeSnapshot,
   extraFile: string,
 ): Promise<{ unaccounted: string[] }> {
-  const known = new Set([...snapshot.files, ...snapshot.dirs]);
   const now = await snapshotTree(dir);
   await rm(join(dir, extraFile), { force: true });
-  const unaccounted = [...now.files, ...now.dirs].filter((path) => !known.has(path) && path !== extraFile).sort();
+  const unaccounted = [...now]
+    .filter(([path, type]) => path !== extraFile && snapshot.get(path) !== type)
+    .map(([path]) => path)
+    .sort();
   if (unaccounted.length > 0) return { unaccounted };
-  for (const file of snapshot.files) await rm(join(dir, file), { force: true });
-  for (const sub of [...snapshot.dirs].sort((a, b) => b.length - a.length)) await rmdir(join(dir, sub));
+
+  // Checked again right before each deletion, parents included, in case the
+  // tree moved since the listing.
+  const verify = async (path: string): Promise<void> => {
+    const parts = path.split("/");
+    for (let i = 1; i <= parts.length; i++) {
+      const sub = parts.slice(0, i).join("/");
+      const info = await lstat(join(dir, sub));
+      const type = info.isDirectory() ? "dir" : info.isSymbolicLink() ? "link" : "file";
+      if (type !== snapshot.get(sub)) throw new TrustedDirError(`${sub} changed type during the cleanup in ${dir}, nothing deleted`);
+    }
+  };
+  const files = [...snapshot].filter(([, type]) => type !== "dir").map(([path]) => path);
+  const dirs = [...snapshot].filter(([, type]) => type === "dir").map(([path]) => path);
+  for (const file of files) {
+    await verify(file);
+    await rm(join(dir, file), { force: true });
+  }
+  for (const sub of dirs.sort((a, b) => b.length - a.length)) {
+    await verify(sub);
+    await rmdir(join(dir, sub));
+  }
   return { unaccounted: [] };
 }
