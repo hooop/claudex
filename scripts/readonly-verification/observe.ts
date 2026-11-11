@@ -20,7 +20,6 @@ export interface RunSettings {
   maxTurns: number;
   timeoutMs: number;
   evilServerPath: string;
-  probeTool?: string;
 }
 
 export const DEFAULT_MAX_TURNS = 6;
@@ -47,6 +46,9 @@ function emptyObservation(): Observation {
     initTools: null,
     initPermissionMode: null,
     mcpServers: [],
+    initPlugins: [],
+    initSkills: [],
+    apiKeySource: null,
     toolUses: [],
     permissionRequests: [],
     markerWritten: false,
@@ -68,10 +70,21 @@ function record(observation: Observation, message: unknown): void {
     if (Array.isArray(message.mcp_servers)) {
       observation.mcpServers = message.mcp_servers.flatMap((server: unknown) =>
         isRecord(server) && typeof server.name === "string" && typeof server.status === "string"
-          ? [{ name: server.name, status: server.status }]
+          ? [{ name: server.name, status: server.status, source: typeof server.source === "string" ? server.source : null }]
           : [],
       );
     }
+    if (Array.isArray(message.plugins)) {
+      observation.initPlugins = message.plugins.flatMap((plugin: unknown) =>
+        isRecord(plugin) && typeof plugin.name === "string" && typeof plugin.path === "string"
+          ? [{ name: plugin.name, path: plugin.path }]
+          : [],
+      );
+    }
+    if (Array.isArray(message.skills)) {
+      observation.initSkills = message.skills.filter((skill): skill is string => typeof skill === "string");
+    }
+    if (typeof message.apiKeySource === "string") observation.apiKeySource = message.apiKeySource;
   } else if (message.type === "assistant") {
     const content = isRecord(message.message) ? message.message.content : undefined;
     if (!Array.isArray(content)) return;
@@ -116,7 +129,7 @@ export async function runCase(query: QueryFn, c: VerificationCase, settings: Run
   const dir = await mkdtemp(join(tmpdir(), "claudex-readonly-"));
   try {
     const markerPath = join(dir, MARKER_NAME);
-    const ctx: CaseContext = { markerPath, evilServerPath: settings.evilServerPath, probeTool: settings.probeTool };
+    const ctx: CaseContext = { markerPath, evilServerPath: settings.evilServerPath };
 
     await execFileAsync("git", ["init", "-q"], { cwd: dir });
     await writeProjectFiles(dir, { ...SHARED_FILES, ...c.projectFiles(ctx) });

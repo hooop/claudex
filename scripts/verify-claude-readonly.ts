@@ -1,9 +1,10 @@
 // Measures whether Claude stays read-only under a given version of the Claude
 // Agent SDK. It makes REAL queries: it uses the maintainer's Claude account and
-// quota. Protocol and threat model: docs/superpowers/specs/2026-10-26-sdk-upgrade-design.md.
+// quota. Protocol and threat model: docs/superpowers/specs/2026-10-26-sdk-upgrade-design.md;
+// cases and verdict after the debate isolation: docs/superpowers/specs/2026-10-28-debate-isolation-design.md.
 //
 //   npm run verify:readonly -- --model <id> [--sdk-dir <dir>] [--cases E,F,G]
-//     [--repeat <n>] [--probe-mcp-tool <name>] [--out <file.json>]
+//     [--repeat <n>] [--out <file.json>]
 //
 // Each case runs twice by default (--repeat): one clean run is not evidence
 // when the model is free to behave differently the next time.
@@ -27,7 +28,7 @@ import { aggregate, evaluate, formatMarkdown, type Observation, type Verdict } f
 
 const DEFAULT_REPEAT = 2;
 const USAGE =
-  "Usage: npm run verify:readonly -- --model <id> [--sdk-dir <dir>] [--cases E,F,G] [--repeat <n>] [--probe-mcp-tool <name>] [--out <file.json>]\n" +
+  "Usage: npm run verify:readonly -- --model <id> [--sdk-dir <dir>] [--cases E,F,G] [--repeat <n>] [--out <file.json>]\n" +
   `Each case runs ${DEFAULT_REPEAT} times unless --repeat says otherwise.`;
 
 const scriptsDir = dirname(fileURLToPath(import.meta.url));
@@ -42,7 +43,6 @@ interface Options {
   sdkDir: string;
   cases: VerificationCase[];
   repeat: number;
-  probeTool: string | undefined;
   out: string | undefined;
 }
 
@@ -68,7 +68,6 @@ function parseOptions(argv: string[]): Options {
         "sdk-dir": { type: "string" },
         cases: { type: "string" },
         repeat: { type: "string" },
-        "probe-mcp-tool": { type: "string" },
         out: { type: "string" },
       },
       allowPositionals: false,
@@ -97,7 +96,6 @@ function parseOptions(argv: string[]): Options {
     sdkDir: resolve(values["sdk-dir"] ?? repositoryRoot),
     cases,
     repeat: Number(repeatText),
-    probeTool: values["probe-mcp-tool"],
     out: values.out === undefined ? undefined : resolve(values.out),
   };
 }
@@ -118,7 +116,6 @@ async function runAll(query: QueryFn, options: Options, cases: VerificationCase[
     maxTurns: DEFAULT_MAX_TURNS,
     timeoutMs: DEFAULT_TIMEOUT_MS,
     evilServerPath,
-    probeTool: options.probeTool,
   };
 
   const rows: Row[] = [];
@@ -129,7 +126,7 @@ async function runAll(query: QueryFn, options: Options, cases: VerificationCase[
       console.error(`Case ${c.id}: run ${run}/${options.repeat}`);
       const observation = await runCase(query, c, settings);
       observations.push(observation);
-      verdicts.push(evaluate(c, observation, options.probeTool));
+      verdicts.push(evaluate(c, observation));
     }
     rows.push({ id: c.id, gate: c.gate, observations, verdicts, verdict: aggregate(verdicts) });
   }
@@ -139,26 +136,16 @@ async function runAll(query: QueryFn, options: Options, cases: VerificationCase[
 async function main(argv: string[]): Promise<number> {
   const options = parseOptions(argv);
 
-  const skipped: Array<{ id: CaseId; reason: string }> = [];
-  const cases = options.cases.filter((c) => {
-    if (c.id !== "I" || options.probeTool !== undefined) return true;
-    skipped.push({ id: c.id, reason: "needs --probe-mcp-tool" });
-    return false;
-  });
-  for (const { id, reason } of skipped) console.error(`Case ${id} skipped: ${reason}`);
-  if (cases.length === 0) throw new CommandError("no case to run");
+  if (options.cases.length === 0) throw new CommandError("no case to run");
 
   stripClaudeSessionEnv();
   const sdk = await loadSdk(options.sdkDir);
   console.error(`SDK ${sdk.version} (Claude Code ${sdk.claudeCodeVersion ?? "unknown"}) from ${sdk.entry}`);
 
-  const rows = await runAll(sdk.query, options, cases);
+  const rows = await runAll(sdk.query, options, options.cases);
 
   const header = { sdkVersion: sdk.version, claudeCodeVersion: sdk.claudeCodeVersion, model: options.model };
-  let report = formatMarkdown(rows, header);
-  if (skipped.length > 0) {
-    report += `\nSkipped: ${skipped.map(({ id, reason }) => `case ${id} (${reason})`).join(", ")}\n`;
-  }
+  const report = formatMarkdown(rows, header);
   await new Promise<void>((done) => process.stdout.write(report, () => done()));
 
   if (options.out !== undefined) {
@@ -166,8 +153,6 @@ async function main(argv: string[]): Promise<number> {
       ...header,
       sdkEntry: sdk.entry,
       repeat: options.repeat,
-      probeTool: options.probeTool ?? null,
-      skipped,
       cases: rows.map((row) => ({
         id: row.id,
         gate: row.gate,

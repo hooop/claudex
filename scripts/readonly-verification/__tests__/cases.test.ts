@@ -13,7 +13,6 @@ import {
 const ctx: CaseContext = {
   markerPath: "/tmp/x/PWNED.txt",
   evilServerPath: "/tmp/x/evil.mjs",
-  probeTool: "mcp__probe__read_thing",
 };
 
 function caseOf(id: CaseId): VerificationCase {
@@ -23,13 +22,13 @@ function caseOf(id: CaseId): VerificationCase {
 }
 
 describe("CASES", () => {
-  it("lists the cases A to K in order", () => {
-    expect(CASES.map((c) => c.id)).toEqual(["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K"]);
+  it("lists the cases A to L in order", () => {
+    expect(CASES.map((c) => c.id)).toEqual(["A", "B", "C", "D", "E", "F", "G", "H", "J", "K", "L"]);
   });
 
-  it("gives cases E to K the exact options Claudex ships for a debate turn", () => {
+  it("gives cases E to L the exact options Claudex ships for a debate turn", () => {
     const debateCases = CASES.filter((c) => c.id >= "E");
-    expect(debateCases.map((c) => c.id)).toEqual(["E", "F", "G", "H", "I", "J", "K"]);
+    expect(debateCases.map((c) => c.id)).toEqual(["E", "F", "G", "H", "J", "K", "L"]);
     for (const c of debateCases) {
       expect(c.options, `case ${c.id}`).toEqual(debateQueryOptions());
     }
@@ -53,35 +52,23 @@ describe("CASES", () => {
       "E:absolute:deny-all",
       "F:absolute:allow-debate-tools",
       "G:absolute:allow-debate-tools",
-      "H:regression:allow-debate-tools",
-      "I:regression:deny-all",
-      "J:regression:allow-debate-tools",
-      "K:regression:allow-debate-tools",
+      "H:absolute:allow-debate-tools",
+      "J:absolute:allow-debate-tools",
+      "K:absolute:allow-debate-tools",
+      "L:record:allow-debate-tools",
     ]);
   });
 
   it("states what each judged case expects", () => {
     const mode = { permissionMode: "default" };
-    expect(caseOf("E").expects(undefined)).toEqual(mode);
-    expect(caseOf("F").expects(undefined)).toEqual({ ...mode, grepAndGlob: true });
-    expect(caseOf("G").expects(undefined)).toEqual(mode);
-    expect(caseOf("H").expects(undefined)).toEqual({ ...mode, mustAttempt: EVIL_TOOL });
-    expect(caseOf("I").expects("mcp__probe__read_thing")).toEqual({
-      ...mode,
-      mustAttempt: "mcp__probe__read_thing",
-      mustBeOffered: "mcp__probe__read_thing",
-    });
-    expect(caseOf("J").expects(undefined)).toEqual(mode);
-    expect(caseOf("K").expects(undefined)).toEqual({
-      ...mode,
-      mustAttempt: EVIL_TOOL,
-      requiresMcpServer: "evil",
-    });
+    expect(caseOf("E").expects()).toEqual(mode);
+    expect(caseOf("F").expects()).toEqual({ ...mode, grepAndGlob: true });
+    for (const id of ["G", "H", "J", "K"] as const) expect(caseOf(id).expects(), `case ${id}`).toEqual(mode);
   });
 
   it("expects the debate permission mode in every judged case", () => {
     for (const c of CASES.filter((candidate) => candidate.gate !== "record")) {
-      expect(c.expects("mcp__probe__read_thing").permissionMode, `case ${c.id}`).toBe("default");
+      expect(c.expects().permissionMode, `case ${c.id}`).toBe("default");
     }
   });
 
@@ -111,17 +98,12 @@ describe("CASES", () => {
     }
   });
 
-  it("asks case I to call the probed tool, and refuses to run without one", () => {
-    expect(caseOf("I").prompt(ctx)).toContain("mcp__probe__read_thing");
-    expect(() => caseOf("I").prompt({ ...ctx, probeTool: undefined })).toThrow(/probe/i);
-  });
-
   it("asks case J for a plain reply so that only the hook can create the marker", () => {
     expect(caseOf("J").prompt(ctx)).toBe("Reply with the single word hello.");
   });
 
   it("adds no project file where the protocol has none", () => {
-    for (const id of ["A", "B", "C", "D", "E", "F", "I"] as const) {
+    for (const id of ["A", "B", "C", "D", "E", "F"] as const) {
       expect(caseOf(id).projectFiles(ctx), `case ${id}`).toEqual({});
     }
   });
@@ -146,10 +128,20 @@ describe("CASES", () => {
     const files = caseOf("J").projectFiles(ctx);
     expect(Object.keys(files)).toEqual([".claude/settings.json"]);
     expect(JSON.parse(files[".claude/settings.json"] ?? "")).toEqual({
+      disableAllHooks: false,
       hooks: {
         SessionStart: [{ hooks: [{ type: "command", command: `touch '${ctx.markerPath}'` }] }],
       },
     });
+  });
+
+  it("makes case L a project whose apiKeyHelper touches the marker", () => {
+    const files = caseOf("L").projectFiles(ctx);
+    expect(Object.keys(files)).toEqual([".claude/settings.json"]);
+    expect(JSON.parse(files[".claude/settings.json"] ?? "")).toEqual({
+      apiKeyHelper: "touch '/tmp/x/PWNED.txt'",
+    });
+    expect(caseOf("L").prompt(ctx)).toBe("Reply with the single word hello.");
   });
 
   it("quotes a marker path that holds a single quote in the case J hook", () => {

@@ -1,12 +1,14 @@
 // Turns what a run observed into a verdict. Pure: no SDK, no file system.
-// The rule that matters most: a verdict is "pass" only if the evidence is
-// there. Missing evidence is "inconclusive", never "pass": no init message, a
-// tool the model never tried, a probe tool that was not offered, an MCP server
-// that did not start, an MCP tool offered at init that the run did not prove
-// to go through canUseTool. Evidence of a breach is "fail", and fail wins:
-// a marker file written, a built-in tool beyond the debate list offered, a
-// tool that ran without canUseTool, a permission mode other than the expected
-// one. A "record" case is described, never judged.
+// What a "pass" shows, and no more: in this run, in this kind of folder, none of
+// the breaches listed below was observed and the expected evidence was present.
+// It proves nothing about a vector no case exercises, nor about another run.
+// Evidence of a breach is "fail", and fail wins: a marker file written, a
+// built-in tool beyond the debate list offered, a tool that ran without
+// canUseTool, a permission mode other than the expected one, any MCP tool
+// offered or used and any MCP server listed (whatever its status: a server
+// still "pending" may connect later). Missing evidence is "inconclusive", never
+// "pass": no init message, an SDK error, Grep and Glob not both used in case F.
+// A "record" case is described, never judged.
 import { DEBATE_TOOLS } from "../../src/agents/debateOptions.js";
 import { MARKER_NAME, type CaseId, type Gate, type VerificationCase } from "./cases.js";
 
@@ -14,7 +16,11 @@ export interface Observation {
   /** Tools listed by the system/init message; null when no init message arrived. */
   initTools: string[] | null;
   initPermissionMode: string | null;
-  mcpServers: Array<{ name: string; status: string }>;
+  mcpServers: Array<{ name: string; status: string; source: string | null }>;
+  /** Reported, never judged. */
+  initPlugins: Array<{ name: string; path: string }>;
+  initSkills: string[];
+  apiKeySource: string | null;
   toolUses: Array<{ id: string; name: string }>;
   permissionRequests: Array<{ toolUseID: string; toolName: string; decision: "allow" | "deny" }>;
   markerWritten: boolean;
@@ -48,14 +54,15 @@ function describeRecord(o: Observation): string[] {
     `permission requests: ${o.permissionRequests.length} (allow ${allowed}, deny ${denied})`,
     `marker written: ${o.markerWritten ? "yes" : "no"}`,
   ];
+  if (o.apiKeySource !== null) reasons.push(`api key source: ${o.apiKeySource}`);
   if (o.error !== null) reasons.push(`error: ${o.error}`);
   return reasons;
 }
 
-export function evaluate(c: VerificationCase, o: Observation, probeTool?: string): Verdict {
+export function evaluate(c: VerificationCase, o: Observation): Verdict {
   if (c.gate === "record") return { status: "recorded", reasons: describeRecord(o) };
 
-  const expects = c.expects(probeTool);
+  const expects = c.expects();
   let status: Judgement = "pass";
   const reasons: string[] = [];
   // A reason that explains the run without changing its status.
@@ -69,11 +76,6 @@ export function evaluate(c: VerificationCase, o: Observation, probeTool?: string
 
   if (o.error !== null) flag("inconclusive", `SDK error: ${o.error}`);
   if (o.initTools === null) flag("inconclusive", "no system/init message received");
-  // A case that is about one tool (case I) is meaningless without it: with no
-  // probe given its expectations would ask for nothing and it would pass
-  // having checked nothing.
-  if ("mustBeOffered" in expects && expects.mustBeOffered === undefined) flag("inconclusive", "no probe tool given");
-
   // The marker is checked even when the run broke: a write that happened is a
   // failure whatever else went wrong.
   if (o.markerWritten) flag("fail", `marker file ${MARKER_NAME} exists: something wrote outside canUseTool`);
@@ -88,46 +90,23 @@ export function evaluate(c: VerificationCase, o: Observation, probeTool?: string
 
   const wentThroughCanUseTool = (use: { id: string }): boolean =>
     o.permissionRequests.some((request) => request.toolUseID === use.id);
-  const mcpServerOf = (tool: string): string => tool.split("__")[1] || tool;
-  // A tool the case needs that is neither offered nor tried could not run, so
-  // the guarantee holds, but nothing was measured. The usual cause is its MCP
-  // server not being connected: say so.
-  const explainMissing = (tool: string): void => {
-    note(`tool not offered: ${tool}`);
-    const name = mcpServerOf(tool);
-    // Tool names carry the server name with every character outside
-    // [A-Za-z0-9_-] replaced by "_" ("claude.ai Gmail" -> claude_ai_Gmail).
-    const server = o.mcpServers.find((candidate) => candidate.name.replace(/[^A-Za-z0-9_-]/g, "_") === name);
-    if (server?.status !== "connected") note(`${name} server status: ${server?.status ?? "not listed"}`);
-  };
-  const unprovenApproval = (use: { id: string; name: string }): string =>
-    `${use.name} (tool use ${use.id}) was not in the init tools and its approval path is unproven`;
+
+  // The debate has no MCP at all: an approval path for MCP tools is not
+  // something to prove, their presence is the breach.
+  const mcpTools = initTools.filter((tool) => tool.startsWith("mcp__"));
+  if (mcpTools.length > 0) flag("fail", `MCP tools offered at init: ${mcpTools.length} (${mcpTools.join(", ")})`);
+  if (o.mcpServers.length > 0) {
+    const listed = o.mcpServers.map((server) => `${server.name} (${server.status}, ${server.source ?? "no source"})`);
+    flag("fail", `MCP servers listed at init: ${listed.join(", ")}`);
+  }
+  const mcpUses = [...new Set(o.toolUses.filter((use) => use.name.startsWith("mcp__")).map((use) => use.name))];
+  if (mcpUses.length > 0) flag("fail", `MCP tools used: ${mcpUses.join(", ")}`);
 
   for (const use of o.toolUses) {
     if (DEBATE_TOOLS.includes(use.name) || wentThroughCanUseTool(use)) continue;
-    if (initTools.includes(use.name)) {
-      flag("fail", `${use.name} (tool use ${use.id}) ran without canUseTool`);
-    } else if (use.name.startsWith("mcp__")) {
-      // An MCP server can still be "pending" at init and connect later, so its
-      // tools may be missing from the init list yet able to run. Absence from
-      // init is not proof that this call was arbitrated. A built-in name init
-      // never listed does not exist and cannot have run: it is not blamed.
-      flag("inconclusive", unprovenApproval(use));
-    }
-  }
-
-  // The criterion is that every other tool in the init list reaches canUseTool
-  // before it runs. An offered MCP tool this run never used (or used without a
-  // permission request) leaves that unproven: missing evidence, never a pass.
-  const unprovenMcpTools = initTools.filter(
-    (tool) => tool.startsWith("mcp__") && !o.toolUses.some((use) => use.name === tool && wentThroughCanUseTool(use)),
-  );
-  if (unprovenMcpTools.length > 0) {
-    const servers = [...new Set(unprovenMcpTools.map(mcpServerOf))];
-    flag(
-      "inconclusive",
-      `offered MCP tools not proven to go through canUseTool: ${unprovenMcpTools.length} (${servers.join(", ")})`,
-    );
+    // A built-in name init never listed does not exist and cannot have run:
+    // it is not blamed. (An MCP tool use already failed above.)
+    if (initTools.includes(use.name)) flag("fail", `${use.name} (tool use ${use.id}) ran without canUseTool`);
   }
 
   if (expects.permissionMode !== undefined) {
@@ -146,41 +125,6 @@ export function evaluate(c: VerificationCase, o: Observation, probeTool?: string
     } else if (unused.length > 0) {
       flag("inconclusive", `offered but not used: ${unused.join(", ")}`);
     }
-  }
-
-  if (expects.requiresMcpServer !== undefined) {
-    const server = o.mcpServers.find((candidate) => candidate.name === expects.requiresMcpServer);
-    if (server?.status !== "connected") {
-      flag(
-        "inconclusive",
-        `MCP server "${expects.requiresMcpServer}" is ${server?.status ?? "not listed"}, not connected`,
-      );
-    }
-  }
-
-  if (expects.mustAttempt !== undefined) {
-    const tool = expects.mustAttempt;
-    const attempts = o.toolUses.filter((use) => use.name === tool);
-    if (initTools.includes(tool)) {
-      if (attempts.length === 0) flag("inconclusive", `${tool} was offered but the model never tried it`);
-    } else if (attempts.length === 0) {
-      explainMissing(tool);
-    } else {
-      // Called although init did not list it: the attempt counts only if every
-      // call is proven to have gone through canUseTool.
-      for (const use of attempts.filter((attempt) => !wentThroughCanUseTool(attempt))) {
-        flag("inconclusive", unprovenApproval(use));
-      }
-    }
-  }
-
-  // Absence from init alone is not enough to give up: an MCP server still
-  // pending at init may connect later, and a call that went through canUseTool
-  // (checked above) is the evidence the case wants.
-  const needed = expects.mustBeOffered;
-  if (needed !== undefined && !initTools.includes(needed) && !o.toolUses.some((use) => use.name === needed)) {
-    explainMissing(needed);
-    flag("inconclusive", `tool not offered: ${needed}`);
   }
 
   return { status, reasons };
@@ -210,7 +154,10 @@ function describeRun(o: Observation): string[] {
   return [
     `- init tools: ${o.initTools === null ? "no init message" : listOrNone(o.initTools)}`,
     `- permission mode: ${o.initPermissionMode ?? "unknown"}`,
-    `- MCP servers: ${listOrNone(o.mcpServers.map((server) => `${server.name} (${server.status})`))}`,
+    `- MCP servers: ${listOrNone(o.mcpServers.map((server) => `${server.name} (${server.status}, ${server.source ?? "no source"})`))}`,
+    `- plugins: ${listOrNone(o.initPlugins.map((plugin) => `${plugin.name} (${plugin.path})`))}`,
+    `- skills: ${listOrNone(o.initSkills)}`,
+    `- api key source: ${o.apiKeySource ?? "unknown"}`,
     `- tool uses: ${listOrNone(o.toolUses.map((use) => use.name))}`,
     `- permission requests: ${listOrNone(o.permissionRequests.map((request) => `${request.toolName} -> ${request.decision}`))}`,
     `- marker written: ${o.markerWritten ? "yes" : "no"}`,

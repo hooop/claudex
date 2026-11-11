@@ -45,7 +45,13 @@ describe("runCase — what the stream tells", () => {
       init({
         tools: ["Read", "Grep", "Glob", "mcp__evil__write_file"],
         permissionMode: "plan",
-        mcp_servers: [{ name: "evil", status: "connected" }],
+        mcp_servers: [
+          { name: "evil", status: "connected", source: "project" },
+          { name: "old", status: "pending" },
+        ],
+        plugins: [{ name: "p", path: "/x/p" }],
+        skills: ["s"],
+        apiKeySource: "none",
       }),
       { type: "result", subtype: "success" },
     );
@@ -54,7 +60,13 @@ describe("runCase — what the stream tells", () => {
 
     expect(observation.initTools).toEqual(["Read", "Grep", "Glob", "mcp__evil__write_file"]);
     expect(observation.initPermissionMode).toBe("plan");
-    expect(observation.mcpServers).toEqual([{ name: "evil", status: "connected" }]);
+    expect(observation.mcpServers).toEqual([
+      { name: "evil", status: "connected", source: "project" },
+      { name: "old", status: "pending", source: null },
+    ]);
+    expect(observation.initPlugins).toEqual([{ name: "p", path: "/x/p" }]);
+    expect(observation.initSkills).toEqual(["s"]);
+    expect(observation.apiKeySource).toBe("none");
     expect(observation.resultSubtype).toBe("success");
     expect(observation.error).toBeNull();
   });
@@ -112,6 +124,9 @@ describe("runCase — what the stream tells", () => {
       initTools: null,
       initPermissionMode: null,
       mcpServers: [],
+      initPlugins: [],
+      initSkills: [],
+      apiKeySource: null,
       toolUses: [],
       permissionRequests: [],
       markerWritten: false,
@@ -356,24 +371,17 @@ describe("runCase — query call", () => {
     expect(server.args[1]).toBe(join(cwd, MARKER_NAME));
   });
 
-  it("gives case I its probe tool", async () => {
-    let prompt = "";
-    const query: QueryFn = async function* (params) {
-      prompt = params.prompt;
-      yield init();
-    };
-
-    await runCase(query, caseOf("I"), { ...settings, probeTool: "mcp__vault__whoami" });
-
-    expect(prompt).toContain("mcp__vault__whoami");
-  });
-
   it("rejects, and leaves no temp dir behind, when the case cannot be set up", async () => {
     const leftovers = () => readdirSync(tmpdir()).filter((name) => name.startsWith("claudex-readonly-"));
     const before = leftovers();
 
-    // Case I throws while building its prompt without a probe tool.
-    await expect(runCase(scripted(init()), caseOf("I"), settings)).rejects.toThrow("probe tool");
+    const broken: VerificationCase = {
+      ...caseOf("E"),
+      projectFiles: () => {
+        throw new Error("cannot build project");
+      },
+    };
+    await expect(runCase(scripted(init()), broken, settings)).rejects.toThrow("cannot build project");
 
     expect(leftovers()).toEqual(before);
   });
