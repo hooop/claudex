@@ -9,8 +9,10 @@ export const DEBATE_TOOLS = ["Read", "Grep", "Glob"];
 
 // Measured before this change: a hook of the analysed repository ran and MCP
 // servers and claude.ai connectors were offered during a debate turn. A debate
-// turn gets none of them. Checked against the SDK's `Options` at compile time,
-// so a misspelled key fails `npm run typecheck`.
+// turn gets none of them. `satisfies Options` checks the top-level keys at
+// compile time, but not those inside `settings` (the SDK's `Settings` accepts
+// any key): a misspelled settings key is caught by the exact-object test in
+// debateOptions.test.ts instead.
 export const DEBATE_ISOLATION = {
   // No `mcpServers` is passed, so with this flag no MCP server is used at all
   // (project .mcp.json, user settings, plugins and agent frontmatter included).
@@ -36,17 +38,13 @@ export const DEBATE_ISOLATION_KEYS: ReadonlyArray<keyof typeof DEBATE_ISOLATION>
   "settings",
 ];
 
-export interface DebateQueryOptions {
+type Widen<T> = { [K in keyof T]: T[K] extends boolean ? boolean : T[K] extends object ? Widen<T[K]> : T[K] };
+
+export interface DebateQueryOptions extends Widen<typeof DEBATE_ISOLATION> {
   tools: string[];
   permissionMode: "default";
   allowedTools: string[];
   settingSources: Array<"project">;
-  strictMcpConfig: boolean;
-  settings: {
-    disableAllHooks: boolean;
-    disableClaudeAiConnectors: boolean;
-    disableSkillShellExecution: boolean;
-  };
 }
 
 // Lives apart from claudeAgent.ts so the read-only verification script can
@@ -75,7 +73,7 @@ export function debateQueryOptions(): DebateQueryOptions {
     // Project settings stay: that is where the user's own CLAUDE.md lives,
     // and their instructions apply during a debate too.
     settingSources: ["project"],
-    strictMcpConfig: DEBATE_ISOLATION.strictMcpConfig,
+    ...DEBATE_ISOLATION,
     settings: { ...DEBATE_ISOLATION.settings },
   } satisfies Options;
 }
