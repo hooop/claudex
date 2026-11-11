@@ -11,7 +11,10 @@ it("gives the debate its read-only tools, the default mode, no pre-approved tool
     permissionMode: "default",
     allowedTools: [],
     settingSources: ["project"],
+    strictMcpConfig: true,
+    settings: { disableAllHooks: true, disableClaudeAiConnectors: true, disableSkillShellExecution: true },
   });
+  expect(debateQueryOptions()).not.toHaveProperty("mcpServers");
   expect(DEBATE_TOOLS).toEqual(["Read", "Grep", "Glob"]);
 });
 
@@ -20,7 +23,9 @@ it("returns a fresh object on every call", () => {
   first.tools.push("Bash");
   first.allowedTools.push("Bash");
   first.settingSources.push("project");
+  first.settings.disableAllHooks = false;
   expect(debateQueryOptions().tools).toEqual(["Read", "Grep", "Glob"]);
   expect(debateQueryOptions().allowedTools).toEqual([]);
   expect(debateQueryOptions().settingSources).toEqual(["project"]);
+  expect(debateQueryOptions().settings).toEqual({ disableAllHooks: true, disableClaudeAiConnectors: true, disableSkillShellExecution: true });
 });

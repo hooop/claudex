@@ -7,11 +7,46 @@ import type { Options } from "@anthropic-ai/claude-agent-sdk";
  */
 export const DEBATE_TOOLS = ["Read", "Grep", "Glob"];
 
+// Measured before this change: a hook of the analysed repository ran and MCP
+// servers and claude.ai connectors were offered during a debate turn. A debate
+// turn gets none of them. Checked against the SDK's `Options` at compile time,
+// so a misspelled key fails `npm run typecheck`.
+export const DEBATE_ISOLATION = {
+  // No `mcpServers` is passed, so with this flag no MCP server is used at all
+  // (project .mcp.json, user settings, plugins and agent frontmatter included).
+  strictMcpConfig: true,
+  // The `settings` option is the flag tier, which wins over the analysed
+  // repository's own settings. Not `managedSettings`: that policy tier is
+  // dropped on machines with an IT-managed tier and rewrites disableAllHooks
+  // (spec D1), whereas the flag tier applies everywhere.
+  settings: {
+    // Hooks and statusLine from settings files and installed plugins.
+    disableAllHooks: true,
+    // `strictMcpConfig` does not name claude.ai cloud connectors.
+    disableClaudeAiConnectors: true,
+    // A command in the repository's skills or slash commands could run a shell;
+    // the debate has no Skill tool, so closing it costs nothing.
+    disableSkillShellExecution: true,
+  },
+} satisfies Options;
+
+// Task 6's controls strip exactly these keys to prove the isolation is what blocks the breach.
+export const DEBATE_ISOLATION_KEYS: ReadonlyArray<keyof typeof DEBATE_ISOLATION> = [
+  "strictMcpConfig",
+  "settings",
+];
+
 export interface DebateQueryOptions {
   tools: string[];
   permissionMode: "default";
   allowedTools: string[];
   settingSources: Array<"project">;
+  strictMcpConfig: boolean;
+  settings: {
+    disableAllHooks: boolean;
+    disableClaudeAiConnectors: boolean;
+    disableSkillShellExecution: boolean;
+  };
 }
 
 // Lives apart from claudeAgent.ts so the read-only verification script can
@@ -40,5 +75,7 @@ export function debateQueryOptions(): DebateQueryOptions {
     // Project settings stay: that is where the user's own CLAUDE.md lives,
     // and their instructions apply during a debate too.
     settingSources: ["project"],
+    strictMcpConfig: DEBATE_ISOLATION.strictMcpConfig,
+    settings: { ...DEBATE_ISOLATION.settings },
   } satisfies Options;
 }

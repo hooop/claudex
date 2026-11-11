@@ -196,6 +196,8 @@ describe("ClaudeAgent — réglages par phase", () => {
     const options = queryMock.mock.calls[0]?.[0]?.options;
     expect(options.settingSources).toEqual(["project", "user"]);
     expect(options.tools).toEqual({ type: "preset", preset: "claude_code" });
+    expect(options).not.toHaveProperty("strictMcpConfig");
+    expect(options).not.toHaveProperty("settings");
   });
 
   it("transmet au SDK le modèle configuré que Claudex a lu lui-même", async () => {
@@ -226,6 +228,9 @@ describe("ClaudeAgent — réglages par phase", () => {
     expect(options.permissionMode).toBe("default");
     expect(options.allowedTools).toEqual([]);
     expect(options.settingSources).toEqual(["project"]);
+    expect(options.strictMcpConfig).toBe(true);
+    expect(options.settings).toEqual({ disableAllHooks: true, disableClaudeAiConnectors: true, disableSkillShellExecution: true });
+    expect(options).not.toHaveProperty("mcpServers");
     expect(typeof options.canUseTool).toBe("function");
   });
 
