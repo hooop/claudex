@@ -4,7 +4,7 @@ const queryMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@anthropic-ai/claude-agent-sdk", () => ({ query: queryMock }));
 
-import { ClaudeAgent } from "../claudeAgent.js";
+import { ClaudeAgent, DEBATE_SANDBOX_ERROR } from "../claudeAgent.js";
 import { SETTINGS_CHANGED_MESSAGE } from "../projectSettings.js";
 
 async function* messages(items: unknown[]) {
@@ -322,5 +322,85 @@ describe("ClaudeAgent settings guard", () => {
     expect(guard).toHaveBeenCalledWith("/projet");
     expect(queryMock).toHaveBeenCalledTimes(1);
     expect(JSON.stringify(queryMock.mock.calls[0]?.[0])).toBe(JSON.stringify(unguarded));
+  });
+});
+
+describe("ClaudeAgent sandbox du débat", () => {
+  beforeEach(() => queryMock.mockReset());
+
+  const sandbox = { cwd: "/r", home: "/h", extraDenyRead: [], secretEnvNames: [] };
+
+  it("passe le sandbox résolu à query et ajoute Bash aux outils", async () => {
+    queryMock.mockReturnValue(messages([successResult()]) as never);
+    const resolver = vi.fn(async () => sandbox);
+    const result = await new ClaudeAgent(undefined, undefined, undefined, resolver).send("Sujet", {
+      cwd: "/projet",
+      writeAccess: false,
+    });
+    expect(result).toMatchObject({ kind: "success" });
+    expect(resolver).toHaveBeenCalledWith("/projet");
+    const options = queryMock.mock.calls[0]?.[0].options;
+    expect(options.sandbox.filesystem.denyWrite).toEqual(["/r"]);
+    expect(options.tools).toContain("Bash");
+  });
+
+  it("sans résolveur, n'ajoute ni sandbox ni Bash", async () => {
+    queryMock.mockReturnValue(messages([successResult()]) as never);
+    await new ClaudeAgent().send("Sujet", { cwd: "/projet", writeAccess: false });
+    const options = queryMock.mock.calls[0]?.[0].options;
+    expect("sandbox" in options).toBe(false);
+    expect(options.tools).toEqual(["Read", "Grep", "Glob"]);
+  });
+
+  it("refuse le tour si le résolveur rejette", async () => {
+    const resolver = vi.fn(async () => {
+      throw new Error("boom");
+    });
+    const result = await new ClaudeAgent(undefined, undefined, undefined, resolver).send("Sujet", {
+      cwd: "/projet",
+      writeAccess: false,
+    });
+    expect(result).toEqual({ kind: "error", message: DEBATE_SANDBOX_ERROR });
+    expect(queryMock).not.toHaveBeenCalled();
+  });
+
+  it("refuse le tour si le résolveur lève de façon synchrone", async () => {
+    const resolver = vi.fn((): Promise<never> => {
+      throw new Error("boom");
+    });
+    const result = await new ClaudeAgent(undefined, undefined, undefined, resolver).send("Sujet", {
+      cwd: "/projet",
+      writeAccess: false,
+    });
+    expect(result).toEqual({ kind: "error", message: DEBATE_SANDBOX_ERROR });
+    expect(queryMock).not.toHaveBeenCalled();
+  });
+
+  it("n'appelle pas le résolveur en phase d'implémentation", async () => {
+    queryMock.mockReturnValue(messages([successResult()]) as never);
+    const resolver = vi.fn(async () => sandbox);
+    await new ClaudeAgent(undefined, undefined, undefined, resolver).send("Sujet", {
+      cwd: "/projet",
+      writeAccess: true,
+    });
+    expect(resolver).not.toHaveBeenCalled();
+    const options = queryMock.mock.calls[0]?.[0].options;
+    expect("sandbox" in options).toBe(false);
+    expect(options.tools).toEqual({ type: "preset", preset: "claude_code" });
+  });
+
+  it("annule le tour si l'abandon survient pendant la résolution", async () => {
+    const controller = new AbortController();
+    const resolver = vi.fn(async () => {
+      controller.abort();
+      return sandbox;
+    });
+    const result = await new ClaudeAgent(undefined, undefined, undefined, resolver).send("Sujet", {
+      cwd: "/projet",
+      writeAccess: false,
+      signal: controller.signal,
+    });
+    expect(result).toEqual({ kind: "cancelled" });
+    expect(queryMock).not.toHaveBeenCalled();
   });
 });

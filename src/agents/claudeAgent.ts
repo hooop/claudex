@@ -2,7 +2,7 @@ import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { AgentResult } from "../orchestrator/types.js";
 import type { AgentActivity } from "../types.js";
 import { formatClaudeModel } from "../util/projectStatus.js";
-import { debateQueryOptions } from "./debateOptions.js";
+import { type DebateSandbox, debateQueryOptions } from "./debateOptions.js";
 import { SETTINGS_CHANGED_MESSAGE, type SessionGuard } from "./projectSettings.js";
 import { AUTO_MODEL_LABEL, type AgentSendOptions, type CodingAgent } from "./types.js";
 
@@ -10,6 +10,11 @@ import { AUTO_MODEL_LABEL, type AgentSendOptions, type CodingAgent } from "./typ
  * Full tool access for implementation phase.
  */
 const FULL_TOOLS = { type: "preset" as const, preset: "claude_code" as const };
+
+export type SandboxResolver = (cwd: string) => Promise<DebateSandbox | null>;
+
+export const DEBATE_SANDBOX_ERROR =
+  "Le sandbox du débat n'a pas pu être préparé (dossier du projet introuvable). Tour annulé.";
 
 export class ClaudeAgent implements CodingAgent {
   readonly id = "claude" as const;
@@ -24,8 +29,16 @@ export class ClaudeAgent implements CodingAgent {
 
   private readonly guard: SessionGuard | undefined;
 
-  constructor(model?: string, initialDisplayModel?: string, guard?: SessionGuard) {
+  private readonly resolveSandbox: SandboxResolver;
+
+  constructor(
+    model?: string,
+    initialDisplayModel?: string,
+    guard?: SessionGuard,
+    resolveSandbox: SandboxResolver = () => Promise.resolve(null),
+  ) {
     this.guard = guard;
+    this.resolveSandbox = resolveSandbox;
     this.model = model;
     this.initialDisplayModel = initialDisplayModel;
   }
@@ -127,6 +140,17 @@ export class ClaudeAgent implements CodingAgent {
         if (refusal !== null) return { kind: "error", message: refusal };
       }
 
+      let sandbox: DebateSandbox | null = null;
+      if (!options.writeAccess) {
+        try {
+          sandbox = await this.resolveSandbox(options.cwd);
+        } catch {
+          // Fail closed: without a sandbox the turn must not run.
+          return { kind: "error", message: DEBATE_SANDBOX_ERROR };
+        }
+        if (abortController.signal.aborted) return { kind: "cancelled" };
+      }
+
       const stream = query({
         prompt: message,
         options: {
@@ -140,7 +164,7 @@ export class ClaudeAgent implements CodingAgent {
                 permissionMode: "default" as const,
                 tools: FULL_TOOLS,
               }
-            : debateQueryOptions()),
+            : debateQueryOptions(sandbox)),
           includePartialMessages: true,
           canUseTool: options.onPermissionRequest
             ? async (
