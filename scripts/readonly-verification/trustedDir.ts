@@ -3,7 +3,7 @@
 // nothing here writes to .claude.json. Error messages name paths, never the
 // content of the configuration.
 import { readFile, readdir, realpath, rm, rmdir, lstat, stat } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 export class TrustedDirError extends Error {}
 
@@ -34,7 +34,12 @@ async function readProjects(configFile: string): Promise<Record<string, unknown>
   return parsed.projects;
 }
 
-export async function resolveTrustedDir(dir: string, configFile: string): Promise<string> {
+/**
+ * Claude Code inherits trust from an ancestor folder, and an explicit false on
+ * the folder itself does not block it, so the folder is accepted when it or
+ * any ancestor up to "/" is accepted. `trustedBy` is the nearest such entry.
+ */
+export async function resolveTrustedDir(dir: string, configFile: string): Promise<{ dir: string; trustedBy: string }> {
   let real: string;
   try {
     real = await realpath(dir);
@@ -42,13 +47,15 @@ export async function resolveTrustedDir(dir: string, configFile: string): Promis
   } catch {
     throw new TrustedDirError(`--trusted-dir ${dir} is not an existing folder`);
   }
-  const entry = (await readProjects(configFile))[real];
-  if (!isRecord(entry) || entry.hasTrustDialogAccepted !== true) {
-    throw new TrustedDirError(
-      `${real} is not trusted in ${configFile}: run claude in it once, accept the trust dialog, then quit`,
-    );
+  const projects = await readProjects(configFile);
+  for (let path = real; ; path = dirname(path)) {
+    const entry = projects[path];
+    if (isRecord(entry) && entry.hasTrustDialogAccepted === true) return { dir: real, trustedBy: path };
+    if (dirname(path) === path) break;
   }
-  return real;
+  throw new TrustedDirError(
+    `neither ${real} nor any folder above it is trusted in ${configFile}: run claude in it once, accept the trust dialog, then quit`,
+  );
 }
 
 export async function assertEmptyDir(dir: string): Promise<void> {

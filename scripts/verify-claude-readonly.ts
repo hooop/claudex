@@ -154,9 +154,12 @@ async function main(argv: string[]): Promise<number> {
   // Checked before anything starts: a folder that is not trusted would only
   // make every case stop at the trust dialog.
   let trusted: RunSettings["trusted"];
+  let trustedBy: string | undefined;
   if (options.trustedDir !== undefined) {
     const configFile = claudeConfigFile(process.env, homedir());
-    trusted = { dir: await resolveTrustedDir(options.trustedDir, configFile), configFile };
+    const resolved = await resolveTrustedDir(options.trustedDir, configFile);
+    trusted = { dir: resolved.dir, configFile };
+    trustedBy = resolved.trustedBy;
   }
 
   stripClaudeSessionEnv();
@@ -179,7 +182,9 @@ async function main(argv: string[]): Promise<number> {
     claudeCodeVersion: sdk.claudeCodeVersion,
     model: options.model,
     folder:
-      (trusted ? `trusted folder ${trusted.dir}` : "fresh temporary folder") +
+      (trusted
+        ? `trusted folder ${trusted.dir}` + (trustedBy !== trusted.dir ? ` (trust from ${trustedBy})` : "")
+        : "fresh temporary folder") +
       (stopped ? ` (series stopped after ${rows.length} finished case(s): ${stopped.message})` : ""),
   };
   const report = formatMarkdown(rows, header);

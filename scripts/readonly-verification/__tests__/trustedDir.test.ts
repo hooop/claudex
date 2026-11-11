@@ -39,7 +39,7 @@ describe("resolveTrustedDir", () => {
     const dir = folder();
     config({ [dir]: { hasTrustDialogAccepted: true } });
 
-    await expect(resolveTrustedDir(dir, configFile)).resolves.toBe(dir);
+    await expect(resolveTrustedDir(dir, configFile)).resolves.toEqual({ dir, trustedBy: dir });
   });
 
   it("resolves a symlinked folder to the real path it looks up", async () => {
@@ -48,7 +48,37 @@ describe("resolveTrustedDir", () => {
     symlinkSync(dir, link);
     config({ [dir]: { hasTrustDialogAccepted: true } });
 
-    await expect(resolveTrustedDir(link, configFile)).resolves.toBe(dir);
+    await expect(resolveTrustedDir(link, configFile)).resolves.toEqual({ dir, trustedBy: dir });
+  });
+
+  it("accepts a folder whose own entry is false when an ancestor is trusted", async () => {
+    const dir = folder();
+    config({ [dir]: { hasTrustDialogAccepted: false }, [root]: { hasTrustDialogAccepted: true } });
+
+    await expect(resolveTrustedDir(dir, configFile)).resolves.toEqual({ dir, trustedBy: root });
+  });
+
+  it("accepts a folder with no entry when an ancestor is trusted", async () => {
+    const dir = folder();
+    config({ [root]: { hasTrustDialogAccepted: true } });
+
+    await expect(resolveTrustedDir(dir, configFile)).resolves.toEqual({ dir, trustedBy: root });
+  });
+
+  it("reports the nearest trusted entry when several ancestors are trusted", async () => {
+    const dir = folder();
+    config({ [root]: { hasTrustDialogAccepted: true }, "/": { hasTrustDialogAccepted: true } });
+    await expect(resolveTrustedDir(dir, configFile)).resolves.toEqual({ dir, trustedBy: root });
+
+    config({ [dir]: { hasTrustDialogAccepted: true }, [root]: { hasTrustDialogAccepted: true } });
+    await expect(resolveTrustedDir(dir, configFile)).resolves.toEqual({ dir, trustedBy: dir });
+  });
+
+  it("accepts trust coming from the root entry", async () => {
+    const dir = folder();
+    config({ "/": { hasTrustDialogAccepted: true } });
+
+    await expect(resolveTrustedDir(dir, configFile)).resolves.toEqual({ dir, trustedBy: "/" });
   });
 
   it("refuses a folder with no entry", async () => {
@@ -60,7 +90,7 @@ describe("resolveTrustedDir", () => {
 
   it("refuses hasTrustDialogAccepted false", async () => {
     const dir = folder();
-    config({ [dir]: { hasTrustDialogAccepted: false } });
+    config({ [dir]: { hasTrustDialogAccepted: false }, [root]: { hasTrustDialogAccepted: false } });
 
     await expect(resolveTrustedDir(dir, configFile)).rejects.toThrow(TrustedDirError);
   });
