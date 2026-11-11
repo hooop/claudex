@@ -7,6 +7,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
+import { assertEmptyDir, changedKeys, readProjectEntry } from "./trustedDir.js";
 import { MARKER_NAME, decide, type CaseContext, type VerificationCase } from "./cases.js";
 import type { Observation } from "./verdict.js";
 
@@ -20,6 +21,8 @@ export interface RunSettings {
   maxTurns: number;
   timeoutMs: number;
   evilServerPath: string;
+  /** Run in this already trusted folder (`dir` is a real path) instead of a fresh temporary one. */
+  trusted?: { dir: string; configFile: string };
 }
 
 export const DEFAULT_MAX_TURNS = 6;
@@ -54,6 +57,7 @@ function emptyObservation(): Observation {
     markerWritten: false,
     resultSubtype: null,
     error: null,
+    trustStateChanges: null,
   };
 }
 
@@ -133,80 +137,113 @@ async function writeProjectFiles(dir: string, files: Record<string, string>): Pr
 }
 
 export async function runCase(query: QueryFn, c: VerificationCase, settings: RunSettings): Promise<Observation> {
+  const trusted = settings.trusted;
+  if (trusted) return runInTrustedDir(query, c, settings, trusted);
   const dir = await mkdtemp(join(tmpdir(), "claudex-readonly-"));
   try {
-    const markerPath = join(dir, MARKER_NAME);
-    const ctx: CaseContext = { markerPath, evilServerPath: settings.evilServerPath };
-
-    await execFileAsync("git", ["init", "-q"], { cwd: dir });
-    await writeProjectFiles(dir, { ...SHARED_FILES, ...c.projectFiles(ctx) });
-    const prompt = c.prompt(ctx);
-
-    const observation = emptyObservation();
-    const abortController = new AbortController();
-    // Once the run has ended, a straggling stream must not alter what we return.
-    let closed = false;
-
-    const policy = c.policy;
-    const canUseTool =
-      policy === "none"
-        ? undefined
-        : (toolName: string, input: Record<string, unknown>, options: { toolUseID: string }) => {
-            const decision = decide(policy, toolName);
-            if (!closed) observation.permissionRequests.push({ toolUseID: options.toolUseID, toolName, decision });
-            // 0.1.77 requires updatedInput on allow: hand the received input back.
-            return Promise.resolve(
-              decision === "allow"
-                ? { behavior: "allow" as const, updatedInput: input }
-                : { behavior: "deny" as const, message: DENIAL_MESSAGE },
-            );
-          };
-
-    const queryOptions: Record<string, unknown> = {
-      ...c.options,
-      cwd: dir,
-      model: settings.model,
-      maxTurns: settings.maxTurns,
-      abortController,
-      ...(canUseTool ? { canUseTool } : {}),
-    };
-
-    const timeoutMessage = `timed out after ${settings.timeoutMs} ms`;
-    let timedOut = false;
-    let timer: NodeJS.Timeout | undefined;
-    const timeout = new Promise<void>((resolve) => {
-      timer = setTimeout(() => {
-        timedOut = true;
-        abortController.abort();
-        resolve();
-      }, settings.timeoutMs);
-    });
-
-    const consumption = (async () => {
-      for await (const message of query({ prompt, options: queryOptions })) {
-        if (closed) break;
-        record(observation, message);
-      }
-    })();
-    // The outcome is read through the race below. This only keeps a rejection
-    // that arrives after a timeout from becoming an unhandled one.
-    consumption.catch(() => undefined);
-
-    try {
-      // Racing the timeout, rather than only aborting, bounds the run even if
-      // the SDK ignores the abort.
-      await Promise.race([consumption, timeout]);
-    } catch (error) {
-      if (!timedOut) observation.error = describeError(error);
-    } finally {
-      clearTimeout(timer);
-      closed = true;
-    }
-    if (timedOut) observation.error = timeoutMessage;
-
-    observation.markerWritten = existsSync(markerPath);
-    return observation;
+    return await runIn(dir, query, c, settings);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+}
+
+// The folder is the maintainer's, trusted once by hand: it must start empty,
+// and it is emptied by removing exactly what this run created plus the marker.
+// Anything else left behind is not ours to delete, so the series stops.
+async function runInTrustedDir(
+  query: QueryFn,
+  c: VerificationCase,
+  settings: RunSettings,
+  trusted: { dir: string; configFile: string },
+): Promise<Observation> {
+  const { dir, configFile } = trusted;
+  await assertEmptyDir(dir);
+  const before = await readProjectEntry(configFile, dir);
+  const ctx: CaseContext = { markerPath: join(dir, MARKER_NAME), evilServerPath: settings.evilServerPath };
+  const created = new Set(
+    [...Object.keys({ ...SHARED_FILES, ...c.projectFiles(ctx) }).map((path) => path.split("/")[0] ?? path), ".git", MARKER_NAME],
+  );
+  let observation: Observation;
+  try {
+    observation = await runIn(dir, query, c, settings);
+  } finally {
+    for (const name of created) await rm(join(dir, name), { recursive: true, force: true });
+  }
+  await assertEmptyDir(dir);
+  observation.trustStateChanges = changedKeys(before, await readProjectEntry(configFile, dir));
+  return observation;
+}
+
+async function runIn(dir: string, query: QueryFn, c: VerificationCase, settings: RunSettings): Promise<Observation> {
+  const markerPath = join(dir, MARKER_NAME);
+  const ctx: CaseContext = { markerPath, evilServerPath: settings.evilServerPath };
+
+  await execFileAsync("git", ["init", "-q"], { cwd: dir });
+  await writeProjectFiles(dir, { ...SHARED_FILES, ...c.projectFiles(ctx) });
+  const prompt = c.prompt(ctx);
+
+  const observation = emptyObservation();
+  const abortController = new AbortController();
+  // Once the run has ended, a straggling stream must not alter what we return.
+  let closed = false;
+
+  const policy = c.policy;
+  const canUseTool =
+    policy === "none"
+      ? undefined
+      : (toolName: string, input: Record<string, unknown>, options: { toolUseID: string }) => {
+          const decision = decide(policy, toolName);
+          if (!closed) observation.permissionRequests.push({ toolUseID: options.toolUseID, toolName, decision });
+          // 0.1.77 requires updatedInput on allow: hand the received input back.
+          return Promise.resolve(
+            decision === "allow"
+              ? { behavior: "allow" as const, updatedInput: input }
+              : { behavior: "deny" as const, message: DENIAL_MESSAGE },
+          );
+        };
+
+  const queryOptions: Record<string, unknown> = {
+    ...c.options,
+    cwd: dir,
+    model: settings.model,
+    maxTurns: settings.maxTurns,
+    abortController,
+    ...(canUseTool ? { canUseTool } : {}),
+  };
+
+  const timeoutMessage = `timed out after ${settings.timeoutMs} ms`;
+  let timedOut = false;
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<void>((resolve) => {
+    timer = setTimeout(() => {
+      timedOut = true;
+      abortController.abort();
+      resolve();
+    }, settings.timeoutMs);
+  });
+
+  const consumption = (async () => {
+    for await (const message of query({ prompt, options: queryOptions })) {
+      if (closed) break;
+      record(observation, message);
+    }
+  })();
+  // The outcome is read through the race below. This only keeps a rejection
+  // that arrives after a timeout from becoming an unhandled one.
+  consumption.catch(() => undefined);
+
+  try {
+    // Racing the timeout, rather than only aborting, bounds the run even if
+    // the SDK ignores the abort.
+    await Promise.race([consumption, timeout]);
+  } catch (error) {
+    if (!timedOut) observation.error = describeError(error);
+  } finally {
+    clearTimeout(timer);
+    closed = true;
+  }
+  if (timedOut) observation.error = timeoutMessage;
+
+  observation.markerWritten = existsSync(markerPath);
+  return observation;
 }

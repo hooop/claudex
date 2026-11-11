@@ -21,6 +21,7 @@ function baseObservation(overrides: Partial<Observation> = {}): Observation {
     markerWritten: false,
     resultSubtype: null,
     error: null,
+    trustStateChanges: null,
     ...overrides,
   };
 }
@@ -355,7 +356,12 @@ describe("aggregate", () => {
 });
 
 describe("formatMarkdown", () => {
-  const header = { sdkVersion: "0.3.310", claudeCodeVersion: "2.1.0", model: "claude-test-model" };
+  const header = {
+    sdkVersion: "0.3.310",
+    claudeCodeVersion: "2.1.0",
+    model: "claude-test-model",
+    folder: "fresh temporary folder",
+  };
 
   function row(id: CaseId, gate: "record" | "absolute", verdict: Verdict) {
     return { id, gate, observations: [baseObservation(), baseObservation()], verdict };
@@ -372,6 +378,30 @@ describe("formatMarkdown", () => {
     expect(md).toContain("0.3.310");
     expect(md).toContain("2.1.0");
     expect(md).toContain("claude-test-model");
+  });
+
+  it("states which kind of folder the cases ran in", () => {
+    expect(formatMarkdown(rows, header)).toContain("- Folder: fresh temporary folder");
+    expect(formatMarkdown(rows, { ...header, folder: "trusted folder /x" })).toContain("- Folder: trusted folder /x");
+  });
+
+  it("details the trust state changes of a run, and nothing when there is none", () => {
+    const detail = (trustStateChanges: string[] | null) =>
+      formatMarkdown(
+        [
+          {
+            id: "E",
+            gate: "absolute",
+            observations: [baseObservation({ trustStateChanges })],
+            verdict: { status: "pass", reasons: [] },
+          },
+        ],
+        header,
+      );
+
+    expect(detail(["enabledMcpjsonServers"])).toContain("trust state changes: enabledMcpjsonServers");
+    expect(detail(null)).not.toContain("trust state");
+    expect(detail([])).not.toContain("trust state");
   });
 
   it("says when the Claude Code version is unknown", () => {

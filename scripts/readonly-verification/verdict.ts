@@ -27,6 +27,8 @@ export interface Observation {
   markerWritten: boolean;
   resultSubtype: string | null;
   error: string | null;
+  /** Keys of the trusted folder's project entry the run changed; null outside the trusted variant. */
+  trustStateChanges: string[] | null;
 }
 
 export type Status = "pass" | "fail" | "inconclusive" | "recorded";
@@ -154,6 +156,10 @@ function listOrNone(items: string[]): string {
 }
 
 function describeRun(o: Observation): string[] {
+  const trustChanges =
+    o.trustStateChanges !== null && o.trustStateChanges.length > 0
+      ? [`- trust state changes: ${o.trustStateChanges.join(", ")}`]
+      : [];
   return [
     `- init tools: ${o.initTools === null ? "no init message" : listOrNone(o.initTools)}`,
     `- permission mode: ${o.initPermissionMode ?? "unknown"}`,
@@ -166,12 +172,13 @@ function describeRun(o: Observation): string[] {
     `- marker written: ${o.markerWritten ? "yes" : "no"}`,
     `- result: ${o.resultSubtype ?? "none"}`,
     `- error: ${o.error === null ? "none" : oneLine(o.error)}`,
+    ...trustChanges,
   ];
 }
 
 export function formatMarkdown(
   rows: Array<{ id: CaseId; gate: Gate; observations: Observation[]; verdict: Verdict }>,
-  header: { sdkVersion: string; claudeCodeVersion: string | null; model: string },
+  header: { sdkVersion: string; claudeCodeVersion: string | null; model: string; folder: string },
 ): string {
   const lines = [
     "# Read-only verification of the Claude Agent SDK",
@@ -179,6 +186,7 @@ export function formatMarkdown(
     `- SDK: @anthropic-ai/claude-agent-sdk ${header.sdkVersion}`,
     `- Claude Code: ${header.claudeCodeVersion ?? "unknown"}`,
     `- Model: ${header.model}`,
+    `- Folder: ${header.folder}`,
     "",
     "| Case | Gate | Status | Runs | Reasons |",
     "| --- | --- | --- | --- | --- |",

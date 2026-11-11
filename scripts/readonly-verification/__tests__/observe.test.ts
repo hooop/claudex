@@ -1,9 +1,10 @@
-import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { CASES, MARKER_NAME, type CaseId, type VerificationCase } from "../cases.js";
 import { runCase, type QueryFn, type RunSettings } from "../observe.js";
+import { TrustedDirError } from "../trustedDir.js";
 
 function caseOf(id: CaseId): VerificationCase {
   const found = CASES.find((c) => c.id === id);
@@ -153,6 +154,7 @@ describe("runCase — what the stream tells", () => {
       markerWritten: false,
       resultSubtype: null,
       error: null,
+      trustStateChanges: null,
     });
   });
 });
@@ -533,5 +535,93 @@ describe("runCase — failures", () => {
     await new Promise((resolve) => setTimeout(resolve, 300));
 
     expect(observation.toolUses).toEqual([]);
+  });
+});
+
+describe("runCase — trusted folder", () => {
+  let root: string;
+  let dir: string;
+  let configFile: string;
+  let trusted: RunSettings;
+
+  beforeEach(() => {
+    root = realpathSync(mkdtempSync(join(tmpdir(), "claudex-trusted-run-")));
+    dir = join(root, "trusted");
+    mkdirSync(dir);
+    configFile = join(root, ".claude.json");
+    writeFileSync(configFile, JSON.stringify({ projects: { [dir]: { hasTrustDialogAccepted: true } } }));
+    trusted = { ...settings, trusted: { dir, configFile } };
+  });
+
+  afterEach(() => {
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it("runs in the trusted folder and leaves it empty", async () => {
+    let cwd = "";
+    const query: QueryFn = async function* ({ options }) {
+      cwd = options.cwd as string;
+      yield init();
+    };
+
+    const observation = await runCase(query, caseOf("L"), trusted);
+
+    expect(cwd).toBe(dir);
+    expect(readdirSync(dir)).toEqual([]);
+    expect(observation.trustStateChanges).toEqual([]);
+  });
+
+  it("removes the marker the case's breach wrote", async () => {
+    const query: QueryFn = async function* ({ options }) {
+      writeFileSync(join(options.cwd as string, MARKER_NAME), "pwned");
+      yield init();
+    };
+
+    const observation = await runCase(query, caseOf("E"), trusted);
+
+    expect(observation.markerWritten).toBe(true);
+    expect(readdirSync(dir)).toEqual([]);
+  });
+
+  it("refuses a folder that is not empty before the case, and touches nothing", async () => {
+    writeFileSync(join(dir, "keep.txt"), "mine");
+
+    await expect(runCase(scripted(init()), caseOf("E"), trusted)).rejects.toThrow(TrustedDirError);
+
+    expect(readdirSync(dir)).toEqual(["keep.txt"]);
+    expect(readFileSync(join(dir, "keep.txt"), "utf8")).toBe("mine");
+  });
+
+  it("stops when the engine left a file it cannot account for", async () => {
+    const query: QueryFn = async function* ({ options }) {
+      writeFileSync(join(options.cwd as string, "other.txt"), "x");
+      yield init();
+    };
+
+    await expect(runCase(query, caseOf("E"), trusted)).rejects.toThrow(/other\.txt/);
+
+    expect(existsSync(join(dir, "other.txt"))).toBe(true);
+    expect(existsSync(join(dir, "README.md"))).toBe(false);
+  });
+
+  it("removes the project directories of the case, not only its files", async () => {
+    await runCase(scripted(init()), caseOf("L"), trusted);
+
+    expect(existsSync(join(dir, ".claude"))).toBe(false);
+    expect(existsSync(join(dir, ".git"))).toBe(false);
+  });
+
+  it("reports the project entry keys the run changed", async () => {
+    const query: QueryFn = async function* () {
+      writeFileSync(
+        configFile,
+        JSON.stringify({ projects: { [dir]: { hasTrustDialogAccepted: true, enabledMcpjsonServers: ["evil"] } } }),
+      );
+      yield init();
+    };
+
+    const observation = await runCase(query, caseOf("E"), trusted);
+
+    expect(observation.trustStateChanges).toEqual(["enabledMcpjsonServers"]);
   });
 });

@@ -4,7 +4,10 @@
 // cases and verdict after the debate isolation: docs/superpowers/specs/2026-10-28-debate-isolation-design.md.
 //
 //   npm run verify:readonly -- --model <id> [--sdk-dir <dir>] [--cases E,F,G]
-//     [--repeat <n>] [--out <file.json>]
+//     [--repeat <n>] [--out <file.json>] [--trusted-dir <dir>]
+//
+// --trusted-dir runs every case in that empty, already trusted folder instead of
+// a fresh temporary one (see D3 of the debate isolation design).
 //
 // Each case runs twice by default (--repeat): one clean run is not evidence
 // when the model is free to behave differently the next time.
@@ -12,6 +15,7 @@
 // Exit codes: 0 every absolute case passed, 1 one did not, 2 the run could not
 // be made (bad arguments, SDK not found).
 import { mkdir, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
@@ -23,12 +27,13 @@ import {
   type QueryFn,
   type RunSettings,
 } from "./readonly-verification/observe.js";
+import { TrustedDirError, claudeConfigFile, resolveTrustedDir } from "./readonly-verification/trustedDir.js";
 import { SdkLoadError, loadSdk } from "./readonly-verification/sdk.js";
 import { aggregate, evaluate, formatMarkdown, type Observation, type Verdict } from "./readonly-verification/verdict.js";
 
 const DEFAULT_REPEAT = 2;
 const USAGE =
-  "Usage: npm run verify:readonly -- --model <id> [--sdk-dir <dir>] [--cases E,F,G] [--repeat <n>] [--out <file.json>]\n" +
+  "Usage: npm run verify:readonly -- --model <id> [--sdk-dir <dir>] [--cases E,F,G] [--repeat <n>] [--out <file.json>] [--trusted-dir <dir>]\n" +
   `Each case runs ${DEFAULT_REPEAT} times unless --repeat says otherwise.`;
 
 const scriptsDir = dirname(fileURLToPath(import.meta.url));
@@ -44,6 +49,7 @@ interface Options {
   cases: VerificationCase[];
   repeat: number;
   out: string | undefined;
+  trustedDir: string | undefined;
 }
 
 interface Row {
@@ -69,6 +75,7 @@ function parseOptions(argv: string[]): Options {
         cases: { type: "string" },
         repeat: { type: "string" },
         out: { type: "string" },
+        "trusted-dir": { type: "string" },
       },
       allowPositionals: false,
     }));
@@ -97,6 +104,7 @@ function parseOptions(argv: string[]): Options {
     cases,
     repeat: Number(repeatText),
     out: values.out === undefined ? undefined : resolve(values.out),
+    trustedDir: values["trusted-dir"],
   };
 }
 
@@ -110,12 +118,18 @@ function stripClaudeSessionEnv(): void {
   if (keys.length > 0) console.error(`Removed from the environment: ${keys.join(", ")}`);
 }
 
-async function runAll(query: QueryFn, options: Options, cases: VerificationCase[]): Promise<Row[]> {
+async function runAll(
+  query: QueryFn,
+  options: Options,
+  cases: VerificationCase[],
+  trusted: RunSettings["trusted"],
+): Promise<Row[]> {
   const settings: RunSettings = {
     model: options.model,
     maxTurns: DEFAULT_MAX_TURNS,
     timeoutMs: DEFAULT_TIMEOUT_MS,
     evilServerPath,
+    ...(trusted ? { trusted } : {}),
   };
 
   const rows: Row[] = [];
@@ -138,13 +152,26 @@ async function main(argv: string[]): Promise<number> {
 
   if (options.cases.length === 0) throw new CommandError("no case to run");
 
+  // Checked before anything starts: a folder that is not trusted would only
+  // make every case stop at the trust dialog.
+  let trusted: RunSettings["trusted"];
+  if (options.trustedDir !== undefined) {
+    const configFile = claudeConfigFile(process.env, homedir());
+    trusted = { dir: await resolveTrustedDir(options.trustedDir, configFile), configFile };
+  }
+
   stripClaudeSessionEnv();
   const sdk = await loadSdk(options.sdkDir);
   console.error(`SDK ${sdk.version} (Claude Code ${sdk.claudeCodeVersion ?? "unknown"}) from ${sdk.entry}`);
 
-  const rows = await runAll(sdk.query, options, options.cases);
+  const rows = await runAll(sdk.query, options, options.cases, trusted);
 
-  const header = { sdkVersion: sdk.version, claudeCodeVersion: sdk.claudeCodeVersion, model: options.model };
+  const header = {
+    sdkVersion: sdk.version,
+    claudeCodeVersion: sdk.claudeCodeVersion,
+    model: options.model,
+    folder: trusted ? `trusted folder ${trusted.dir}` : "fresh temporary folder",
+  };
   const report = formatMarkdown(rows, header);
   await new Promise<void>((done) => process.stdout.write(report, () => done()));
 
@@ -185,6 +212,6 @@ function exit(code: number): void {
 main(process.argv.slice(2)).then(exit, (error: unknown) => {
   // Only a mistake in the command's input, or an SDK that cannot be loaded, is
   // explained in one line; anything else keeps its stack.
-  console.error(error instanceof CommandError || error instanceof SdkLoadError ? error.message : error);
+  console.error(error instanceof CommandError || error instanceof SdkLoadError || error instanceof TrustedDirError ? error.message : error);
   exit(2);
 });
