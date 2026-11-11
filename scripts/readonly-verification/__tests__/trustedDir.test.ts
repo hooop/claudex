@@ -85,7 +85,7 @@ describe("resolveTrustedDir", () => {
     await expect(resolveTrustedDir(dir, configFile)).rejects.toThrow(configFile);
   });
 
-  it("refuses an unreadable config without printing it", async () => {
+  it.skipIf(process.getuid?.() === 0)("refuses an unreadable config without printing it", async () => {
     const dir = folder();
     config({ [dir]: { hasTrustDialogAccepted: true, secret: "s3cr3t" } });
     chmodSync(configFile, 0o000);
@@ -121,6 +121,7 @@ describe("claudeConfigFile", () => {
   it("uses CLAUDE_CONFIG_DIR when set, the home directory otherwise", () => {
     expect(claudeConfigFile({ CLAUDE_CONFIG_DIR: "/cfg" }, "/home/u")).toBe("/cfg/.claude.json");
     expect(claudeConfigFile({}, "/home/u")).toBe("/home/u/.claude.json");
+    expect(claudeConfigFile({ CLAUDE_CONFIG_DIR: "" }, "/home/u")).toBe("/home/u/.claude.json");
   });
 });
 

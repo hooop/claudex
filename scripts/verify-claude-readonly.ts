@@ -123,7 +123,8 @@ async function runAll(
   options: Options,
   cases: VerificationCase[],
   trusted: RunSettings["trusted"],
-): Promise<Row[]> {
+  rows: Row[],
+): Promise<void> {
   const settings: RunSettings = {
     model: options.model,
     maxTurns: DEFAULT_MAX_TURNS,
@@ -132,7 +133,6 @@ async function runAll(
     ...(trusted ? { trusted } : {}),
   };
 
-  const rows: Row[] = [];
   for (const c of cases) {
     const observations: Observation[] = [];
     const verdicts: Verdict[] = [];
@@ -144,7 +144,6 @@ async function runAll(
     }
     rows.push({ id: c.id, gate: c.gate, observations, verdicts, verdict: aggregate(verdicts) });
   }
-  return rows;
 }
 
 async function main(argv: string[]): Promise<number> {
@@ -164,13 +163,24 @@ async function main(argv: string[]): Promise<number> {
   const sdk = await loadSdk(options.sdkDir);
   console.error(`SDK ${sdk.version} (Claude Code ${sdk.claudeCodeVersion ?? "unknown"}) from ${sdk.entry}`);
 
-  const rows = await runAll(sdk.query, options, options.cases, trusted);
+  // Filled case by case, so that a series stopped by the trusted folder still
+  // reports the cases that finished.
+  const rows: Row[] = [];
+  let stopped: TrustedDirError | undefined;
+  try {
+    await runAll(sdk.query, options, options.cases, trusted, rows);
+  } catch (error) {
+    if (!(error instanceof TrustedDirError)) throw error;
+    stopped = error;
+  }
 
   const header = {
     sdkVersion: sdk.version,
     claudeCodeVersion: sdk.claudeCodeVersion,
     model: options.model,
-    folder: trusted ? `trusted folder ${trusted.dir}` : "fresh temporary folder",
+    folder:
+      (trusted ? `trusted folder ${trusted.dir}` : "fresh temporary folder") +
+      (stopped ? ` (series stopped after ${rows.length} finished case(s): ${stopped.message})` : ""),
   };
   const report = formatMarkdown(rows, header);
   await new Promise<void>((done) => process.stdout.write(report, () => done()));
@@ -194,6 +204,8 @@ async function main(argv: string[]): Promise<number> {
       throw new CommandError(`cannot write --out ${options.out}: ${describeError(error)}`);
     }
   }
+
+  if (stopped) throw stopped;
 
   const blocking = rows.filter((row) => row.gate === "absolute" && row.verdict.status !== "pass");
   if (blocking.length > 0) {

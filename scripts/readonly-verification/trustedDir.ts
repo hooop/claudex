@@ -2,13 +2,13 @@
 // Claude Code. File system only, and read-only on the account's configuration:
 // nothing here writes to .claude.json. Error messages name paths, never the
 // content of the configuration.
-import { readFile, readdir, realpath, stat } from "node:fs/promises";
+import { readFile, readdir, realpath, rm, rmdir, lstat, stat } from "node:fs/promises";
 import { join } from "node:path";
 
 export class TrustedDirError extends Error {}
 
 export function claudeConfigFile(env: NodeJS.ProcessEnv, home: string): string {
-  return join(env.CLAUDE_CONFIG_DIR ?? home, ".claude.json");
+  return join(env.CLAUDE_CONFIG_DIR || home, ".claude.json");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -68,4 +68,45 @@ export function changedKeys(before: Record<string, unknown> | null, after: Recor
   const b = after ?? {};
   const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
   return [...keys].filter((key) => JSON.stringify(a[key]) !== JSON.stringify(b[key])).sort();
+}
+
+/** Every path under `dir` (relative, files and directories), without following symlinks. */
+export async function snapshotTree(dir: string): Promise<{ files: string[]; dirs: string[] }> {
+  const files: string[] = [];
+  const dirs: string[] = [];
+  const walk = async (relative: string): Promise<void> => {
+    for (const name of await readdir(join(dir, relative))) {
+      const path = join(relative, name);
+      if ((await lstat(join(dir, path))).isDirectory()) {
+        dirs.push(path);
+        await walk(path);
+      } else {
+        files.push(path);
+      }
+    }
+  };
+  await walk("");
+  return { files, dirs };
+}
+
+/**
+ * Removes what a snapshot accounts for, nothing else. Anything present that
+ * the snapshot does not list (other than `extraFile`, the marker) stops the
+ * cleanup with only the marker removed: the folder is left for the maintainer.
+ * Directories go with a non-recursive rmdir, deepest first, so a directory
+ * that still holds something throws instead of being emptied.
+ */
+export async function cleanupToSnapshot(
+  dir: string,
+  snapshot: { files: string[]; dirs: string[] },
+  extraFile: string,
+): Promise<{ unaccounted: string[] }> {
+  const known = new Set([...snapshot.files, ...snapshot.dirs]);
+  const now = await snapshotTree(dir);
+  await rm(join(dir, extraFile), { force: true });
+  const unaccounted = [...now.files, ...now.dirs].filter((path) => !known.has(path) && path !== extraFile).sort();
+  if (unaccounted.length > 0) return { unaccounted };
+  for (const file of snapshot.files) await rm(join(dir, file), { force: true });
+  for (const sub of [...snapshot.dirs].sort((a, b) => b.length - a.length)) await rmdir(join(dir, sub));
+  return { unaccounted: [] };
 }

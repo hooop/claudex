@@ -601,8 +601,78 @@ describe("runCase — trusted folder", () => {
     await expect(runCase(query, caseOf("E"), trusted)).rejects.toThrow(/other\.txt/);
 
     expect(existsSync(join(dir, "other.txt"))).toBe(true);
-    expect(existsSync(join(dir, "README.md"))).toBe(false);
+    expect(existsSync(join(dir, "README.md"))).toBe(true);
   });
+
+  it.each([".claude/settings.local.json", ".git/hooks/x"])(
+    "stops and keeps %s when the engine wrote it inside a directory the run created",
+    async (relative) => {
+      const query: QueryFn = async function* ({ options }) {
+        const path = join(options.cwd as string, relative);
+        mkdirSync(join(path, ".."), { recursive: true });
+        writeFileSync(path, "x");
+        yield init();
+      };
+
+      await expect(runCase(query, caseOf("L"), trusted)).rejects.toThrow(relative);
+
+      expect(existsSync(join(dir, relative))).toBe(true);
+    },
+  );
+
+  it("removes only the marker when it stops on an unaccounted file", async () => {
+    const query: QueryFn = async function* ({ options }) {
+      writeFileSync(join(options.cwd as string, "other.txt"), "x");
+      writeFileSync(join(options.cwd as string, MARKER_NAME), "pwned");
+      yield init();
+    };
+
+    await expect(runCase(query, caseOf("E"), trusted)).rejects.toThrow(/other\.txt/);
+
+    expect(existsSync(join(dir, MARKER_NAME))).toBe(false);
+    expect(existsSync(join(dir, "README.md"))).toBe(true);
+  });
+
+  it("names the changed project entry keys, never values, when it stops", async () => {
+    const query: QueryFn = async function* ({ options }) {
+      writeFileSync(join(options.cwd as string, "other.txt"), "x");
+      writeFileSync(
+        configFile,
+        JSON.stringify({ projects: { [dir]: { hasTrustDialogAccepted: true, enabledMcpjsonServers: ["sEcReT"] } } }),
+      );
+      yield init();
+    };
+
+    const error = await runCase(query, caseOf("E"), trusted).catch((e: unknown) => e);
+
+    expect((error as Error).message).toContain("enabledMcpjsonServers");
+    expect((error as Error).message).not.toContain("sEcReT");
+  });
+
+  it("leaves the folder empty and propagates the error when the setup throws", async () => {
+    const broken: VerificationCase = {
+      ...caseOf("E"),
+      projectFiles: () => {
+        throw new Error("cannot build project");
+      },
+    };
+
+    await expect(runCase(scripted(init()), broken, trusted)).rejects.toThrow("cannot build project");
+
+    expect(readdirSync(dir)).toEqual([]);
+  });
+
+  it.each(["/abs.txt", "../up.txt", "a/../b.txt", "a//b.txt", "./c.txt", ""])(
+    "rejects the case file path %j at setup",
+    async (bad) => {
+      const evil: VerificationCase = { ...caseOf("E"), projectFiles: () => ({ [bad]: "x" }) };
+
+      await expect(runCase(scripted(init()), evil, trusted)).rejects.toThrow(/invalid case file path/);
+
+      expect(readdirSync(dir)).toEqual([]);
+      expect(existsSync(join(root, "up.txt"))).toBe(false);
+    },
+  );
 
   it("removes the project directories of the case, not only its files", async () => {
     await runCase(scripted(init()), caseOf("L"), trusted);

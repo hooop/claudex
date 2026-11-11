@@ -3,11 +3,11 @@
 // injected (QueryFn) so that tests never start a real engine.
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, join } from "node:path";
 import { promisify } from "node:util";
-import { assertEmptyDir, changedKeys, readProjectEntry } from "./trustedDir.js";
+import { TrustedDirError, assertEmptyDir, changedKeys, cleanupToSnapshot, readProjectEntry, snapshotTree } from "./trustedDir.js";
 import { MARKER_NAME, decide, type CaseContext, type VerificationCase } from "./cases.js";
 import type { Observation } from "./verdict.js";
 
@@ -129,6 +129,13 @@ function describeErrorResult(subtype: string | null, message: Record<string, unk
 }
 
 async function writeProjectFiles(dir: string, files: Record<string, string>): Promise<void> {
+  // A case file must stay inside the folder, and the trusted-folder cleanup
+  // relies on the paths being plain relative ones.
+  for (const relativePath of Object.keys(files)) {
+    if (isAbsolute(relativePath) || relativePath.split("/").some((part) => part === "" || part === "." || part === "..")) {
+      throw new Error(`invalid case file path: ${JSON.stringify(relativePath)}`);
+    }
+  }
   for (const [relativePath, content] of Object.entries(files)) {
     const path = join(dir, relativePath);
     await mkdir(dirname(path), { recursive: true });
@@ -147,9 +154,11 @@ export async function runCase(query: QueryFn, c: VerificationCase, settings: Run
   }
 }
 
-// The folder is the maintainer's, trusted once by hand: it must start empty,
-// and it is emptied by removing exactly what this run created plus the marker.
-// Anything else left behind is not ours to delete, so the series stops.
+// The folder is the maintainer's, trusted once by hand: it must start empty.
+// Right after the setup a snapshot lists every path the run created; the
+// cleanup removes exactly those plus the marker. Anything else present (a file
+// the engine wrote, even inside .claude or .git) is not ours to delete, so the
+// series stops and the folder is left as it is.
 async function runInTrustedDir(
   query: QueryFn,
   c: VerificationCase,
@@ -159,28 +168,65 @@ async function runInTrustedDir(
   const { dir, configFile } = trusted;
   await assertEmptyDir(dir);
   const before = await readProjectEntry(configFile, dir);
-  const ctx: CaseContext = { markerPath: join(dir, MARKER_NAME), evilServerPath: settings.evilServerPath };
-  const created = new Set(
-    [...Object.keys({ ...SHARED_FILES, ...c.projectFiles(ctx) }).map((path) => path.split("/")[0] ?? path), ".git", MARKER_NAME],
-  );
-  let observation: Observation;
+  let snapshot: { files: string[]; dirs: string[] } | undefined;
+  let observation: Observation | undefined;
+  let runError: Error | undefined;
   try {
-    observation = await runIn(dir, query, c, settings);
-  } finally {
-    for (const name of created) await rm(join(dir, name), { recursive: true, force: true });
+    observation = await runIn(dir, query, c, settings, async () => {
+      snapshot = await snapshotTree(dir);
+    });
+  } catch (error) {
+    runError = error instanceof Error ? error : new Error(describeError(error));
+  }
+  if (snapshot === undefined) {
+    // Setup failed before the engine ran: the folder was empty, so whatever is
+    // there now was written by the setup alone.
+    await rm(join(dir, MARKER_NAME), { force: true });
+    for (const name of await readdir(dir)) await rm(join(dir, name), { recursive: true, force: true });
+    throw runError ?? new Error("setup did not complete");
+  }
+  const { unaccounted } = await cleanupToSnapshot(dir, snapshot, MARKER_NAME);
+  if (unaccounted.length > 0) {
+    throw new TrustedDirError(
+      `the run left what it cannot account for in ${dir}, nothing deleted: ${unaccounted.join(", ")}` +
+        (await describeTrustChanges(configFile, dir, before)),
+    );
   }
   await assertEmptyDir(dir);
+  if (runError !== undefined) throw runError;
+  if (observation === undefined) throw new Error("no observation");
   observation.trustStateChanges = changedKeys(before, await readProjectEntry(configFile, dir));
   return observation;
 }
 
-async function runIn(dir: string, query: QueryFn, c: VerificationCase, settings: RunSettings): Promise<Observation> {
+// Names only, never values; unreadable configuration just adds nothing.
+async function describeTrustChanges(
+  configFile: string,
+  dir: string,
+  before: Record<string, unknown> | null,
+): Promise<string> {
+  try {
+    const keys = changedKeys(before, await readProjectEntry(configFile, dir));
+    return keys.length > 0 ? `; project entry keys changed: ${keys.join(", ")}` : "";
+  } catch {
+    return "";
+  }
+}
+
+async function runIn(
+  dir: string,
+  query: QueryFn,
+  c: VerificationCase,
+  settings: RunSettings,
+  afterSetup?: () => Promise<void>,
+): Promise<Observation> {
   const markerPath = join(dir, MARKER_NAME);
   const ctx: CaseContext = { markerPath, evilServerPath: settings.evilServerPath };
 
   await execFileAsync("git", ["init", "-q"], { cwd: dir });
   await writeProjectFiles(dir, { ...SHARED_FILES, ...c.projectFiles(ctx) });
   const prompt = c.prompt(ctx);
+  await afterSetup?.();
 
   const observation = emptyObservation();
   const abortController = new AbortController();
