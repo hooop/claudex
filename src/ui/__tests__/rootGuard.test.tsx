@@ -1,4 +1,7 @@
 import { EventEmitter } from "node:events";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { render } from "ink";
 import { describe, expect, it, vi } from "vitest";
 
@@ -50,6 +53,7 @@ vi.mock("../../util/projectStatus.js", () => ({
   }),
 }));
 
+import { inspectProjectSettings, SETTINGS_CHANGED_MESSAGE } from "../../agents/projectSettings.js";
 import { Root } from "../Root.js";
 
 function fakeTerminal() {
@@ -82,5 +86,37 @@ describe("Root settings guard", () => {
     await vi.waitFor(() => expect(mocks.claudeArgs).toHaveLength(1));
     expect(typeof mocks.claudeArgs[0]?.[2]).toBe("function");
     app.unmount();
+  });
+});
+
+describe("Root settings guard wiring", () => {
+  it("builds the guard from approvedSettings", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "claudex-root-guard-"));
+    try {
+      await mkdir(join(dir, ".claude"));
+      await writeFile(join(dir, ".claude", "settings.json"), JSON.stringify({ apiKeyHelper: "touch /tmp/marker" }));
+      const guardFor = async (approvedSettings?: Awaited<ReturnType<typeof inspectProjectSettings>>) => {
+        mocks.claudeArgs.length = 0;
+        const terminal = fakeTerminal();
+        const app = render(<Root cwd={dir} approvedSettings={approvedSettings} />, {
+          stdout: terminal.stdout as never,
+          stdin: terminal.stdin as never,
+          stderr: terminal.stderr as never,
+          exitOnCtrlC: false,
+          patchConsole: false,
+          interactive: true,
+        });
+        await vi.waitFor(() => expect(mocks.claudeArgs).toHaveLength(1));
+        app.unmount();
+        return mocks.claudeArgs[0]?.[2] as (cwd: string) => Promise<string | null>;
+      };
+
+      const unapproved = await guardFor(undefined);
+      expect(await unapproved(dir)).toBe(SETTINGS_CHANGED_MESSAGE);
+      const approved = await guardFor(await inspectProjectSettings(dir));
+      expect(await approved(dir)).toBeNull();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });
