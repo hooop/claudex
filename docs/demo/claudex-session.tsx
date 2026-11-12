@@ -15,7 +15,7 @@ import { WelcomeScreen } from "../../src/ui/components/WelcomeScreen.js";
 import { DEFAULT_HEADER_ANIMATION, type HeaderAnimationId } from "../../src/ui/headerArt.js";
 import type { ProjectStatus } from "../../src/util/projectStatus.js";
 
-const TOPIC = "Comment refondre l'auth sans couper les utilisateurs connectés ?";
+const TOPIC = "How do we rework auth without logging out signed-in users?";
 
 class DemoAgent implements CodingAgent {
   readonly label: string;
@@ -93,14 +93,14 @@ class DemoAgent implements CodingAgent {
   private responseFor(): string {
     if (this.id === "claude" && this.turn === 0) {
       return [
-        "Sujet accepté. Je cadrerais la migration comme un basculement progressif, pas comme une réécriture.",
+        "Topic accepted. I would frame the migration as a gradual switchover, not a rewrite.",
         "",
-        "- garder l'ancien cookie valide pendant une fenêtre courte ;",
-        "- émettre le nouveau format dès la prochaine connexion ;",
-        "- accepter les deux formats côté serveur pendant la transition ;",
-        "- mesurer les sessions encore anciennes avant de retirer le fallback.",
+        "- keep the old cookie valid for a short window;",
+        "- issue the new format from the next sign-in;",
+        "- accept both formats on the server during the transition;",
+        "- measure the sessions still on the old format before removing the fallback.",
         "",
-        "Point à faire vérifier par Codex : le fallback ne doit jamais réactiver une session révoquée.",
+        "Point for Codex to check: the fallback must never reactivate a revoked session.",
         "",
         "<<CONTINUE>>",
       ].join("\n");
@@ -108,13 +108,13 @@ class DemoAgent implements CodingAgent {
 
     if (this.id === "codex" && this.turn === 0) {
       return [
-        "Je vérifie le risque de régression le plus dangereux.",
+        "I am checking the most dangerous regression risk.",
         "",
         "$ node --test auth-migration.test.mjs",
-        "[ok] les nouveaux tokens remplacent les anciens",
-        "[x] une session révoquée repasse si le fallback lit l'ancien cookie",
+        "[ok] new tokens replace old ones",
+        "[x] a revoked session comes back if the fallback reads the old cookie",
         "",
-        "Je recommande de centraliser la révocation avant toute lecture de format legacy.",
+        "I recommend centralizing revocation before any legacy-format read.",
         "",
         "<<CONTINUE>>",
       ].join("\n");
@@ -122,18 +122,18 @@ class DemoAgent implements CodingAgent {
 
     if (this.id === "claude") {
       return [
-        "Je suis d'accord. La spécification doit imposer une révocation vérifiée avant de choisir le lecteur legacy ou moderne.",
+        "I agree. The spec must require a verified revocation check before choosing the legacy or modern reader.",
         "",
-        "Le test d'acceptation devient simple : une session explicitement révoquée reste morte dans les deux formats.",
+        "The acceptance test becomes simple: an explicitly revoked session stays dead in both formats.",
         "",
         "<<CONSENSUS>>",
       ].join("\n");
     }
 
     return [
-      "Consensus confirmé.",
+      "Consensus confirmed.",
       "",
-      "Le critère clé est observable : une session révoquée ne doit jamais être restaurée par le fallback legacy.",
+      "The key criterion is observable: a revoked session must never be restored by the legacy fallback.",
       "",
       "<<CONSENSUS>>",
     ].join("\n");
@@ -194,7 +194,7 @@ function DemoApp() {
       headerAnimation={headerAnimation}
       coordinatorState={{ kind: "idle" }}
       coordinatorNotice={null}
-      onLifecycleRequest={() => Promise.resolve({ ok: true, message: "Démo terminée." })}
+      onLifecycleRequest={() => Promise.resolve({ ok: true, message: "Demo finished." })}
       onAutonomySelected={() => Promise.resolve()}
     />
   );
