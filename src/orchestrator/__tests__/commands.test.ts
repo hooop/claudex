@@ -16,9 +16,9 @@ describe("parseCommand", () => {
   });
 
   it("splits /decide on the pipe and trims both halves", () => {
-    expect(parseCommand("/decide  File de livraisons | Architecture C  ")).toEqual({
+    expect(parseCommand("/decide  Delivery queue | Architecture C  ")).toEqual({
       kind: "decide",
-      topic: "File de livraisons",
+      topic: "Delivery queue",
       approach: "Architecture C",
     });
   });

@@ -211,11 +211,11 @@ describe("Scheduler", () => {
 
       await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
       expect(agents.claude.lastMessage).toContain("you are Claude");
-      agents.claude.complete("Ma question\n\n<<CONTINUE>>");
+      agents.claude.complete("My question\n\n<<CONTINUE>>");
 
       await vi.waitFor(() => expect(agents.codex.isPending()).toBe(true));
       expect(agents.codex.lastMessage).toContain("you are Codex");
-      expect(agents.codex.lastMessage).toContain("[Claude → Codex]\nMa question");
+      expect(agents.codex.lastMessage).toContain("[Claude → Codex]\nMy question");
     });
 
     it("should attribute each block separately when a turn folds several", async () => {
@@ -226,13 +226,13 @@ describe("Scheduler", () => {
       await vi.waitFor(() => expect(agents.codex.isPending()).toBe(true));
 
       // Codex's reply and the human's note reach Claude in the same turn.
-      scheduler.intervene("Mon avis", "claude");
-      agents.codex.complete("Question de Codex\n\n<<CONTINUE>>");
+      scheduler.intervene("My opinion", "claude");
+      agents.codex.complete("Question from Codex\n\n<<CONTINUE>>");
 
       await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
       const message = agents.claude.lastMessage ?? "";
-      expect(message).toContain("[Codex → Claude]\nQuestion de Codex");
-      expect(message).toContain("[User → Claude]\nMon avis");
+      expect(message).toContain("[Codex → Claude]\nQuestion from Codex");
+      expect(message).toContain("[User → Claude]\nMy opinion");
       // Attribution is rendered, never baked into the stored text.
       expect(message).not.toContain("[User's message]");
     });
@@ -482,9 +482,9 @@ describe("Scheduler", () => {
       // The batch runs the expected speaker first, so Codex agrees, then Claude
       // confirms — and Claude is therefore the one handed the synthesis.
       await vi.waitFor(() => expect(agents.codex.isPending()).toBe(true));
-      agents.codex.complete("D'accord\n\n<<CONSENSUS>>");
+      agents.codex.complete("Agreed\n\n<<CONSENSUS>>");
       await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
-      agents.claude.complete("D'accord aussi\n\n<<CONSENSUS>>");
+      agents.claude.complete("Agreed too\n\n<<CONSENSUS>>");
 
       await vi.waitFor(() => expect(callbacks.onConsensusReached).toHaveBeenCalled());
     }
