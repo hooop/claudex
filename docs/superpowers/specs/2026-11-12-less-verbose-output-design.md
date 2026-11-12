@@ -122,10 +122,12 @@ agents).
 
 ```ts
 /**
- * The text streamed since the last boundary was a working note, not part of the
- * answer. Receivers drop it from the live message.
+ * The text since the last boundary was a working note, not part of the answer.
+ * When `streamed` is true, `note` is exactly the suffix passed to `onTextDelta`
+ * since that boundary (a Codex paragraph-break prefix included), and receivers
+ * drop it from the live message. When false, the note was never streamed.
  */
-onNote?: (note: string) => void;
+onNote?: (note: string, streamed: boolean) => void;
 ```
 
 `AgentActivity` gains `{ kind: "note"; status: "running"; label: string }` for the
@@ -140,22 +142,30 @@ The success text of `AgentResult` contains only the answer.
   including `null` or missing (the schema says providers do not emit it
   consistently), stays an answer: an unknown phase behaves as today. If
   `item/started` carries the phase, the adapter may hold a commentary item's deltas
-  back from `onTextDelta` instead of streaming then removing them. Between two answer
-  items the adapter inserts a paragraph break (`\n\n`) instead of nothing.
+  back from `onTextDelta` instead of streaming then removing them. A held item that
+  never completes stays an answer and is streamed, prefix included, when the turn
+  ends, so the stream equals the result. Between two answer items the adapter
+  inserts a paragraph break (`\n\n`) instead of nothing.
 - **Claude** (`src/agents/claudeAgent.ts`): text streamed since the last boundary
   becomes a note when a `tool_use` block starts after it in the same turn. Boundaries
   are the start of the turn and each tool use. Text after the last tool use is the
   answer. The non-streamed path (an `assistant` message without prior stream events)
-  applies the same rule to its content blocks.
+  applies the same rule to its content blocks, and a non-streamed message holding a
+  tool use also closes the text of earlier messages as a (streamed) note.
 
 **Fallback.** If, at the end of a successful turn, the answer is empty or holds only
 a protocol marker, the result text is every segment in order (notes and answer,
 separated by blank lines). Nothing is lost, the turn is never empty, and the marker
 is still read from the last line by `extractSignal`, unchanged. The adapter builds
-this text; the scheduler resets the entry body to the result text whenever it
-differs from what was streamed.
+this text.
 
-Cancelled and failed turns keep their `partialText` as today (all text so far).
+Cancelled and failed turns keep their `partialText` as today: all text so far,
+notes included, in order, with the prefixes that were streamed.
+
+At turn end, the scheduler resets the entry body with `onOutputReset` only for a
+turn that received a note (controller ruling: a turn without notes behaves as
+before), and only when its final text differs from what was streamed: the result
+text on success, the `partialText` on a failed or cancelled turn.
 
 **Live display.** On `onNote`, the scheduler removes the note from the live entry
 text and emits a new `onOutputReset(entryId, text)` callback (next to
