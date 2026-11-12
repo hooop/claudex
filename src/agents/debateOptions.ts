@@ -1,11 +1,77 @@
 import type { Options } from "@anthropic-ai/claude-agent-sdk";
+import { join } from "node:path";
 
 /**
  * Strictly read-only tools for debate phase.
- * Bash is explicitly excluded — it can write even with "read-only" intent,
+ * Bash is excluded from this list — it can write even with "read-only" intent,
  * and a permissive rule or distracted human approval could violate the invariant.
+ * Where an OS sandbox is available, SANDBOXED_DEBATE_TOOLS adds it back.
  */
 export const DEBATE_TOOLS = ["Read", "Grep", "Glob"];
+
+// Bash is only offered together with the `sandbox` block below: the OS sandbox,
+// not the tool list, is what keeps it from writing (spec D1).
+export const SANDBOXED_DEBATE_TOOLS: readonly string[] = [...DEBATE_TOOLS, "Bash"];
+
+// Credential locations hidden from the sandboxed Bash, relative to the home
+// folder. Never `.gitconfig`: git inside the sandbox needs it.
+export const CREDENTIAL_READ_DENY: readonly string[] = [
+  ".ssh",
+  ".aws",
+  ".azure",
+  ".config/gcloud",
+  ".kube",
+  ".docker",
+  ".gnupg",
+  ".netrc",
+  ".git-credentials",
+  ".npmrc",
+  ".pypirc",
+  ".config/gh",
+  ".claude",
+  ".claude.json",
+  ".codex",
+  "Library/Keychains",
+  ".vault-token",
+  ".cargo/credentials.toml",
+  ".terraform.d/credentials.tfrc.json",
+  ".password-store",
+  ".config/op",
+  ".local/share/keyrings",
+  ".zsh_history",
+  ".bash_history",
+];
+
+export interface DebateSandbox {
+  /** Real absolute path of the analysed project. */
+  cwd: string;
+  /** Real path of the home folder. */
+  home: string;
+  /** Real targets of credential stores that are symlinks: the deny rule on the link may not cover them. */
+  extraDenyRead: string[];
+  /** Names of environment variables that look like secrets, hidden from Bash. */
+  secretEnvNames: string[];
+}
+
+// Typed here rather than imported from the SDK, which this module never loads at runtime.
+// A type alias, not an interface: the SDK's type has an index signature that
+// only an alias satisfies.
+export type DebateSandboxSettings = {
+  enabled: true;
+  failIfUnavailable: true;
+  allowUnsandboxedCommands: false;
+  autoAllowBashIfSandboxed: true;
+  network: {
+    allowedDomains: string[];
+    strictAllowlist: true;
+    allowAllUnixSockets: false;
+    allowLocalBinding: false;
+  };
+  enableWeakerNetworkIsolation: false;
+  allowAppleEvents: false;
+  filesystem: { denyWrite: string[]; denyRead: string[] };
+  credentials?: { envVars: Array<{ name: string; mode: "deny" }> };
+};
 
 // Measured before this change: a hook of the analysed repository ran and MCP
 // servers and claude.ai connectors were offered during a debate turn. A debate
@@ -45,16 +111,17 @@ export interface DebateQueryOptions extends Widen<typeof DEBATE_ISOLATION> {
   permissionMode: "default";
   allowedTools: string[];
   settingSources: Array<"project">;
+  sandbox?: DebateSandboxSettings;
 }
 
 // Lives apart from claudeAgent.ts so the read-only verification script can
 // import the options Claudex ships without loading the SDK at runtime.
 // A function, not a constant: every caller gets its own arrays, so none can
 // alter another's options.
-export function debateQueryOptions(): DebateQueryOptions {
+export function debateQueryOptions(sandbox?: DebateSandbox | null): DebateQueryOptions {
   return {
     // Real availability restriction: this is what keeps the debate read-only.
-    tools: [...DEBATE_TOOLS],
+    tools: [...(sandbox ? SANDBOXED_DEBATE_TOOLS : DEBATE_TOOLS)],
     // Deliberately always "default", never "plan": plan mode carries its own
     // built-in ritual (present a plan, call ExitPlanMode) that conflicts with
     // the debate's own instructions and has been observed to confuse the model
@@ -75,5 +142,33 @@ export function debateQueryOptions(): DebateQueryOptions {
     settingSources: ["project"],
     ...DEBATE_ISOLATION,
     settings: { ...DEBATE_ISOLATION.settings },
+    ...(sandbox && { sandbox: sandboxSettings(sandbox) }),
   } satisfies Options;
+}
+
+function sandboxSettings({ cwd, home, extraDenyRead, secretEnvNames }: DebateSandbox): DebateSandboxSettings {
+  return {
+    enabled: true,
+    failIfUnavailable: true,
+    allowUnsandboxedCommands: false,
+    autoAllowBashIfSandboxed: true,
+    // No domain allowed, and no fallback to the user's own allowlist.
+    // Switches pinned off even though they are the default: a project's own
+    // settings cannot widen the sandbox if these are set explicitly here.
+    network: {
+      allowedDomains: [],
+      strictAllowlist: true,
+      allowAllUnixSockets: false,
+      allowLocalBinding: false,
+    },
+    enableWeakerNetworkIsolation: false,
+    allowAppleEvents: false,
+    filesystem: {
+      denyWrite: [cwd],
+      denyRead: [...CREDENTIAL_READ_DENY.map((entry) => join(home, entry)), ...extraDenyRead],
+    },
+    ...(secretEnvNames.length > 0 && {
+      credentials: { envVars: secretEnvNames.map((name) => ({ name, mode: "deny" as const })) },
+    }),
+  };
 }

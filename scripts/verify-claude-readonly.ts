@@ -3,7 +3,9 @@
 // quota. Protocol and threat model: docs/superpowers/specs/2026-10-26-sdk-upgrade-design.md;
 // cases and verdict after the debate isolation: docs/superpowers/specs/2026-10-28-debate-isolation-design.md;
 // cases Lp, Ll and M (where the engine reads project credential helpers and env):
-// docs/superpowers/specs/2026-11-11-project-command-settings-design.md, section D4.
+// docs/superpowers/specs/2026-11-11-project-command-settings-design.md, section D4;
+// cases S, Sc, Sh, Sn, Snc, Sr, Src, Se, Sec, Sd, Shr, Shn, She, Shu and Shuc (the sandboxed Bash of a debate turn, built
+// at run time with a fake home): docs/superpowers/specs/2026-11-11-sandboxed-bash-design.md, section D7.
 //
 //   npm run verify:readonly -- --model <id> [--sdk-dir <dir>] [--cases E,F,G]
 //     [--repeat <n>] [--out <file.json>] [--trusted-dir <dir>]
@@ -21,7 +23,7 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { CASES, claudeSessionEnvKeys, type CaseId, type Gate, type VerificationCase } from "./readonly-verification/cases.js";
+import { ALL_CASES, claudeSessionEnvKeys, type CaseId, type Gate, type VerificationCase } from "./readonly-verification/cases.js";
 import {
   DEFAULT_MAX_TURNS,
   DEFAULT_TIMEOUT_MS,
@@ -90,14 +92,14 @@ function parseOptions(argv: string[]): Options {
   const repeatText = values.repeat ?? String(DEFAULT_REPEAT);
   if (!/^[1-9]\d*$/.test(repeatText)) throw new CommandError(`--repeat must be a positive integer, got "${repeatText}"`);
 
-  let cases = [...CASES];
+  let cases = [...ALL_CASES];
   if (values.cases !== undefined) {
     const wanted = new Set(values.cases.split(",").map((id) => id.trim().toLowerCase()));
-    const unknown = [...wanted].filter((id) => !CASES.some((c) => c.id.toLowerCase() === id));
+    const unknown = [...wanted].filter((id) => !ALL_CASES.some((c) => c.id.toLowerCase() === id));
     if (unknown.length > 0) {
-      throw new CommandError(`unknown case(s): ${unknown.join(", ")} (known: ${CASES.map((c) => c.id).join(", ")})`);
+      throw new CommandError(`unknown case(s): ${unknown.join(", ")} (known: ${ALL_CASES.map((c) => c.id).join(", ")})`);
     }
-    cases = CASES.filter((c) => wanted.has(c.id.toLowerCase()));
+    cases = ALL_CASES.filter((c) => wanted.has(c.id.toLowerCase()));
   }
 
   return {

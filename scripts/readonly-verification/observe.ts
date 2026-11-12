@@ -3,14 +3,26 @@
 // injected (QueryFn) so that tests never start a real engine.
 import { execFile } from "node:child_process";
 import { createServer, type Server } from "node:http";
-import type { AddressInfo } from "node:net";
+import { createServer as createNetServer, type AddressInfo, type Server as NetServer } from "node:net";
+import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join } from "node:path";
 import { promisify } from "node:util";
 import { TrustedDirError, assertEmptyDir, changedKeys, cleanupToSnapshot, readProjectEntry, snapshotTree, type TreeSnapshot } from "./trustedDir.js";
-import { MARKER_NAME, decide, type CaseContext, type VerificationCase } from "./cases.js";
+import { debateQueryOptions } from "../../src/agents/debateOptions.js";
+import { resolveDebateSandbox } from "../../src/agents/debateSandbox.js";
+import { removeEngineLeftovers, snapshotEngineLeftovers } from "../../src/agents/engineLeftovers.js";
+import {
+  MARKER_NAME,
+  SECRET_ENV_NAME,
+  SECRET_FILE_NAME,
+  claudeSessionEnvKeys,
+  decide,
+  type CaseContext,
+  type VerificationCase,
+} from "./cases.js";
 import type { Observation } from "./verdict.js";
 
 const execFileAsync = promisify(execFile);
@@ -146,14 +158,66 @@ async function writeProjectFiles(dir: string, files: Record<string, string>): Pr
   }
 }
 
-export async function runCase(query: QueryFn, c: VerificationCase, settings: RunSettings): Promise<Observation> {
-  const trusted = settings.trusted;
-  if (trusted) return runInTrustedDir(query, c, settings, trusted);
-  const dir = await mkdtemp(join(tmpdir(), "claudex-readonly-"));
+/**
+ * What the sandbox cases need besides the project: a fake home whose .ssh is a
+ * symlink to a decoy, a folder outside the project, and the per-run token. All
+ * of it lives in its own temporary root, never in the project folder: in a
+ * trusted folder the cleanup there removes only the paths of its snapshot.
+ */
+interface SandboxFixture {
+  root: string;
+  fakeHome: string;
+  outsideMarkerPath: string;
+  secretPath: string;
+  /** Where the cases with unixSocket listen; a path in the root, never in the project. */
+  socketPath: string;
+  /** Kept by the runner only: it is never written to an observation or a report. */
+  token: string;
+}
+
+async function createSandboxFixture(): Promise<SandboxFixture> {
+  // Prefix kept apart from claudex-readonly-: a test lists temp dirs by that prefix.
+  // Real path: the sandbox's rules apply to resolved paths (/var is a link to /private/var on macOS).
+  const root = await realpath(await mkdtemp(join(tmpdir(), "claudex-sbxfix-")));
   try {
-    return await runIn(dir, query, c, settings);
+    const token = randomBytes(16).toString("hex");
+    const fakeHome = join(root, "home");
+    const dotfiles = join(root, "dotfiles-ssh");
+    const outside = join(root, "outside");
+    await Promise.all([mkdir(fakeHome), mkdir(dotfiles), mkdir(outside)]);
+    await writeFile(join(dotfiles, SECRET_FILE_NAME), `${token}\n`);
+    // The decoy is reached through a symlink, as a real ~/.ssh may be: this
+    // proves the deny list covers the link's target too.
+    await symlink(dotfiles, join(fakeHome, ".ssh"));
+    return {
+      root,
+      fakeHome,
+      outsideMarkerPath: join(outside, MARKER_NAME),
+      secretPath: join(fakeHome, ".ssh", SECRET_FILE_NAME),
+      socketPath: join(root, "probe.sock"),
+      token,
+    };
+  } catch (error) {
+    await rm(root, { recursive: true, force: true });
+    throw error;
+  }
+}
+
+export async function runCase(query: QueryFn, c: VerificationCase, settings: RunSettings): Promise<Observation> {
+  const fixture = c.sandbox ? await createSandboxFixture() : undefined;
+  try {
+    const trusted = settings.trusted;
+    if (trusted) return await runInTrustedDir(query, c, settings, trusted, fixture);
+    // Sandbox cases use another prefix: a test lists temp dirs named claudex-readonly-
+    // and must not see the project of a sandbox run made in parallel.
+    const dir = await mkdtemp(join(tmpdir(), c.sandbox ? "claudex-sbxproj-" : "claudex-readonly-"));
+    try {
+      return await runIn(dir, query, c, settings, undefined, fixture);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   } finally {
-    await rm(dir, { recursive: true, force: true });
+    if (fixture) await rm(fixture.root, { recursive: true, force: true });
   }
 }
 
@@ -167,6 +231,7 @@ async function runInTrustedDir(
   c: VerificationCase,
   settings: RunSettings,
   trusted: { dir: string; configFile: string },
+  fixture: SandboxFixture | undefined,
 ): Promise<Observation> {
   const { dir, configFile } = trusted;
   await assertEmptyDir(dir);
@@ -175,9 +240,16 @@ async function runInTrustedDir(
   let observation: Observation | undefined;
   let runError: Error | undefined;
   try {
-    observation = await runIn(dir, query, c, settings, async () => {
-      snapshot = await snapshotTree(dir);
-    });
+    observation = await runIn(
+      dir,
+      query,
+      c,
+      settings,
+      async () => {
+        snapshot = await snapshotTree(dir);
+      },
+      fixture,
+    );
   } catch (error) {
     runError = error instanceof Error ? error : new Error(describeError(error));
   }
@@ -223,14 +295,35 @@ async function runIn(
   c: VerificationCase,
   settings: RunSettings,
   afterSetup?: () => Promise<void>,
+  fixture?: SandboxFixture,
 ): Promise<Observation> {
   const observation = emptyObservation();
   const listener = c.listener ? await startListener(observation) : null;
   try {
-    return await runWith(dir, query, c, settings, observation, listener?.url ?? null, afterSetup);
+    const socket = c.unixSocket && fixture ? await startUnixListener(fixture.socketPath, observation) : null;
+    try {
+      return await runWith(dir, query, c, settings, observation, listener?.url ?? null, afterSetup, fixture);
+    } finally {
+      await socket?.();
+    }
   } finally {
     await listener?.close();
   }
+}
+
+// Counts the connections made to a unix socket and sends nothing back: only
+// that a connection happened is kept, never what was sent. Returns the closer.
+async function startUnixListener(path: string, observation: Observation): Promise<() => Promise<void>> {
+  const server: NetServer = createNetServer((connection) => {
+    observation.listenerRequests.push({ method: "UNIX", path: "" });
+    connection.on("error", () => undefined);
+    connection.destroy();
+  });
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(path, resolve);
+  });
+  return () => new Promise<void>((resolve) => server.close(() => resolve()));
 }
 
 // Serves the loopback URL a case points the engine at. Only the method and the
@@ -268,16 +361,36 @@ async function runWith(
   observation: Observation,
   listenerUrl: string | null,
   afterSetup?: () => Promise<void>,
+  fixture?: SandboxFixture,
 ): Promise<Observation> {
   const markerPath = join(dir, MARKER_NAME);
-  const ctx: CaseContext = { markerPath, evilServerPath: settings.evilServerPath, listenerUrl };
+  const ctx: CaseContext = {
+    markerPath,
+    evilServerPath: settings.evilServerPath,
+    listenerUrl,
+    ...(fixture ? { outsideMarkerPath: fixture.outsideMarkerPath, secretPath: fixture.secretPath, socketPath: fixture.socketPath } : {}),
+  };
+
+  if (fixture) {
+    observation.extraMarkersWritten = [];
+    observation.secretSeen = false;
+    observation.bashProbed = false;
+    observation.disableSandboxSent = false;
+    observation.engineLeftoversRemoved = false;
+  }
 
   await execFileAsync("git", ["init", "-q"], { cwd: dir });
   await writeProjectFiles(dir, { ...SHARED_FILES, ...c.projectFiles(ctx) });
   const cwd = c.cwdSubdir === undefined ? dir : join(dir, c.cwdSubdir);
   await mkdir(cwd, { recursive: true });
   const prompt = c.prompt(ctx);
+  const probeTarget = c.probe?.(ctx);
   await afterSetup?.();
+
+  // Same cleanup as the adapter, so that the sandbox's empty directories do not
+  // stop the trusted-folder variant. Taken after the setup: the case's own
+  // files are not the engine's.
+  const leftoversBefore = c.sandbox ? await snapshotEngineLeftovers(cwd) : undefined;
 
   const abortController = new AbortController();
   // Once the run has ended, a straggling stream must not alter what we return.
@@ -298,8 +411,16 @@ async function runWith(
           );
         };
 
+  // A case env replaces the engine's whole environment on recent SDK versions,
+  // so it starts from this process's, minus the variables of a Claude Code
+  // session (the entry point already removes them; this keeps the runner safe alone).
+  const caseEnv: NodeJS.ProcessEnv | undefined =
+    fixture && c.secretEnv ? withoutSessionVariables({ ...process.env, [SECRET_ENV_NAME]: fixture.token }) : undefined;
+  const baseOptions = fixture && c.sandbox ? await sandboxOptions(c.sandbox, cwd, fixture, caseEnv ?? process.env) : c.options;
+
   const queryOptions: Record<string, unknown> = {
-    ...c.options,
+    ...baseOptions,
+    ...(caseEnv ? { env: caseEnv } : {}),
     cwd,
     model: settings.model,
     maxTurns: settings.maxTurns,
@@ -322,6 +443,8 @@ async function runWith(
     for await (const message of query({ prompt, options: queryOptions })) {
       if (closed) break;
       record(observation, message);
+      if (fixture && !observation.secretSeen && mentions(message, fixture.token)) observation.secretSeen = true;
+      if (fixture) noteBash(observation, message, probeTarget);
     }
   })();
   // The outcome is read through the race below. This only keeps a rejection
@@ -340,6 +463,73 @@ async function runWith(
   }
   if (timedOut) observation.error = timeoutMessage;
 
+  if (leftoversBefore) {
+    observation.engineLeftoversRemoved = (await removeEngineLeftovers(cwd, leftoversBefore)).length > 0;
+  }
+
   observation.markerWritten = existsSync(markerPath);
+  if (fixture) {
+    const extras: Array<[string, string]> = [
+      ["sub", join(dir, "sub", MARKER_NAME)],
+      [".git", join(dir, ".git", MARKER_NAME)],
+      ["outside", fixture.outsideMarkerPath],
+    ];
+    observation.extraMarkersWritten = extras.filter(([, path]) => existsSync(path)).map(([label]) => label);
+    // Not part of the trusted-folder snapshot, so the cleanup there would
+    // report them as unaccounted; the fixture root is removed whole.
+    for (const [, path] of extras) if (path.startsWith(dir)) await rm(path, { force: true });
+  }
   return observation;
+}
+
+// Only booleans come out of a Bash call's input: the command text is not kept
+// (it may hold a path or a token the model was shown).
+function noteBash(observation: Observation, message: unknown, probeTarget: string | undefined): void {
+  if (!isRecord(message) || message.type !== "assistant") return;
+  const content = isRecord(message.message) ? message.message.content : undefined;
+  if (!Array.isArray(content)) return;
+  for (const block of content as unknown[]) {
+    if (!isRecord(block) || block.type !== "tool_use" || block.name !== "Bash" || !isRecord(block.input)) continue;
+    const { command, dangerouslyDisableSandbox } = block.input;
+    if (probeTarget !== undefined && typeof command === "string" && command.includes(probeTarget)) {
+      observation.bashProbed = true;
+    }
+    if (dangerouslyDisableSandbox === true) observation.disableSandboxSent = true;
+  }
+}
+
+function withoutSessionVariables(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const kept = { ...env };
+  for (const key of claudeSessionEnvKeys(kept)) delete kept[key];
+  return kept;
+}
+
+// The options Claudex ships, built the way the adapter builds them: through
+// the resolver with the run's real cwd, the fake home and the case's env. The
+// control deletes the sandbox, nothing else.
+async function sandboxOptions(
+  mode: "shipped" | "stripped",
+  cwd: string,
+  fixture: SandboxFixture,
+  env: NodeJS.ProcessEnv,
+): Promise<Record<string, unknown>> {
+  const sandbox = await resolveDebateSandbox(cwd, "darwin", fixture.fakeHome, env);
+  const options: Record<string, unknown> = { ...debateQueryOptions(sandbox) };
+  if (mode === "stripped") delete options.sandbox;
+  return options;
+}
+
+// Tool results and assistant text are what the model, and so the human, see.
+// Compared on the serialized block so that string and array contents both count.
+function mentions(message: unknown, token: string): boolean {
+  if (!isRecord(message) || (message.type !== "user" && message.type !== "assistant")) return false;
+  const content = isRecord(message.message) ? message.message.content : undefined;
+  if (typeof content === "string") return content.includes(token);
+  if (!Array.isArray(content)) return false;
+  return (content as unknown[]).some((block) => {
+    if (!isRecord(block)) return false;
+    if (block.type === "text") return typeof block.text === "string" && block.text.includes(token);
+    if (block.type === "tool_result") return JSON.stringify(block.content ?? null).includes(token);
+    return false;
+  });
 }

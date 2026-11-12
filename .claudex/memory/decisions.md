@@ -2,6 +2,49 @@
 
 Journal des décisions validées à l'issue d'un débat Claude ↔ Codex.
 
+## 2026-11-11 — Claude a un Bash sandboxé pendant le débat (macOS) ; réouverture de l'asymétrie d'exécution
+
+**Nature :** le mainteneur a mis la fonctionnalité sur la feuille de route (2026-10-28) et a délégué
+tous les choix techniques le 2026-11-11 ; les décisions D1 à D9 sont donc de Claude, pas du
+mainteneur. Design : `docs/superpowers/specs/2026-11-11-sandboxed-bash-design.md`. Mesures dans
+`limits.md` (2026-11-11, Bash sandboxé).
+
+**Réouverture, dite comme telle :** la décision du 2026-08-17 (« L'asymétrie d'exécution reste en
+l'état ») est rouverte. Raison nouvelle : sur le SDK 0.3.310, le sandbox du moteur donne au Bash de
+Claude une garantie du système d'exploitation (écriture refusée, pas de réseau) que l'approbation
+humaine ne pouvait pas donner. Le motif qui avait écarté « Bash sous approbation humaine » tient
+toujours et n'est pas rouvert : l'humain n'est pas la garantie, l'OS l'est. S'y ajoute le constat du
+mainteneur que Claude n'exécutait aucune commande avec la version précédente.
+
+**Décisions :**
+- **D1 : bloc `sandbox`** sur les tours de débat seulement : `enabled`, `failIfUnavailable: true`,
+  `allowUnsandboxedCommands: false`, `autoAllowBashIfSandboxed: true`, réseau fermé
+  (`allowedDomains: []`, `strictAllowlist: true`), `denyWrite` sur le chemin réel de `cwd` (le `.`
+  relatif ne bloque pas, `/var` est un lien symbolique). Chemin non résolu : le tour échoue.
+- **D2 : macOS seulement**, décidé par Claudex avant le tour (`resolveDebateSandbox`). Ailleurs, les
+  options d'aujourd'hui à l'identique. Jamais de Bash sans sandbox, jamais de nouvel essai sans Bash.
+- **D3 : pas d'invite par commande** (`autoAllowBashIfSandboxed`), comme Codex en `approvalPolicy:
+  "never"` ; les commandes qui nomment un chemin hors du projet passent encore par `canUseTool`.
+- **D4 : lecture interdite des dépôts de secrets** (`.ssh`, `.aws`, `.config/gh`, `.claude`, `.codex`,
+  `.npmrc`, etc.), chemins réels des liens symboliques ajoutés. `.gitconfig` n'est pas refusé (git
+  casse). `.npmrc` reste : `npm test` tourne avec lui refusé.
+- **D4b : variables d'environnement secrètes masquées** (`sandbox.credentials.envVars`, mode `deny`)
+  pour tout nom contenant KEY, SECRET, TOKEN, PASSWORD ou CREDENTIAL. Heuristique.
+- **D9 : Claudex retire les répertoires vides que le moteur crée dans le projet** (`.claude/`,
+  `.claude/.cc-writes/`) s'ils étaient absents avant le tour : `rmdir` non récursif, donc jamais de
+  contenu supprimé (`src/agents/engineLeftovers.ts`).
+- Rollback : `resolveDebateSandbox` qui renvoie `null` restitue les options d'avant.
+
+**Écarté :**
+- Approbation humaine par commande : ce n'est pas une garantie (2026-08-17) et rend l'outil inutilisable.
+- Interdire tout le répertoire personnel : casse git et les outils ; une liste est une atténuation,
+  pas une garantie, et c'est dit au README.
+- Linux/WSL sans mesure : la garantie est tout l'enjeu ; une branche à part avec une mesure Linux.
+- L'exécuteur `codex app-server` partagé du 2026-08-17 : inutile, chaque agent a son exécuteur sandboxé.
+
+**Ce qui n'est pas démontré :** un dossier jamais approuvé (seuls des dossiers neufs et approuvés sous
+`/` approuvé sont mesurés) ; une seule machine, un seul compte ; voir `limits.md`.
+
 ## 2026-11-11 — Les réglages porteurs de commande du dépôt demandent le consentement de l'humain
 
 **Nature :** arbitrage délégué par le mainteneur (« décisions les plus professionnelles », 2026-11-11) ;

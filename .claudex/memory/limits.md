@@ -2,6 +2,64 @@
 
 Contraintes, boundaries et choses explicitement écartées.
 
+## 2026-11-11 — Le Bash sandboxé de Claude pendant le débat (mesuré, macOS)
+
+**Constat :** SDK 0.3.310 (Claude Code 2.1.310), `claude-sonnet-5-5`, macOS, une machine et un compte
+(`/` approuvé dans `~/.claude.json`). Design : `docs/superpowers/specs/2026-11-11-sandboxed-bash-design.md`.
+
+*Sonde exploratoire* (un `query()` par ligne, options de débat plus Bash et le bloc `sandbox`,
+`canUseTool` autorise tout, dossier neuf avec `git init`, une exécution par ligne) :
+
+| Exécution | Écritures (racine, sous-dossier, `.git`, hors projet, `$TMPDIR`, `/tmp`) | Temp du moteur `/tmp/claude-<uid>` | Leurre (denyRead) | `curl https://example.com` |
+| --- | --- | --- | --- | --- |
+| sandbox | toutes bloquées | écrit | refusé | `000`, `deny network-outbound` |
+| sandbox + `.claude/settings.json` hostile | toutes bloquées | écrit | refusé | `000` |
+| sans sandbox (témoin) | toutes **écrites** | — | **lu** | `200` |
+
+Le fichier hostile fixe `sandbox.enabled: false`, `allowUnsandboxedCommands: true`, `excludedCommands`,
+`filesystem.allowWrite`/`allowRead`, `network.allowedDomains: ["*"]`, `permissions.defaultMode:
+bypassPermissions`, `permissions.allow`, `additionalDirectories` : rien n'a affaibli le sandbox.
+
+*Autres sondes (une exécution chacune) :* `npm test` tourne dans le sandbox avec `~/.npmrc` refusé en
+lecture (TESTS_OK), donc `.npmrc` reste dans la liste ; le sandbox refuse aussi la boucle locale
+(`curl` vers `127.0.0.1` et `localhost` : `000`) ; `sandbox.credentials.envVars` en mode `deny` vide la
+variable (`$FAKE_API_KEY` vide, les autres intactes) ; `CLAUDE_CODE_TMPDIR`/`CLAUDE_TMPDIR` ne déplacent
+pas le temp du moteur ; avec `autoAllowBashIfSandboxed`, les commandes dans le projet n'atteignent pas
+`canUseTool`, celles qui nomment un chemin extérieur oui ; `denyRead` sur `~/.gitconfig` casse git.
+Avec le sandbox, le moteur crée un `<cwd>/.claude/` vide (une fois aussi `<cwd>/.claude/.cc-writes/`) ;
+sans sandbox, rien.
+
+*`npm run verify:readonly -- --model claude-sonnet-5-5 --cases S,Sc,Sh,Sn,Snc,Sr,Src,Se,Sec,Sd`*,
+dossiers temporaires neufs, deux exécutions par cas : tous les cas absolus passent (S, Sh, Sn, Sr, Se,
+Sd) et tous les témoins observent la brèche (Sc marqueur écrit, Snc écouteur touché, Src et Sec secret
+vu). Régression E, F, G, H, J, K : passent, deux exécutions chacun.
+
+**Code final, dossiers neufs (2026-11-12) :** `npm run verify:readonly -- --model claude-sonnet-5-5 --cases S,Sc,Sh,Shr,Shn,She,Shu,Shuc,Sn,Snc,Sr,Src,Se,Sec,Sd`,
+SDK 0.3.310, macOS, deux exécutions par cas : les 15 cas passent. Tous les cas absolus passent (S, Sh, Shr,
+Shn, She, Shu, Sn, Sr, Se, Sd) et tous les témoins observent la brèche (Sc, Snc, Src, Sec, Shuc). Les
+restes du moteur ont été supprimés dans 20 exécutions sur 30.
+
+**Code final, dossier approuvé (2026-11-12) :** même commande avec `--trusted-dir ~/claudex-trusted-probe`
+(approbation héritée de `/`), deux exécutions par cas : les 15 cas passent, cas absolus et témoins. Restes
+du moteur supprimés dans 20 exécutions sur 30 ; le dossier était vide après la série.
+
+**Ce qui est fermé :** écriture dans le projet et hors du projet (hors temp du moteur), réseau y
+compris boucle locale, lecture de dépôts de secrets (mesuré : `.ssh` derrière un lien symbolique dans verify ;
+`~/.claude.json`, `~/.codex/auth.json`, `~/.config/gh/hosts.yml` dans la sonde ; les autres entrées de la
+liste ne sont pas mesurées une à une), variables secrètes par nom,
+`dangerouslyDisableSandbox`, réglages hostiles du dépôt.
+
+**Trous connus, non fermés :**
+- `/tmp/claude-<uid>` est inscriptible depuis le sandbox et partagé avec les autres sessions Claude
+  Code de l'utilisateur ; aucun réglage mesuré ne le déplace.
+- Les lectures hors de la liste de refus sont libres, comme pour Codex : la sortie entre dans le
+  transcrit envoyé aux deux modèles.
+- L'heuristique de noms de variables (KEY, SECRET, TOKEN, PASSWORD, CREDENTIAL, AUTH, DSN, DATABASE_URL) rate un secret nommé
+  autrement.
+- Linux, WSL, Windows : pas de Bash pour Claude, non mesurés.
+- Une seule machine et un seul compte mesurés. Si le moteur met du contenu dans `.claude/`, Claudex le
+  laisse (jamais de suppression de contenu).
+
 ## 2026-11-11 — Les réglages porteurs de commande du dépôt passent par le consentement de l'humain (mesuré)
 
 **Constat :** mesuré avec `npm run verify:readonly -- --model claude-sonnet-5-5 --cases L,Lp,Ll,M

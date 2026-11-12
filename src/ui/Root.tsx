@@ -2,6 +2,7 @@ import { useApp, useInput } from "ink";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ClaudeAgent } from "../agents/claudeAgent.js";
 import { CodexAgent } from "../agents/codexAgent.js";
+import { resolveDebateSandbox } from "../agents/debateSandbox.js";
 import { type SettingsFinding, createSettingsGuard } from "../agents/projectSettings.js";
 import type { CodingAgent } from "../agents/types.js";
 import {
@@ -59,6 +60,7 @@ export function Root(props: {
       status.claudeConfiguredModel ?? undefined,
       status.claudeDefaultModel ?? undefined,
       createSettingsGuard(approvedSettings),
+      (claudeCwd) => resolveDebateSandbox(claudeCwd),
     ),
     codex: new CodexAgent(undefined, codexInitialModelLabel(status)),
   }));
