@@ -210,11 +210,11 @@ describe("Scheduler", () => {
       scheduler.start("Test topic");
 
       await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
-      expect(agents.claude.lastMessage).toContain("tu es Claude");
+      expect(agents.claude.lastMessage).toContain("you are Claude");
       agents.claude.complete("Ma question\n\n<<CONTINUE>>");
 
       await vi.waitFor(() => expect(agents.codex.isPending()).toBe(true));
-      expect(agents.codex.lastMessage).toContain("tu es Codex");
+      expect(agents.codex.lastMessage).toContain("you are Codex");
       expect(agents.codex.lastMessage).toContain("[Claude → Codex]\nMa question");
     });
 
@@ -232,9 +232,9 @@ describe("Scheduler", () => {
       await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
       const message = agents.claude.lastMessage ?? "";
       expect(message).toContain("[Codex → Claude]\nQuestion de Codex");
-      expect(message).toContain("[Utilisateur → Claude]\nMon avis");
+      expect(message).toContain("[User → Claude]\nMon avis");
       // Attribution is rendered, never baked into the stored text.
-      expect(message).not.toContain("[Message de l'utilisateur]");
+      expect(message).not.toContain("[User's message]");
     });
   });
 
@@ -603,6 +603,22 @@ describe("Scheduler", () => {
       // onConsensusInvalidated should be called
       expect(callbacks.onConsensusInvalidated).toHaveBeenCalled();
     });
+
+    it("asks for the summary in the human's language, English as fallback", async () => {
+      scheduler.start("Test topic");
+
+      await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
+      agents.claude.complete("Claude agrees\n\n<<CONSENSUS>>");
+
+      await vi.waitFor(() => expect(agents.codex.isPending()).toBe(true));
+      agents.codex.complete("Codex agrees\n\n<<CONSENSUS>>");
+
+      // Codex confirmed last, so it is handed the synthesis request.
+      await vi.waitFor(() => expect(agents.codex.getSendCount()).toBe(2));
+      expect(agents.codex.lastMessage).toContain(
+        "Write this summary in the language of the human's messages; if you cannot determine or use that language, write it in English.",
+      );
+    });
   });
 
   describe("Failure handling", () => {
@@ -649,7 +665,7 @@ describe("Scheduler", () => {
 
       await vi.waitFor(() => expect(agents.claude.getSendCount()).toBe(2));
       expect(agents.claude.lastMessage).toContain("Precision");
-      expect(agents.claude.lastMessage).toContain("tu es Claude");
+      expect(agents.claude.lastMessage).toContain("you are Claude");
     });
 
     it("should send the debate rules with an intervention that follows a failed first turn", async () => {
@@ -665,7 +681,7 @@ describe("Scheduler", () => {
 
       await vi.waitFor(() => expect(agents.codex.getSendCount()).toBe(2));
       expect(agents.codex.lastMessage).toContain("Use the default model");
-      expect(agents.codex.lastMessage).toContain("tu es Codex");
+      expect(agents.codex.lastMessage).toContain("you are Codex");
     });
 
     it("should not repeat the debate rules when a failed turn is retried after a delivered one", async () => {
@@ -684,7 +700,7 @@ describe("Scheduler", () => {
       // The failed turn is retried next; the rules already arrived with the intervention.
       await vi.waitFor(() => expect(agents.codex.getSendCount()).toBe(3));
       expect(agents.codex.lastMessage).toContain("[Claude → Codex]\nQualification");
-      expect(agents.codex.lastMessage).not.toContain("tu es Codex");
+      expect(agents.codex.lastMessage).not.toContain("you are Codex");
     });
 
     it("should not repeat the debate rules when retrying an answer that lacked a marker", async () => {
@@ -699,7 +715,7 @@ describe("Scheduler", () => {
 
       await vi.waitFor(() => expect(agents.claude.getSendCount()).toBe(2));
       expect(agents.claude.lastMessage).toContain("Test topic");
-      expect(agents.claude.lastMessage).not.toContain("tu es Claude");
+      expect(agents.claude.lastMessage).not.toContain("you are Claude");
     });
 
     it("should send the debate rules only once to an agent whose turn succeeded", async () => {
@@ -711,7 +727,7 @@ describe("Scheduler", () => {
       agents.codex.complete("Reply\n\n<<CONTINUE>>");
 
       await vi.waitFor(() => expect(agents.claude.getSendCount()).toBe(2));
-      expect(agents.claude.lastMessage).not.toContain("tu es Claude");
+      expect(agents.claude.lastMessage).not.toContain("you are Claude");
     });
 
     it("should not retry a failed intervention from an already-consumed wake-up", async () => {
@@ -952,7 +968,7 @@ describe("Scheduler", () => {
       await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
       const message = agents.claude.lastMessage ?? "";
       expect(message).toContain("Quelle architecture pour la file d'attente ?");
-      expect(message).not.toContain("Sujet proposé :\nbonjour");
+      expect(message).not.toContain("Proposed topic:\nbonjour");
 
       agents.claude.complete("Analysons.\n\n<<CONTINUE>>");
       await vi.waitFor(() => expect(callbacks.onTopicAccepted).toHaveBeenCalledOnce());
@@ -1118,17 +1134,17 @@ describe("Scheduler", () => {
   });
 });
 
-describe("règles du débat", () => {
+describe("debate rules", () => {
   const claudeSide = CONSENSUS_INSTRUCTIONS("Claude", "Codex");
   const codexSide = CONSENSUS_INSTRUCTIONS("Codex", "Claude");
 
   /**
-   * La règle de preuve nommait Claude et Codex : elle disait à l'un que sa
-   * lecture ne produit pas de faits, et à l'autre que son contradicteur ne peut
-   * rien vérifier. Les deux agents doivent recevoir exactement les mêmes règles,
-   * aux deux identités près.
+   * The evidence rule used to name Claude and Codex: it told one that its
+   * reading produces no facts, and the other that its counterpart cannot
+   * verify anything. Both agents must receive exactly the same rules, apart
+   * from the two identities.
    */
-  it("donne les mêmes règles aux deux agents, aux identités près", () => {
+  it("gives both agents the same rules, apart from the identities", () => {
     const swapped = claudeSide
       .replace(/Claude/gu, "__OTHER__")
       .replace(/Codex/gu, "Claude")
@@ -1136,30 +1152,42 @@ describe("règles du débat", () => {
     expect(swapped).toBe(codexSide);
   });
 
-  it("exige la commande et la sortie plutôt que la confiance", () => {
-    expect(claudeSide).toContain("la commande exacte et sa sortie brute");
-    expect(claudeSide).toContain("Exiger la preuve fait partie de ton rôle");
+  it("demands the command and the output rather than trust", () => {
+    expect(claudeSide).toContain("the exact command and its raw output");
+    expect(claudeSide).toContain("Demanding the evidence is as much part of your role");
   });
 
-  // Sinon la sortie valide la moins chère, dans le doute, est l'accord.
-  it("fait payer le consensus au moins autant que la poursuite", () => {
-    expect(claudeSide).toContain("examiné au moins une alternative sérieuse");
+  // Otherwise the cheapest valid exit, when in doubt, is agreement.
+  it("makes consensus cost at least as much as continuing", () => {
+    expect(claudeSide).toContain("examined at least one serious alternative");
   });
 
-  // Claudex n'écrit plus dans CLAUDE.md ni AGENTS.md : ces règles sont le seul
-  // chemin par lequel les deux agents apprennent que la mémoire existe. Elle est
-  // nommée, pas recopiée, pour ne pas la refacturer à chaque appel.
-  it("nomme la mémoire versionnée du projet sans l'importer", () => {
+  // Claudex no longer writes to CLAUDE.md or AGENTS.md: these rules are the only
+  // way both agents learn that the memory exists. It is named, not copied in, so
+  // that it is not billed again on every call.
+  it("names the project's versioned memory without importing it", () => {
     expect(claudeSide).toContain(".claudex/memory/decisions.md");
     expect(claudeSide).toContain(".claudex/memory/limits.md");
     expect(claudeSide).not.toContain("@.claudex");
     expect(claudeSide).not.toContain("devlog.md");
   });
 
-  // Contrainte d'affichage appliquée par le renderer : l'imposer au modèle
-  // dégrade les handoffs, qui sont des documents Markdown autoportants.
-  it("n'impose aucune contrainte Markdown aux agents", () => {
+  // A display constraint the renderer applies: imposing it on the model
+  // degrades the handoffs, which are standalone Markdown documents.
+  it("imposes no Markdown constraint on the agents", () => {
     expect(claudeSide).not.toContain("Markdown");
-    expect(claudeSide).toContain("aucun emoji");
+    expect(claudeSide).toContain("any emoji");
+  });
+
+  it("tells agents to answer in the human's language, English as fallback", () => {
+    expect(claudeSide).toContain(
+      "Write your debate messages in the language of the human's messages; if you cannot determine or use that language, write in English.",
+    );
+  });
+
+  it("keeps every other text in English whatever the conversation language", () => {
+    expect(claudeSide).toContain(
+      "Everything else you write (code, code comments, commit messages, and the content of any file, including during the implementation phase) is in English, whatever the language of the conversation.",
+    );
   });
 });

@@ -70,28 +70,28 @@ describe("extractSignal", () => {
 });
 
 /**
- * La consigne envoyée aux agents montre à quoi doit ressembler une fin de réponse.
- * Si quelqu'un retouche cet exemple sans regarder le parseur — ou l'inverse — le
- * débat ne s'arrêterait plus jamais sur un consensus, sans rien signaler. D'où ce
- * test, qui fait passer les exemples du prompt dans le vrai parseur.
+ * The instructions sent to the agents show what the end of an answer must look like.
+ * If someone edits this example without looking at the parser — or the reverse — the
+ * debate would never stop on a consensus again, without any warning. Hence this
+ * test, which runs the prompt's examples through the real parser.
  */
 describe("CONSENSUS_INSTRUCTIONS", () => {
   const prompt = CONSENSUS_INSTRUCTIONS("Claude", "Codex");
-  const INCORRECT = "Fin de réponse incorrecte";
+  const INCORRECT = "Incorrect end of answer";
 
   function exampleAfter(heading: string): string {
     const start = prompt.indexOf(heading);
-    expect(start, `rubrique introuvable dans la consigne : ${heading}`).toBeGreaterThan(-1);
+    expect(start, `heading not found in the instructions: ${heading}`).toBeGreaterThan(-1);
     const rest = prompt.slice(start + heading.length);
     const end = rest.indexOf(INCORRECT);
     return (end === -1 ? rest : rest.slice(0, end)).trim();
   }
 
-  it("montre un exemple correct que le parseur reconnaît vraiment", () => {
-    expect(extractSignal(exampleAfter("Fin de réponse correcte :")).signal).toBe("consensus");
+  it("shows a correct example that the parser really recognises", () => {
+    expect(extractSignal(exampleAfter("Correct end of answer:")).signal).toBe("consensus");
   });
 
-  it("montre un contre-exemple que le parseur rejette vraiment", () => {
+  it("shows a counter-example that the parser really rejects", () => {
     expect(extractSignal(exampleAfter(INCORRECT)).signal).toBeNull();
   });
 });
