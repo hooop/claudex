@@ -19,7 +19,7 @@
 - Sandbox block values, verbatim: `enabled: true`, `failIfUnavailable: true`, `allowUnsandboxedCommands: false`, `autoAllowBashIfSandboxed: true`, `network: { allowedDomains: [], strictAllowlist: true }`, `filesystem: { denyWrite: [<real cwd>], denyRead: <list> }`.
 - denyRead list (relative to home, in this order): `.ssh`, `.aws`, `.azure`, `.config/gcloud`, `.kube`, `.docker`, `.gnupg`, `.netrc`, `.git-credentials`, `.npmrc`, `.pypirc`, `.config/gh`, `.claude`, `.claude.json`, `.codex`, `Library/Keychains`. Never `.gitconfig`.
 - Platform: Bash only when `platform === "darwin"`.
-- UI strings and test names in French, like the surrounding files; code, comments, docs in English.
+- UI strings, test names, code, comments and docs in English (UI strings and test names were French at the time, like the surrounding files; translated in the English pass).
 - `npm run check` passes at the end of every task.
 
 ## Review Focus
@@ -45,7 +45,7 @@
   - `export const CREDENTIAL_READ_DENY: readonly string[]` (the list above, relative)
   - `export function debateQueryOptions(sandbox?: DebateSandbox | null): DebateQueryOptions` — `DebateQueryOptions` gains `sandbox?: { ... }` (structural type, no SDK runtime import)
 
-- [ ] **Step 1: Characterization test** `"sans sandbox, les options sont exactement celles d'avant"`: `expect(debateQueryOptions()).toEqual(<literal copy of today's object>)` and `expect(debateQueryOptions(null)).toEqual(debateQueryOptions())`, and `"sandbox" in debateQueryOptions(null)` is `false`. Run: passes already (it pins current behavior).
+- [ ] **Step 1: Characterization test** `"without a sandbox, the options are exactly the previous ones"`: `expect(debateQueryOptions()).toEqual(<literal copy of today's object>)` and `expect(debateQueryOptions(null)).toEqual(debateQueryOptions())`, and `"sandbox" in debateQueryOptions(null)` is `false`. Run: passes already (it pins current behavior).
 - [ ] **Step 2: Failing tests** with `const s = { cwd: "/private/tmp/p", home: "/Users/u" }`:
   - `tools` equals `["Read", "Grep", "Glob", "Bash"]`; `allowedTools` equals `[]`; `permissionMode` `"default"`; isolation keys unchanged.
   - `sandbox` `toEqual` the exact block, `denyWrite: ["/private/tmp/p"]`, `denyRead: ["/Users/u/.ssh", …, "/Users/u/Library/Keychains"]` (16 entries, joined with `node:path` `join`).
@@ -67,8 +67,8 @@
 - Produces: `export async function resolveDebateSandbox(cwd: string, platform: NodeJS.Platform = process.platform, home: string = homedir()): Promise<DebateSandbox | null>` — rejects when `realpath(cwd)` fails.
 
 - [ ] **Step 1: Failing tests** (real temp dirs, no mocks):
-  - `"darwin : renvoie le chemin réel"`: dir made with `mkdtemp`, plus a symlink to it; resolving the symlink gives `{ cwd: realpathSync(dir), home: "/h" }`.
-  - `"linux et win32 : pas de Bash"`: returns `null` for `"linux"` and `"win32"` even for an existing dir.
+  - `"darwin: returns the real path"`: dir made with `mkdtemp`, plus a symlink to it; resolving the symlink gives `{ cwd: realpathSync(dir), home: "/h" }`.
+  - `"linux and win32: no Bash"`: returns `null` for `"linux"` and `"win32"` even for an existing dir.
   - `"dossier absent : rejette"`: darwin + non-existent path → `rejects.toThrow()`.
 - [ ] **Step 2:** Run → FAIL (module missing).
 - [ ] **Step 3: Implement** with `fs/promises.realpath`; platform check first (non-darwin returns `null` without touching the disk).
@@ -93,7 +93,7 @@
   - `writeAccess: true` → resolver not called, no `sandbox` key, `tools` is the preset.
   - abort while the resolver is pending → `{ kind: "cancelled" }`, `query` not called.
 - [ ] **Step 2:** Run → FAIL.
-- [ ] **Step 3: Implement.** Resolve after the guard, before `query`, debate turns only; wrap in try/catch (fail closed). `DEBATE_SANDBOX_ERROR` (French, exported): `"Le sandbox du débat n'a pas pu être préparé (dossier du projet introuvable). Tour annulé."` In `Root.tsx` pass `(cwd) => resolveDebateSandbox(cwd)` as 4th argument.
+- [ ] **Step 3: Implement.** Resolve after the guard, before `query`, debate turns only; wrap in try/catch (fail closed). `DEBATE_SANDBOX_ERROR` (exported): `"The debate sandbox could not be prepared (project folder not found). Turn cancelled."` In `Root.tsx` pass `(cwd) => resolveDebateSandbox(cwd)` as 4th argument.
 - [ ] **Step 4:** Run the file, then `npm run check` → PASS (all existing adapter tests untouched and green).
 - [ ] **Step 5: Commit** `feat: give Claude a sandboxed Bash during the debate on macOS`
 
@@ -139,8 +139,8 @@
 
 - [ ] README: debate permissions paragraph (macOS: sandboxed shell, read-only, no network including localhost, credential stores denied, commands naming outside paths ask you; other platforms: unchanged); the "Read-only means…" paragraph now covers Claude's Bash; known gaps (engine temp `/tmp/claude-<uid>` writable, shared with your other Claude Code sessions; reads outside the deny list).
 - [ ] AGENTS.md Constraints: for Claude, the debate guarantee is now `tools` plus, for Bash, the SDK sandbox (`debateQueryOptions`, `resolveDebateSandbox`); SDK upgrade checklist adds S, Sh, Sn, Sr, Sd and controls.
-- [ ] decisions.md (French, like the file): reopening of 2026-08-17 with the new reason; D2–D4 and the rejected alternatives.
-- [ ] limits.md (French): probe table and Task 5 results; known gaps.
+- [ ] decisions.md (like the file): reopening of 2026-08-17 with the new reason; D2–D4 and the rejected alternatives.
+- [ ] limits.md: probe table and Task 5 results; known gaps.
 - [ ] `npm run check` → PASS. Commit `docs: document the sandboxed Bash for Claude`.
 
 ### Task 7: Final review, smoke test, PR

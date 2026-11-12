@@ -39,7 +39,7 @@ before and after the change, in an untrusted and in an already-trusted folder.
 - No change to `settingSources: ["project"]`: the project's CLAUDE.md stays loaded in
   the debate (decision of 2026-10-26, `decisions.md`).
 - No Bash for Claude: that is the next roadmap branch (SDK sandbox).
-- No English translation: new entries in `limits.md` and `decisions.md` stay in French.
+- No English translation: new entries in `limits.md` and `decisions.md` stay in the language of those files (French at the time; translated in the English pass).
 - No new dependency.
 
 ## Anti-goals

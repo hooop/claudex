@@ -28,7 +28,7 @@ before anything ships.
 - No change to the debate protocol, the scheduler, the UI or the Codex adapter.
 - No new feature exposed by the SDK (skills option, `auto` mode, sandbox, `/core` entry).
 - No English translation: that is the next branch. New entries in `limits.md` and
-  `decisions.md` follow the current language of those files (French).
+  `decisions.md` follow the current language of those files (French at the time; translated in the English pass).
 
 ## Anti-goals
 

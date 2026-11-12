@@ -16,7 +16,7 @@
 - Nothing is executed to inspect settings: read and `JSON.parse` only.
 - Consent is never persisted: no file written for it, anywhere.
 - A refused project is left untouched: no `.claudex/` created.
-- UI strings in French (match the surrounding UI); code, comments, docs, commit messages in English.
+- UI strings (French at the time, matching the surrounding UI; translated in the English pass), code, comments, docs, commit messages in English.
 - Keys: the consent screen uses `y` to continue, like `PermissionModal`; Enter, Escape, Ctrl+C, `n` and `q` quit. (The design said `o`; `y` is kept for consistency with the existing permission prompt, Claude's call.)
 - Tests never call `claude`, `codex` or the network. `npm run check` must pass at the end of every task.
 - Conventional Commits, each commit ends with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
@@ -128,7 +128,7 @@ Any other result (for example Lp writes it in a way a nearest-`.git` walk does n
 **Interfaces:**
 - Consumes: `inspectProjectSettings`, `sameFindings`, `SettingsFinding` (Task 3).
 - Produces:
-  - `export type SessionGuard = (cwd: string) => Promise<string | null>;` — `null` means proceed, a string is the French refusal message.
+  - `export type SessionGuard = (cwd: string) => Promise<string | null>;` — `null` means proceed, a string is the refusal message.
   - `export const SETTINGS_CHANGED_MESSAGE: string` — says the project's Claude Code settings changed during the session, the turn was not sent, and to quit and relaunch Claudex to review them.
   - `export function createSettingsGuard(approved: readonly SettingsFinding[], inspect?: (dir: string) => Promise<SettingsFinding[]>): SessionGuard` — proceeds when the current findings are `[]` or `sameFindings(current, approved)`; returns the message otherwise, and also when `inspect` throws.
   - `ClaudeAgent` constructor: `constructor(model?: string, initialDisplayModel?: string, guard?: SessionGuard)`.
@@ -156,16 +156,16 @@ Any other result (for example Lp writes it in a way a nearest-`.git` walk does n
 **Interfaces:**
 - Consumes: `inspectProjectSettings`, `formatSettingValue`, `SettingsFinding` (Task 3); `Root`'s `approvedSettings` (Task 4).
 - Produces:
-  - `export function SettingsConsent(props: { findings: readonly SettingsFinding[]; onDecide: (accept: boolean) => void }): JSX.Element` — title sentence (D2), then per finding the file path and each entry as `key = formatSettingValue(value)` with `wrap="wrap"` (never truncated), or the unreadable reason; then the keys line `[y] continuer avec ces réglages · [n] quitter`. `y`/`Y` → `onDecide(true)`; `n`, `q`, Enter, Escape, Ctrl+C → `onDecide(false)`; any other key does nothing.
+  - `export function SettingsConsent(props: { findings: readonly SettingsFinding[]; onDecide: (accept: boolean) => void }): JSX.Element` — title sentence (D2), then per finding the file path and each entry as `key = formatSettingValue(value)` with `wrap="wrap"` (never truncated), or the unreadable reason; then the keys line `[y] continue with these settings · [n] quit`. `y`/`Y` → `onDecide(true)`; `n`, `q`, Enter, Escape, Ctrl+C → `onDecide(false)`; any other key does nothing.
   - `export type LaunchDecision = { kind: "start"; approved: SettingsFinding[]; created: string[] } | { kind: "refused" };`
   - `export async function prepareLaunch(cwd: string, ask: (findings: SettingsFinding[]) => Promise<boolean>, deps?: { inspect?: typeof inspectProjectSettings; scaffold?: typeof initMemoryScaffold }): Promise<LaunchDecision>` — inspect; if findings, `ask`; refused → `{ kind: "refused" }` without calling `scaffold`; otherwise scaffold and return `start`. `ask` is never called when there is no finding.
-  - `export const SETTINGS_REFUSED_MESSAGE: string` — one French line: Claudex did not start because the project's Claude Code settings were not accepted.
+  - `export const SETTINGS_REFUSED_MESSAGE: string` — one line: Claudex did not start because the project's Claude Code settings were not accepted.
 
 - [ ] **Step 1: Write the failing tests**
   - `settingsConsent.test.tsx` (Ink `render` as in `root.test.tsx`): output contains the file path, `apiKeyHelper`, and the full value of a 300-character command; a value `"a\u001b[2Jb"` appears as `\u001b[2J` text and the raw ESC byte appears nowhere in the frame; `unreadable` shows its reason; `y` → `onDecide(true)` once; each of `n`, `q`, `\r`, `\u001b`, `\u0003` → `onDecide(false)`; `x` → not called.
   - `launch.test.ts` (real temp dir, real `initMemoryScaffold`): no settings → `ask` not called, `.claudex/` exists, `kind: "start"`, `approved: []`; helper present + ask resolves `false` → `{ kind: "refused" }` and `.claudex/` does not exist; helper present + ask `true` → `start` with the finding and `.claudex/` exists; `inspect` rejects → the rejection propagates and `.claudex/` does not exist.
 - [ ] **Step 2:** run them → FAIL.
-- [ ] **Step 3:** Implement. `cli.tsx`: after the TTY check, `prepareLaunch(cwd, askInInk)`, where `askInInk` renders `<SettingsConsent>` with `RENDER_OPTIONS`, resolves on `onDecide`, unmounts and awaits `waitUntilExit()` before resolving. `refused` → `console.log(SETTINGS_REFUSED_MESSAGE)` and exit code 0. `start` → existing "Mémoire de projet initialisée" log from `created`, then render `Root` with `approvedSettings={decision.approved}`. The mode 1007 write keeps wrapping only the Root render.
+- [ ] **Step 3:** Implement. `cli.tsx`: after the TTY check, `prepareLaunch(cwd, askInInk)`, where `askInInk` renders `<SettingsConsent>` with `RENDER_OPTIONS`, resolves on `onDecide`, unmounts and awaits `waitUntilExit()` before resolving. `refused` → `console.log(SETTINGS_REFUSED_MESSAGE)` and exit code 0. `start` → existing "Project memory initialised" log from `created`, then render `Root` with `approvedSettings={decision.approved}`. The mode 1007 write keeps wrapping only the Root render.
 - [ ] **Step 4:** tests and `npm run check` → PASS.
 - [ ] **Step 5: Manual check** (main session): in a scratch git repo with `.claude/settings.json` = `{ "apiKeyHelper": "touch /tmp/should-not-exist" }`, run `node <worktree>/bin/claudex.mjs`; the screen shows the command; `n` quits, no `.claudex/`, no marker. Report to the maintainer that the interactive check needs their terminal if the session cannot drive a TTY.
 - [ ] **Step 6: Commit** — `feat: ask the human before Claude Code applies the project's command settings`
@@ -176,8 +176,8 @@ Any other result (for example Lp writes it in a way a nearest-`.git` walk does n
 
 **Files:**
 - Modify: `README.md` (lines 23 and 55: replace the known-gap sentences with the consent behaviour, what was measured in Task 2, and the mid-`/implement` gap from D3, stated plainly)
-- Modify: `.claudex/memory/limits.md` (new dated entry 2026-11-11 with Task 2's tables, in French like the file; update the "Trou restant" paragraph and the SDK-upgrade instruction to include Lp, Ll, M)
-- Modify: `.claudex/memory/decisions.md` (new dated entry: D1–D5, consent never persisted, `y` key, alternatives rejected; in French like the file)
+- Modify: `.claudex/memory/limits.md` (new dated entry 2026-11-11 with Task 2's tables, like the file; update the "Trou restant" paragraph and the SDK-upgrade instruction to include Lp, Ll, M)
+- Modify: `.claudex/memory/decisions.md` (new dated entry: D1–D5, consent never persisted, `y` key, alternatives rejected)
 - Modify: `AGENTS.md` (Constraints: replace "The analysed project's `apiKeyHelper` still runs..." with the consent gate; SDK-upgrade checklist: re-read `COMMAND_SETTING_KEYS` against `sdk.d.ts`)
 
 - [ ] **Step 1:** Write the changes; claims say no more than Task 2 measured (macOS, one machine, fresh and trusted folders, twice per case).

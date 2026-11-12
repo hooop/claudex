@@ -8,7 +8,7 @@ Claudex runs a structured debate between Claude Code and Codex on a technical qu
 
 ## How it works
 
-*The application's own interface and messages are in French.*
+*Both agents answer in the language of your messages, English otherwise. The code, comments and commit messages they write are in English.*
 
 A session always follows the same cycle:
 
@@ -36,11 +36,11 @@ The topic is not restricted to architecture. Anything settled before code gets w
 
 **Persistent project memory.** Decisions and constraints are stored in `.claudex/memory/`. The debate rules sent to both agents point them at those files, so every new debate starts from what was already settled.
 
-**Your instruction files stay yours.** Claudex never creates or modifies `CLAUDE.md` or `AGENTS.md`. If you already have them, both agents keep reading them during a debate. Earlier versions of Claudex appended a "Mémoire du projet (Claudex)" section to these files, or created them; that section, or the whole file if Claudex created it, can be deleted safely.
+**Your instruction files stay yours.** Claudex never creates or modifies `CLAUDE.md` or `AGENTS.md`. If you already have them, both agents keep reading them during a debate. Earlier versions of Claudex appended a section titled "Mémoire du projet (Claudex)" (French text, quoted as it was written) to these files, or created them; that section, or the whole file if Claudex created it, can be deleted safely.
 
 **Full-screen terminal interface.** The header and input stay fixed while the transcript scrolls independently. Use the wheel or `↑`/`↓`, `Page Up`/`Page Down`, and `Home`/`End` to navigate; the complete transcript is archived in `.claudex/memory/transcripts/`.
 
-**Long pastes.** A paste longer than 500 characters, or spanning several lines, appears in the input as a single `[Texte collé · N caractères]` label. Its full text, line breaks included, is sent on Enter and shown in the transcript; the fixed header shows only the first lines of the topic, and `/sujet` prints it in full.
+**Long pastes.** A paste longer than 500 characters, or spanning several lines, appears in the input as a single `[Pasted text · N characters]` label. Its full text, line breaks included, is sent on Enter and shown in the transcript; the fixed header shows only the first lines of the topic, and `/topic` prints it in full.
 
 ## What leaves the machine
 
@@ -177,7 +177,7 @@ Talking to the agents:
 | `/claude <text>` | Message addressed to Claude only |
 | `/codex <text>` | Message addressed to Codex only |
 | `/model claude\|codex <name>` | Changes an agent's model, including before the debate starts |
-| `/sujet` | Prints the complete accepted topic in the transcript |
+| `/topic` | Prints the complete accepted topic in the transcript |
 
 Recording:
 

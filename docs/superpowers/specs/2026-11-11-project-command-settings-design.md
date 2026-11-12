@@ -1,8 +1,8 @@
 # Ask the human before Claude Code applies the project's command settings — design
 
 Date: 2026-11-11. Branch: `fix/project-command-settings`. SDK: 0.3.310 (Claude Code 2.1.310).
-All technical choices below were delegated to Claude by the maintainer ("décisions les plus
-professionnelles", 2026-11-11); none of them was decided by the maintainer.
+All technical choices below were delegated to Claude by the maintainer ("the most
+professional decisions", 2026-11-11, translated from French); none of them was decided by the maintainer.
 
 ## Intent
 
@@ -98,7 +98,7 @@ implementation stops and the maintainer is told.
 When D1 returns findings at launch, `src/cli.tsx` asks for consent before Root is rendered: the
 list is printed as plain text to the normal screen, then a small Ink prompt (outside Root, not in
 the alternate screen) waits for the key. This design first had Root show a full screen; see the
-changes below. In French, like the rest of the UI for now. It shows:
+changes below. Worded like the rest of the UI (French at the time, translated in the English pass). It shows:
 - one sentence: this project's Claude Code settings ask Claude Code to run these commands or
   apply these settings during Claude sessions; Claudex cannot turn them off (first said "set these
   environment variables when each Claude session starts", inaccurate for marketplaces and `env`);
@@ -139,7 +139,7 @@ re-runs D1 and compares with the approved findings:
 - no finding: proceed (keys removed since launch need no consent);
 - identical to the approval: proceed;
 - anything else (a new key, a changed value, a new file, a file that became unreadable): `query()`
-  is not called. The turn ends through the existing failure path with an explicit French message:
+  is not called. The turn ends through the existing failure path with an explicit message:
   the project settings changed during the session, the turn was not sent, quit and relaunch Claudex
   to review them. The scheduler already handles a failed turn; no new scheduler state.
 
@@ -273,7 +273,7 @@ the gate and can stay if only the gate is reverted.
 
 ## Left to the builder
 
-- Exact French wording of the screen and the failure message (short, plain, no jargon).
+- Exact wording of the screen and the failure message (short, plain, no jargon).
 - Layout of the consent screen, within the existing theme.
 - The canonical form used to compare findings.
 - How the listener port is chosen in M (an ephemeral port is fine).

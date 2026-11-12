@@ -3,8 +3,8 @@
 **Spec:** design approved in chat on 2026-10-26 (small change, no spec file). Summary:
 
 - Claudex no longer creates or modifies `CLAUDE.md` or `AGENTS.md`. They belong to the user;
-  the generated text leaked a debate-only rule ("débat jusqu'à consensus avant toute écriture
-  de code") into every later Claude Code or Codex session, and was re-appended after removal.
+  the generated text leaked a debate-only rule ("debate until consensus before any code is written", translated from the French
+  text Claudex used to write) into every later Claude Code or Codex session, and was re-appended after removal.
 - The debate rules (`CONSENSUS_INSTRUCTIONS`), sent once to each agent through the same path,
   now name `.claudex/memory/decisions.md` and `.claudex/memory/limits.md`. Named, not inlined
   (token cost, commit d52bcad). `devlog.md` is no longer pointed at: it is local and only an
@@ -19,7 +19,7 @@ existing tests about generation (`store.test.ts`) may be changed: approved by th
 
 ## Task 1: The debate rules name the project memory
 
-- Test (`src/__tests__/scheduler.test.ts`, "règles du débat"): the rules contain
+- Test (`src/__tests__/scheduler.test.ts`, "debate rules"): the rules contain
   `.claudex/memory/decisions.md` and `.claudex/memory/limits.md`, no `@.claudex` import and no
   `devlog.md`. Expected before the change: FAIL (paths absent).
 - Implementation: one sentence added to `CONSENSUS_INSTRUCTIONS`. The existing symmetry test
@@ -28,7 +28,7 @@ existing tests about generation (`store.test.ts`) may be changed: approved by th
 
 ## Task 2: The scaffold leaves CLAUDE.md and AGENTS.md alone
 
-- Tests (`src/memory/__tests__/store.test.ts`), replacing "CLAUDE.md généré":
+- Tests (`src/memory/__tests__/store.test.ts`), replacing "generated CLAUDE.md" (translated from French):
   - a first launch in an empty folder creates neither file, and `created` names neither;
   - existing files with arbitrary content are byte-identical after two launches.
   Expected before the change: FAIL (files created / appended).
