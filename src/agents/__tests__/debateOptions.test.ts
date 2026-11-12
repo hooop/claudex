@@ -41,7 +41,7 @@ it("lists exactly the keys of DEBATE_ISOLATION", () => {
   expect([...DEBATE_ISOLATION_KEYS].sort()).toEqual(Object.keys(DEBATE_ISOLATION).sort());
 });
 
-it("sans sandbox, les options sont exactement celles d'avant", () => {
+it("without a sandbox, the options are exactly the previous ones", () => {
   const before = {
     tools: ["Read", "Grep", "Glob"],
     permissionMode: "default",
@@ -62,7 +62,7 @@ const DENY_READ_RELATIVE = [
   ".vault-token", ".cargo/credentials.toml", ".terraform.d/credentials.tfrc.json", ".password-store", ".config/op", ".local/share/keyrings", ".zsh_history", ".bash_history",
 ];
 
-it("avec sandbox, Bash s'ajoute aux outils et le mode reste default sans outil pré-approuvé", () => {
+it("with a sandbox, Bash is added to the tools and the mode stays default with no pre-approved tool", () => {
   const o = debateQueryOptions(sandboxed);
   expect(o.tools).toEqual(["Read", "Grep", "Glob", "Bash"]);
   expect(SANDBOXED_DEBATE_TOOLS).toEqual(["Read", "Grep", "Glob", "Bash"]);
@@ -73,7 +73,7 @@ it("avec sandbox, Bash s'ajoute aux outils et le mode reste default sans outil p
   expect(o.settings).toEqual({ disableAllHooks: true, disableClaudeAiConnectors: true, disableSkillShellExecution: true });
 });
 
-it("avec sandbox, le bloc sandbox est exactement celui du design", () => {
+it("with a sandbox, the sandbox block is exactly the designed one", () => {
   expect(debateQueryOptions(sandboxed).sandbox).toEqual({
     enabled: true,
     failIfUnavailable: true,
@@ -95,13 +95,13 @@ it("avec sandbox, le bloc sandbox est exactement celui du design", () => {
   expect(CREDENTIAL_READ_DENY).toEqual(DENY_READ_RELATIVE);
 });
 
-it("ne protège jamais .gitconfig en lecture", () => {
+it("never protects .gitconfig from reading", () => {
   const denyRead = debateQueryOptions(sandboxed).sandbox?.filesystem.denyRead ?? [];
   expect(denyRead).toHaveLength(24);
   expect(denyRead.some((p) => p.endsWith(".gitconfig"))).toBe(false);
 });
 
-it("deux appels ne partagent aucun tableau de la sandbox", () => {
+it("two calls share no sandbox array", () => {
   const first = debateQueryOptions(sandboxed);
   first.sandbox?.filesystem.denyRead.push("/x");
   first.sandbox?.filesystem.denyWrite.push("/y");
@@ -114,7 +114,7 @@ it("deux appels ne partagent aucun tableau de la sandbox", () => {
   expect(second.tools).toEqual(["Read", "Grep", "Glob", "Bash"]);
 });
 
-it("ajoute les cibles réelles des liens après les chemins du home", () => {
+it("adds the real targets of links after the home paths", () => {
   const o = debateQueryOptions({ ...sandboxed, extraDenyRead: ["/vault/ssh"] });
   const denyRead = o.sandbox?.filesystem.denyRead ?? [];
   expect(denyRead).toHaveLength(25);
@@ -122,7 +122,7 @@ it("ajoute les cibles réelles des liens après les chemins du home", () => {
   expect(denyRead[24]).toBe("/vault/ssh");
 });
 
-it("masque les variables secrètes à Bash, et seulement s'il y en a", () => {
+it("hides secret variables from Bash, and only if there are any", () => {
   const o = debateQueryOptions({ ...sandboxed, secretEnvNames: ["A_KEY", "GITHUB_TOKEN"] });
   expect(o.sandbox?.credentials).toEqual({
     envVars: [{ name: "A_KEY", mode: "deny" }, { name: "GITHUB_TOKEN", mode: "deny" }],

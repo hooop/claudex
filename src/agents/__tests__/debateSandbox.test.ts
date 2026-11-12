@@ -13,7 +13,7 @@ function tempProject() {
   return { dir, link };
 }
 
-it("darwin : renvoie le chemin réel", async () => {
+it("darwin: returns the real path", async () => {
   const { dir, link } = tempProject();
   expect(await resolveDebateSandbox(link, "darwin", "/h", {})).toEqual({
     cwd: realpathSync(dir),
@@ -23,17 +23,17 @@ it("darwin : renvoie le chemin réel", async () => {
   });
 });
 
-it("linux et win32 : pas de Bash", async () => {
+it("linux and win32: no Bash", async () => {
   const { dir } = tempProject();
   expect(await resolveDebateSandbox(dir, "linux", "/h")).toBeNull();
   expect(await resolveDebateSandbox(dir, "win32", "/h")).toBeNull();
 });
 
-it("dossier absent : rejette", async () => {
+it("missing folder: rejects", async () => {
   await expect(resolveDebateSandbox(join(tmpdir(), "claudex-absent-dir-xyz"), "darwin", "/h")).rejects.toThrow();
 });
 
-it("un dossier de credentials en lien : sa cible réelle est ajoutée", async () => {
+it("a credentials folder that is a link: its real target is added", async () => {
   const { dir } = tempProject();
   const home = mkdtempSync(join(tmpdir(), "claudex-home-"));
   const target = mkdtempSync(join(tmpdir(), "claudex-ssh-"));
@@ -43,19 +43,19 @@ it("un dossier de credentials en lien : sa cible réelle est ajoutée", async ()
   expect(result?.extraDenyRead).toEqual([realpathSync(target)]);
 });
 
-it("un home en lien : home devient son chemin réel", async () => {
+it("a home that is a link: home becomes its real path", async () => {
   const { dir, link } = tempProject();
   const result = await resolveDebateSandbox(dir, "darwin", link, {});
   expect(result?.home).toBe(realpathSync(link));
 });
 
-it("un home introuvable est gardé tel quel", async () => {
+it("a home that cannot be found is kept as is", async () => {
   const { dir } = tempProject();
   const result = await resolveDebateSandbox(dir, "darwin", "/nonexistent-home-xyz", {});
   expect(result).toMatchObject({ home: "/nonexistent-home-xyz", extraDenyRead: [] });
 });
 
-it("les cibles en double sont dédoublonnées et triées", async () => {
+it("duplicate targets are deduplicated and sorted", async () => {
   const { dir } = tempProject();
   const home = mkdtempSync(join(tmpdir(), "claudex-home-"));
   const b = mkdtempSync(join(tmpdir(), "claudex-b-"));
@@ -67,7 +67,7 @@ it("les cibles en double sont dédoublonnées et triées", async () => {
   expect(result?.extraDenyRead).toEqual([realpathSync(a), realpathSync(b)].sort());
 });
 
-it("variables secrètes : AUTH, DSN et DATABASE_URL en plus, mais ni PWD, ni PATH, ni GIT_AUTHOR_NAME", async () => {
+it("secret variables: AUTH, DSN and DATABASE_URL on top, but not PWD, PATH or GIT_AUTHOR_NAME", async () => {
   const { dir } = tempProject();
   const env = {
     XAUTH_TOKEN: "x", SENTRY_DSN: "x", DATABASE_URL: "x", PWD: "/p", PATH: "/bin", GIT_AUTHOR_NAME: "n", OAUTH_CODE: "x",
@@ -76,14 +76,14 @@ it("variables secrètes : AUTH, DSN et DATABASE_URL en plus, mais ni PWD, ni PAT
   expect(result?.secretEnvNames).toEqual(["DATABASE_URL", "OAUTH_CODE", "SENTRY_DSN", "XAUTH_TOKEN"]);
 });
 
-it("variables secrètes : AUTHORIZATION est caché, GIT_COMMITTER_NAME et GIT_AUTHOR_EMAIL restent visibles", async () => {
+it("secret variables: AUTHORIZATION is hidden, GIT_COMMITTER_NAME and GIT_AUTHOR_EMAIL stay visible", async () => {
   const { dir } = tempProject();
   const env = { HTTP_AUTHORIZATION: "Bearer x", AUTHORIZATION_HEADER: "x", GIT_AUTHOR_EMAIL: "e", GIT_COMMITTER_NAME: "n" };
   const result = await resolveDebateSandbox(dir, "darwin", "/h", env);
   expect(result?.secretEnvNames).toEqual(["AUTHORIZATION_HEADER", "HTTP_AUTHORIZATION"]);
 });
 
-it("variables secrètes : noms reconnus sans tenir compte de la casse, triés", async () => {
+it("secret variables: names recognised case-insensitively, sorted", async () => {
   const { dir } = tempProject();
   const env = { github_token: "x", MY_API_KEY: "x", DB_PASSWORD: "x", PATH: "/bin", HOME: "/h", AWS_SECRET: "x", GIT_CREDENTIAL: "x" };
   const result = await resolveDebateSandbox(dir, "darwin", "/h", env);

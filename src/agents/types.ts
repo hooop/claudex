@@ -7,7 +7,7 @@ import type {
   PermissionRequest,
 } from "../types.js";
 
-export const AUTO_MODEL_LABEL = "auto (détecté au 1er tour)";
+export const AUTO_MODEL_LABEL = "auto (detected on the 1st turn)";
 
 export interface AgentSendOptions {
   cwd: string;

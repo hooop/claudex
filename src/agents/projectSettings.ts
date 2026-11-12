@@ -157,7 +157,7 @@ export function formatSettingValue(value: unknown): string {
 export type SessionGuard = (cwd: string) => Promise<string | null>;
 
 export const SETTINGS_CHANGED_MESSAGE =
-  "Les réglages Claude Code du projet (.claude/settings.json) ont changé pendant la session : le tour n'a pas été envoyé. Quittez Claudex et relancez-le pour les revoir.";
+  "The project's Claude Code settings (.claude/settings.json) changed during the session: the turn was not sent. Quit Claudex and relaunch it to review them.";
 
 // Settings are approved once at launch, but the engine re-reads them at every
 // turn and the agents (or anything else) can edit the file in between. Removing

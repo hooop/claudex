@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { formatClaudeModel, getProjectStatus } from "../projectStatus.js";
 
-describe("getProjectStatus — modèles affichés au lancement", () => {
+describe("getProjectStatus — models shown at launch", () => {
   let root: string;
   let claudeConfig: string;
   let codexConfig: string;
@@ -31,7 +31,7 @@ describe("getProjectStatus — modèles affichés au lancement", () => {
     rmSync(root, { recursive: true, force: true });
   });
 
-  it("respecte les réglages effectifs sans les transformer en sélection explicite", () => {
+  it("respects the effective settings without turning them into an explicit selection", () => {
     writeFileSync(path.join(claudeConfig, "settings.json"), JSON.stringify({ model: "opus" }));
     mkdirSync(path.join(root, ".claude"), { recursive: true });
     writeFileSync(
@@ -50,7 +50,7 @@ describe("getProjectStatus — modèles affichés au lancement", () => {
     expect(status.codexDefaultEffort).toBe("max");
   });
 
-  it("ne présente pas les modèles d'une ancienne session comme encore actifs", () => {
+  it("does not present the models of an old session as still active", () => {
     mkdirSync(path.join(root, ".claudex/memory"), { recursive: true });
     writeFileSync(
       path.join(root, ".claudex/memory/.state.json"),
@@ -68,7 +68,7 @@ describe("getProjectStatus — modèles affichés au lancement", () => {
     expect(status.codexDefaultModel).toBeNull();
   });
 
-  it("respecte un choix automatique de projet même si l'utilisateur a configuré un modèle", () => {
+  it("respects a project's automatic choice even if the user configured a model", () => {
     writeFileSync(path.join(claudeConfig, "settings.json"), JSON.stringify({ model: "opus" }));
     mkdirSync(path.join(root, ".claude"), { recursive: true });
     writeFileSync(
@@ -81,7 +81,7 @@ describe("getProjectStatus — modèles affichés au lancement", () => {
 });
 
 describe("formatClaudeModel", () => {
-  it("partage les libellés du sélecteur et formate les identifiants résolus", () => {
+  it("shares the selector labels and formats the resolved identifiers", () => {
     expect(formatClaudeModel("opus")).toBe("Opus 5");
     expect(formatClaudeModel("claude-sonnet-5-20260801")).toBe("Sonnet 5");
   });

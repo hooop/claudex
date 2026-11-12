@@ -11,7 +11,7 @@ describe("engineLeftovers", () => {
   });
   afterEach(() => rmSync(cwd, { recursive: true, force: true }));
 
-  it("liste dans le snapshot uniquement les chemins existants", async () => {
+  it("lists only existing paths in the snapshot", async () => {
     expect([...(await snapshotEngineLeftovers(cwd))]).toEqual([]);
     mkdirSync(join(cwd, ".claude"));
     expect([...(await snapshotEngineLeftovers(cwd))]).toEqual([".claude"]);
@@ -19,7 +19,7 @@ describe("engineLeftovers", () => {
     expect([...(await snapshotEngineLeftovers(cwd))].sort()).toEqual([".claude", ".claude/.cc-writes"]);
   });
 
-  it("supprime .claude/.cc-writes et .claude créés pendant le tour, et renvoie la liste", async () => {
+  it("removes .claude/.cc-writes and .claude created during the turn, and returns the list", async () => {
     const before = await snapshotEngineLeftovers(cwd);
     mkdirSync(join(cwd, ".claude", ".cc-writes"), { recursive: true });
     const removed = await removeEngineLeftovers(cwd, before);
@@ -27,7 +27,7 @@ describe("engineLeftovers", () => {
     expect(existsSync(join(cwd, ".claude"))).toBe(false);
   });
 
-  it("garde .claude s'il existait avant et supprime seulement un .cc-writes nouveau", async () => {
+  it("keeps .claude if it existed before and removes only a new .cc-writes", async () => {
     mkdirSync(join(cwd, ".claude"));
     const before = await snapshotEngineLeftovers(cwd);
     mkdirSync(join(cwd, ".claude", ".cc-writes"));
@@ -37,7 +37,7 @@ describe("engineLeftovers", () => {
     expect(existsSync(join(cwd, ".claude", ".cc-writes"))).toBe(false);
   });
 
-  it("ne supprime jamais un dossier non vide", async () => {
+  it("never removes a non-empty folder", async () => {
     const before = await snapshotEngineLeftovers(cwd);
     mkdirSync(join(cwd, ".claude"));
     writeFileSync(join(cwd, ".claude", "settings.json"), "{}");
@@ -46,7 +46,7 @@ describe("engineLeftovers", () => {
     expect(readFileSync(join(cwd, ".claude", "settings.json"), "utf8")).toBe("{}");
   });
 
-  it("ignore un lien symbolique .claude et ne touche pas à sa cible", async () => {
+  it("ignores a .claude symlink and does not touch its target", async () => {
     const target = mkdtempSync(join(tmpdir(), "claudex-leftovers-target-"));
     try {
       const before = await snapshotEngineLeftovers(cwd);
@@ -60,11 +60,11 @@ describe("engineLeftovers", () => {
     }
   });
 
-  it("accepte des chemins absents", async () => {
+  it("accepts missing paths", async () => {
     await expect(removeEngineLeftovers(cwd, new Set())).resolves.toEqual([]);
   });
 
-  it("ne lève pas quand le dossier du projet n'existe plus", async () => {
+  it("does not throw when the project folder no longer exists", async () => {
     await expect(removeEngineLeftovers(join(cwd, "absent"), new Set())).resolves.toEqual([]);
   });
 });

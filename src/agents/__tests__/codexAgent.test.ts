@@ -107,7 +107,7 @@ class FakeAppServer extends EventEmitter {
     });
     this.write({
       method: "item/agentMessage/delta",
-      params: { threadId: "thread-1", turnId: "turn-1", itemId: "message-1", delta: "Bon" },
+      params: { threadId: "thread-1", turnId: "turn-1", itemId: "message-1", delta: "Hel" },
     });
     this.write({
       method: "thread/tokenUsage/updated",
@@ -123,7 +123,7 @@ class FakeAppServer extends EventEmitter {
     });
     this.write({
       method: "item/agentMessage/delta",
-      params: { threadId: "thread-1", turnId: "turn-1", itemId: "message-1", delta: "jour" },
+      params: { threadId: "thread-1", turnId: "turn-1", itemId: "message-1", delta: "lo" },
     });
     this.write({
       method: "item/completed",
@@ -147,7 +147,7 @@ class FakeAppServer extends EventEmitter {
         threadId: "thread-1",
         turnId: "turn-1",
         completedAtMs: 8_400,
-        item: { id: "message-1", type: "agentMessage", text: "Bonjour", phase: "final_answer" },
+        item: { id: "message-1", type: "agentMessage", text: "Hello", phase: "final_answer" },
       },
     });
     this.write({
@@ -164,18 +164,18 @@ class FakeAppServer extends EventEmitter {
 describe("CodexAgent app-server streaming", () => {
   beforeEach(() => spawnMock.mockReset());
 
-  it("consomme les deltas sans dupliquer le message final et expose la commande comme activité", async () => {
+  it("consumes the deltas without duplicating the final message and exposes the command as activity", async () => {
     const server = new FakeAppServer("success");
     spawnMock.mockReturnValue(server);
     const deltas: string[] = [];
     const activities: unknown[] = [];
     const contexts: unknown[] = [];
 
-    const agent = new CodexAgent(undefined, "gpt-configuré, effort max");
-    expect(agent.currentModel()).toBe("gpt-configuré, effort max");
+    const agent = new CodexAgent(undefined, "gpt-configured, max effort");
+    expect(agent.currentModel()).toBe("gpt-configured, max effort");
     expect(agent.hasExplicitModel()).toBe(false);
 
-    const result = await agent.send("Sujet", {
+    const result = await agent.send("Topic", {
       cwd: "/tmp",
       writeAccess: false,
       onTextDelta: (delta) => deltas.push(delta),
@@ -183,9 +183,9 @@ describe("CodexAgent app-server streaming", () => {
       onContextUsage: (usage) => contexts.push(usage),
     });
 
-    expect(result).toMatchObject({ kind: "success", text: "Bonjour" });
+    expect(result).toMatchObject({ kind: "success", text: "Hello" });
     expect(agent.currentModel()).toBe("codex-test");
-    expect(deltas).toEqual(["Bon", "jour"]);
+    expect(deltas).toEqual(["Hel", "lo"]);
     expect(contexts).toEqual([{ usedTokens: 10_000, contextWindow: 250_000 }]);
     expect(activities).toContainEqual({
       kind: "command",
@@ -204,7 +204,7 @@ describe("CodexAgent app-server streaming", () => {
     const turnStart = server.requests.find((request) => request.method === "turn/start");
     expect(turnStart).toMatchObject({
       params: {
-        input: [{ type: "text", text: "Sujet" }],
+        input: [{ type: "text", text: "Topic" }],
         approvalPolicy: "never",
         sandboxPolicy: { type: "readOnly", networkAccess: false },
       },
@@ -213,26 +213,26 @@ describe("CodexAgent app-server streaming", () => {
     expect(threadStart).not.toHaveProperty("params.model");
 
     agent.resetSession();
-    expect(agent.currentModel()).toBe("gpt-configuré, effort max");
+    expect(agent.currentModel()).toBe("gpt-configured, max effort");
   });
 
-  it("explique clairement quand le choix automatique n'est pas encore résolu", () => {
-    expect(new CodexAgent().currentModel()).toBe("auto (détecté au 1er tour)");
+  it("says so clearly when the automatic choice is not yet resolved", () => {
+    expect(new CodexAgent().currentModel()).toBe("auto (detected on the 1st turn)");
   });
 
-  it("rend une limite Codex explicite et reprenable", async () => {
+  it("makes a Codex limit explicit and resumable", async () => {
     spawnMock.mockReturnValue(new FakeAppServer("limit"));
 
-    const result = await new CodexAgent().send("Sujet", { cwd: "/tmp", writeAccess: false });
+    const result = await new CodexAgent().send("Topic", { cwd: "/tmp", writeAccess: false });
 
     expect(result).toMatchObject({ kind: "error" });
     if (result.kind === "error") {
-      expect(result.message).toContain("Limite Codex atteinte");
+      expect(result.message).toContain("Codex limit reached");
       expect(result.message).toContain("/resume");
     }
   });
 
-  it("reprend le même thread app-server au tour suivant", async () => {
+  it("resumes the same app-server thread on the next turn", async () => {
     const firstServer = new FakeAppServer("success");
     const secondServer = new FakeAppServer("success");
     spawnMock.mockReturnValueOnce(firstServer).mockReturnValueOnce(secondServer);
@@ -251,22 +251,22 @@ describe("CodexAgent app-server streaming", () => {
   });
 
   it.each(["invalid-completion", "mismatched-completion"] as const)(
-    "transforme immédiatement un turn/completed critique %s en erreur récupérable",
+    "immediately turns a critical turn/completed %s into a recoverable error",
     async (scenario) => {
       spawnMock.mockReturnValue(new FakeAppServer(scenario));
 
-      const result = await new CodexAgent().send("Sujet", { cwd: "/tmp", writeAccess: false });
+      const result = await new CodexAgent().send("Topic", { cwd: "/tmp", writeAccess: false });
 
       expect(result.kind).toBe("error");
-      if (result.kind === "error") expect(result.message).toContain("Protocole Codex invalide");
+      if (result.kind === "error") expect(result.message).toContain("Invalid Codex protocol");
     },
   );
 
-  it("n'invente pas de timeout pour un serveur silencieux et reste annulable", async () => {
+  it("does not invent a timeout for a silent server and stays cancellable", async () => {
     const server = new FakeAppServer("silent");
     spawnMock.mockReturnValue(server);
     const controller = new AbortController();
-    const resultPromise = new CodexAgent().send("Sujet", {
+    const resultPromise = new CodexAgent().send("Topic", {
       cwd: "/tmp",
       writeAccess: false,
       signal: controller.signal,
