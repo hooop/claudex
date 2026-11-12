@@ -242,7 +242,9 @@ export class TranscriptStream {
   /** Pre-formatted permanent lines: the frozen header, the help panel. */
   raw(lines: readonly string[]): void {
     this.interruptActive();
-    this.pushPermanent(lines.map((text) => line(text)));
+    // Split defensively: a string with a line break would otherwise be one line
+    // in the count and several rows on screen.
+    this.pushPermanent(lines.flatMap((text) => text.split("\n").map((row) => line(row))));
     this.controller.flush();
   }
 
@@ -334,13 +336,13 @@ export class TranscriptStream {
 
     const lines = active.pipe.finish(outcome.status === "ok" && outcome.signal !== null);
     if (outcome.status === "error") {
-      lines.push(
-        line(
-          chalk.hex(ERROR_STYLE.color)(
-            `${ERROR_STYLE.badge} Error: ${asciiSymbolsForDisplay(outcome.message)}`,
-          ),
-        ),
-      );
+      // One TranscriptLine per row: a message with line breaks must not count as a
+      // single line, or length(), rewind and the viewport height would be wrong.
+      const paint = chalk.hex(ERROR_STYLE.color);
+      const rows = asciiSymbolsForDisplay(outcome.message).split(/\r?\n/u);
+      rows.forEach((row, index) => {
+        lines.push(line(paint(index === 0 ? `${ERROR_STYLE.badge} Error: ${row}` : row)));
+      });
     } else if (outcome.status === "cancelled") {
       lines.push(line(chalk.dim("(Cancelled)")));
     } else if (active.from === "claude" || active.from === "codex") {

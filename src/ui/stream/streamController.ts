@@ -49,7 +49,7 @@ export class StreamController {
   /** Queue complete physical lines. They must not contain embedded newlines. */
   push(lines: readonly TranscriptLine[]): void {
     if (this.disposed || lines.length === 0) return;
-    for (const line of lines) this.queue.push(line);
+    for (const item of lines) this.queue.push(item);
     this.schedule();
   }
 

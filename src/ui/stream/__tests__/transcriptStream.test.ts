@@ -526,3 +526,39 @@ describe("TranscriptStream — soft wraps", () => {
     expect(written.filter((l) => !body.includes(l)).some((l) => l.softWrap)).toBe(false);
   });
 });
+
+describe("TranscriptStream — multi-line input", () => {
+  it("writes one line per row of a multi-line error message", () => {
+    const rows: string[] = [];
+    const stream = new TranscriptStream({
+      write: (lines) => rows.push(...lines.map((l) => l.styled)),
+      width: () => 60,
+      onTail: () => {},
+      length: () => rows.length,
+      rewind: (n) => {
+        rows.length = n;
+      },
+      intervalMs: 0,
+    });
+    const e = entry({ from: "claude", kind: "message" });
+    stream.entryStarted(e);
+    const before = rows.length;
+    stream.entryCompleted(e.id, { status: "error", message: "first\nsecond" });
+    const plain = rows.slice(before).map((r) => r.replace(/\u001b\[[0-9;]*m/g, ""));
+    expect(plain.some((r) => r.endsWith("Error: first"))).toBe(true);
+    expect(plain).toContain("second");
+    expect(rows.every((r) => !r.includes("\n"))).toBe(true);
+  });
+
+  it("splits raw lines that contain a line break", () => {
+    const rows: string[] = [];
+    const stream = new TranscriptStream({
+      write: (lines) => rows.push(...lines.map((l) => l.styled)),
+      width: () => 60,
+      onTail: () => {},
+      intervalMs: 0,
+    });
+    stream.raw(["a\nb"]);
+    expect(rows).toEqual(["a", "b"]);
+  });
+});
