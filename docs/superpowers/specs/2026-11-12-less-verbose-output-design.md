@@ -157,12 +157,21 @@ differs from what was streamed.
 
 Cancelled and failed turns keep their `partialText` as today (all text so far).
 
+**Live display.** On `onNote`, the scheduler removes the note from the live entry
+text and emits a new `onOutputReset(entryId, text)` callback (next to
+`onOutputChunk`) with the remaining text, then a `note` activity. Mechanism
+(designer's call, chosen so the existing append-only renderer and its tests stay
+unchanged): the renderer rewinds the viewport to the start of that entry's body,
+re-renders the body from `text`, then re-writes the permanent lines that were
+interleaved after it during the turn (an intervention, a permission note).
+
 ### D5. Implementation phase unchanged
 
-With `writeAccess: true` the adapters never call `onNote`: notes stay in the message
-as today, since the human watches the work there. The D1 and D2 rules are part of the
-debate rules and are not sent in that phase. The diagnostic log (D6) still records
-both phases.
+Separation is active only when the caller passes `onNote`. The scheduler passes it
+for debate turns (`writeAccess: false`) and never for implementation turns or the
+consensus synthesis, so notes stay in those messages as today. The D1 and D2 rules
+are part of the debate rules and are not sent in that phase. The diagnostic log
+(D6) records both phases.
 
 ### D6. Diagnostic log
 
@@ -173,8 +182,9 @@ transcript:
   a note (its text), and a finished tool or command (name or command line, input,
   status, exit code when known, and its full output when the adapter has it: Codex's
   `aggregatedOutput` on `commandExecution` items, Claude's `tool_result` content).
-- The scheduler stamps each event with the agent, the transcript entry it belongs
-  to and a timestamp, and keeps them in a session trace next to the transcript.
+- The scheduler records notes itself (from `onNote`) and tool events (from
+  `onTrace`), stamps each with the agent and a timestamp, and keeps them in a
+  session trace next to the transcript.
 - The trace is written where and when the transcript archive is written (`/save`,
   `/new`, `/quit`, the partial snapshot): a second file next to it in
   `.claudex/memory/transcripts/`, same base name with a `.trace.md` suffix, plain
@@ -242,6 +252,5 @@ unchanged.
 
 ## Left to the builder
 
-The exact rule wording, the UI reset mechanism (for example an `onOutputReset`
-callback next to `onOutputChunk`), the footer truncation of notes, and the layout of
-the trace file, within the constraints above.
+The exact rule wording, the footer truncation of notes, and the layout of the
+trace file, within the constraints above.
