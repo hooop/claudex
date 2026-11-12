@@ -87,6 +87,34 @@ describe("CONSENSUS_INSTRUCTIONS", () => {
     return (end === -1 ? rest : rest.slice(0, end)).trim();
   }
 
+  it("asks for density as a target, not a limit", () => {
+    expect(prompt).toContain("as briefly as possible, but as precisely as necessary");
+    expect(prompt).toContain("200 words");
+    expect(prompt).toMatch(/target, not a limit/);
+  });
+
+  it("asks for the position first and no restating", () => {
+    expect(prompt).toContain("position or main objection first");
+    expect(prompt).toMatch(/do not restate/i);
+  });
+
+  it("allows headings only when they help", () => {
+    expect(prompt).toMatch(/headings or lists only when they make the message easier to follow/i);
+  });
+
+  it("makes working notes private", () => {
+    expect(prompt).toContain("after your last tool call");
+    expect(prompt).toContain("private working note");
+  });
+
+  it("allows evidence excerpts under conditions", () => {
+    expect(prompt).toContain("relevant lines");
+    expect(prompt).toMatch(/exit code/i);
+    expect(prompt).toMatch(/misrepresent/i);
+    expect(prompt).toMatch(/say what you left out/i);
+    expect(prompt).toContain("exact command");
+  });
+
   it("shows a correct example that the parser really recognises", () => {
     expect(extractSignal(exampleAfter("Correct end of answer:")).signal).toBe("consensus");
   });

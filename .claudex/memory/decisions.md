@@ -2,6 +2,33 @@
 
 Log of the decisions validated at the end of a Claude ↔ Codex debate.
 
+## 2026-11-12 — Denser debate messages and evidence excerpts
+
+**Nature:** maintainer arbitration (less verbose debate output). Design:
+`docs/superpowers/specs/2026-11-12-less-verbose-output-design.md`.
+
+**Measured baseline:** Claude's debate messages have a median of 321 words and a p90 of 988.
+
+**Decision:** `CONSENSUS_INSTRUCTIONS` asks both agents, identically, for density: as briefly as
+possible but as precisely as necessary, about 200 words as a target and not a limit, position or
+main objection first, no introduction, no restating of the other's message, no empty recap, one or
+two important arguments per message, headings or lists only when they help. Text written before a
+tool call is declared a private working note: the message is written after the last tool call and
+must stand on its own.
+
+**Amendment to the evidence rule of 2026-08-17** ("exact command and raw output"): an excerpt is
+now allowed instead of the whole output, provided that the exact command is given, the excerpt keeps
+the context needed to read it, errors and meaningful exit codes are kept, and it never misrepresents
+the overall result (for example quoting passing tests while others failed) and says what was left
+out. The requirement of evidence and its symmetry are unchanged; full outputs stay available in the
+diagnostic log when the adapter has them.
+
+**Rejected:** a hard word limit or truncation of messages. It would cut the technical demonstrations
+that need length, and a truncated message could drop the end marker or the very conclusion the other
+agent must check. Density is asked for as a target instead.
+
+**Files involved:** `src/orchestrator/scheduler.ts`, `src/orchestrator/__tests__/markers.test.ts`.
+
 ## 2026-11-11 — Claude has a sandboxed Bash during the debate (macOS); the execution asymmetry is reopened
 
 **Nature:** the maintainer put the feature on the roadmap (2026-10-28) and delegated
