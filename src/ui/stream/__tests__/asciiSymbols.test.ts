@@ -16,6 +16,7 @@ describe("asciiSymbolsForDisplay", () => {
 
   // Deliberate French input: accented characters must pass through untouched.
   it("preserves accented text and ordinary structural characters", () => {
+    // Deliberate French input: the accented "café" is kept as is.
     expect(asciiSymbolsForDisplay("café — list | rail ↑↓")).toBe("café — list | rail ↑↓");
   });
 

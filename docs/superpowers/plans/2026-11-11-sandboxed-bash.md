@@ -69,7 +69,7 @@
 - [ ] **Step 1: Failing tests** (real temp dirs, no mocks):
   - `"darwin: returns the real path"`: dir made with `mkdtemp`, plus a symlink to it; resolving the symlink gives `{ cwd: realpathSync(dir), home: "/h" }`.
   - `"linux and win32: no Bash"`: returns `null` for `"linux"` and `"win32"` even for an existing dir.
-  - `"dossier absent : rejette"`: darwin + non-existent path → `rejects.toThrow()`.
+  - `"missing folder: rejects"` (translated from French; the test is now named this way): darwin + non-existent path → `rejects.toThrow()`.
 - [ ] **Step 2:** Run → FAIL (module missing).
 - [ ] **Step 3: Implement** with `fs/promises.realpath`; platform check first (non-darwin returns `null` without touching the disk).
 - [ ] **Step 4:** Run, then `npm run check` → PASS.

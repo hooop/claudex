@@ -234,7 +234,7 @@ describe("Scheduler", () => {
       expect(message).toContain("[Codex → Claude]\nQuestion from Codex");
       expect(message).toContain("[User → Claude]\nMy opinion");
       // Attribution is rendered, never baked into the stored text.
-      expect(message).not.toContain("[User's message]");
+      expect(message.split("[User → Claude]")).toHaveLength(2);
     });
   });
 
@@ -1176,7 +1176,7 @@ describe("debate rules", () => {
   // degrades the handoffs, which are standalone Markdown documents.
   it("imposes no Markdown constraint on the agents", () => {
     expect(claudeSide).not.toContain("Markdown");
-    expect(claudeSide).toContain("any emoji");
+    expect(claudeSide).toContain("Do not use any emoji");
   });
 
   it("tells agents to answer in the human's language, English as fallback", () => {

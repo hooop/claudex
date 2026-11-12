@@ -11,7 +11,7 @@ debated in this project?** You design nothing, propose nothing, modify nothing.
 ## Where to look, in this order
 
 1. `.claudex/memory/decisions.md` — decisions **settled** after a Claude ↔ Codex consensus and
-   validated by the human. This is the only source that is authoritative on its own.
+   validated by the human. This is the only source that is authoritative.
 2. `.claudex/memory/limits.md` — verified constraints and explicitly rejected options. Also
    authoritative: a recorded limit closes a path.
 3. `.claudex/memory/handoffs/` — proposals passed on for implementation. **A proposal is not a

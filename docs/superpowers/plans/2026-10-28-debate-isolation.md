@@ -88,10 +88,12 @@ it("returns a fresh object on every call", () => {
 In `claudeAgent.test.ts`, describe "ClaudeAgent — settings per phase", add
 `it("relays every tool request to the human and applies the answer", ...)`:
 - `queryMock` implementation captures `options.canUseTool` and yields `successResult()`.
-- `onPermissionRequest` is a `vi.fn()` resolving first `{ behavior: "allow" }`, then `{ behavior: "deny", message: "non" }`, then `{ behavior: "deny" }`.
+- `onPermissionRequest` is a `vi.fn()` resolving first `{ behavior: "allow" }`, then `{ behavior: "deny", message: "no" }`, then `{ behavior: "deny" }`.
 - `onActivity` is a `vi.fn()`.
-- After `send("Sujet", { cwd: "/tmp", writeAccess: false, onPermissionRequest, onActivity })`, call the captured `canUseTool("Read", { file_path: "/tmp/a" }, { toolUseID: "tu-1" })` three times (IDs `tu-1`, `tu-2`, `tu-3`).
-- Assert: `onPermissionRequest` first call equals `{ id: "tu-1", agent: "claude", toolName: "Read", input: { file_path: "/tmp/a" } }`; results equal `{ behavior: "allow", updatedInput: { file_path: "/tmp/a" } }`, `{ behavior: "deny", message: "non" }`, `{ behavior: "deny", message: "Refused by user" }`; `onActivity` was called with an object containing `{ kind: "tool", label: "lit /tmp/a", status: "running" }`.
+- After `send("Topic", { cwd: "/tmp", writeAccess: false, onPermissionRequest, onActivity })`, call the captured `canUseTool("Read", { file_path: "/tmp/a" }, { toolUseID: "tu-1" })` three times (IDs `tu-1`, `tu-2`, `tu-3`).
+- Assert: `onPermissionRequest` first call equals `{ id: "tu-1", agent: "claude", toolName: "Read", input: { file_path: "/tmp/a" } }`; results equal `{ behavior: "allow", updatedInput: { file_path: "/tmp/a" } }`, `{ behavior: "deny", message: "no" }`, `{ behavior: "deny", message: "Refused by user" }`; `onActivity` was called with an object containing `{ kind: "tool", label: "reads /tmp/a", status: "running" }`.
+
+(The code samples in this plan were translated from French.)
 
 - [ ] **Step 2: Run them and confirm they fail for the right reason**
 

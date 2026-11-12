@@ -75,7 +75,7 @@ function fakeTerminal() {
 describe("Root settings guard", () => {
   it("gives ClaudeAgent a settings guard as third constructor argument", async () => {
     const terminal = fakeTerminal();
-    const app = render(<Root cwd="/projet-test" />, {
+    const app = render(<Root cwd="/project-test" />, {
       stdout: terminal.stdout as never,
       stdin: terminal.stdin as never,
       stderr: terminal.stderr as never,

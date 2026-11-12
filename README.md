@@ -8,7 +8,7 @@ Claudex runs a structured debate between Claude Code and Codex on a technical qu
 
 ## How it works
 
-*Both agents answer in the language of your messages, English otherwise. The code, comments and commit messages they write are in English.*
+*Both agents answer in the language of your messages, English otherwise. They are asked to write code, comments and commit messages in English.*
 
 A session always follows the same cycle:
 

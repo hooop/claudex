@@ -168,7 +168,7 @@ module keeps no runtime SDK import (D2 of the debate isolation design).
 `ClaudeAgent` takes the resolver as an optional constructor argument whose default always returns
 `null` (no Bash); only `src/ui/Root.tsx` passes the real one. A forgotten wiring therefore yields a
 debate without Bash, never a Bash without sandbox, and the existing adapter tests (which use
-non-existent `cwd` values such as `/projet`) keep running unchanged.
+non-existent `cwd` values such as `/project`) keep running unchanged.
 
 `DEBATE_TOOLS` stays the read-only list; a new `SANDBOXED_DEBATE_TOOLS` adds `Bash`. The
 verification verdict accepts `Bash` as a debate tool only for cases that pass the sandbox.

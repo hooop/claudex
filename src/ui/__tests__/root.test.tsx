@@ -200,8 +200,8 @@ describe("Root — header lifecycle", () => {
     expect(memoryLine).toBeGreaterThan(-1);
     expect(taglineLine).toBeGreaterThan(memoryLine);
     expect(modelsLine).toBeGreaterThan(promptLine);
-    expect(lines[modelsLine]).not.toContain("Claude :");
-    expect(lines[modelsLine]).not.toContain("Codex :");
+    expect(lines[modelsLine]).not.toContain("Claude:");
+    expect(lines[modelsLine]).not.toContain("Codex:");
     expect(lines[modelsLine]).toContain("/help");
     expect(WELCOME_MODELS_COLOR).toBe("ansi256(66)");
     expect(WELCOME_TAGLINE_COLOR).toBe("ansi256(138)");

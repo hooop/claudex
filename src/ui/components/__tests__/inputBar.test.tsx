@@ -24,7 +24,7 @@ function fakeTerminal() {
     // Ink 7 only draws a frame when the output is a real terminal
     // (`interactive` = !CI && stdout.isTTY). Without this flag, it writes nothing.
     // isTTY is not enough under CI=true (GitHub Actions): render() therefore forces
-    // aussi `interactive: true`.
+    // also `interactive: true`.
     isTTY: true,
     columns: 80,
     rows: 24,
