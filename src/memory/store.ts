@@ -219,7 +219,8 @@ export async function saveTranscript(
 }
 
 function fence(content: string): string {
-  const longest = Math.max(0, ...(content.match(/`+/g) ?? []).map((run) => run.length));
+  // Reduced rather than spread: an output can hold more runs than a call accepts arguments.
+  const longest = (content.match(/`+/g) ?? []).reduce((max, run) => Math.max(max, run.length), 0);
   return "`".repeat(Math.max(3, longest + 1));
 }
 

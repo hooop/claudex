@@ -269,6 +269,16 @@ describe("saveTrace", () => {
     expect(content).toContain("````\na\n```\nb\n````");
   });
 
+  it("fences an output with a very large number of backtick runs", async () => {
+    const output = "`a".repeat(500_000) + "````";
+    const rel = await saveTrace(cwd, transcriptPath, [
+      { agent: "claude", timestamp: 0, event: { kind: "tool", label: "Bash cat", status: "success", output } },
+    ]);
+    const content = await readFile(path.join(cwd, rel ?? ""), "utf8");
+
+    expect(content).toContain(`\`\`\`\`\`\n${output}\n\`\`\`\`\``);
+  });
+
   it("marks a failed tool with its exit code", async () => {
     const rel = await saveTrace(cwd, transcriptPath, [
       { agent: "codex", timestamp: 0, event: { kind: "tool", label: "npm test", status: "failure", exitCode: 2 } },
