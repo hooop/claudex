@@ -66,6 +66,7 @@ const mocks = vi.hoisted(() => {
       return null;
     }),
     saveTranscript: vi.fn(async () => "transcript.md"),
+    saveTrace: vi.fn(async () => null as string | null),
     setAutoComplete(value: boolean) {
       autoComplete = value;
     },
@@ -101,6 +102,7 @@ vi.mock("../../memory/store.js", () => ({
   rememberAutonomyBudget: vi.fn(async () => {}),
   saveHandoff: vi.fn(async () => "handoff.md"),
   saveTranscript: mocks.saveTranscript,
+  saveTrace: mocks.saveTrace,
   sessionTitle: (topic: string) => topic,
 }));
 
@@ -368,6 +370,30 @@ describe("Root — header lifecycle", () => {
         "3 settled decisions",
       );
     });
+    app.unmount();
+  });
+
+  it("saves the trace next to the archived transcript on /new", async () => {
+    const terminal = fakeTerminal();
+    const app = render(<Root cwd="/test-project" />, {
+      stdout: terminal.stdout as never,
+      stdin: terminal.stdin as never,
+      stderr: terminal.stderr as never,
+      exitOnCtrlC: false,
+      patchConsole: false,
+      interactive: true,
+    });
+
+    await vi.waitFor(() => expect(terminal.stdin.listenerCount("readable")).toBeGreaterThan(0));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await press(terminal, "Test topic");
+    await press(terminal, "\r");
+    await vi.waitFor(() => expect(mocks.appendDevlog).toHaveBeenCalledOnce());
+
+    await press(terminal, "/new");
+    await press(terminal, "\r");
+    await vi.waitFor(() => expect(mocks.saveTrace).toHaveBeenCalledOnce());
+    expect(mocks.saveTrace).toHaveBeenCalledWith("/test-project", "transcript.md", expect.any(Array));
     app.unmount();
   });
 

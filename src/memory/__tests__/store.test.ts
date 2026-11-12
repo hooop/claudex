@@ -7,6 +7,7 @@ import {
   initMemoryScaffold,
   rememberAutonomyBudget,
   saveHandoff,
+  saveTrace,
   saveTranscript,
   sessionTitle,
 } from "../store.js";
@@ -225,5 +226,72 @@ describe("the user's instruction files", () => {
 
     expect(await readFile(path.join(cwd, "CLAUDE.md"), "utf8")).toBe(claudeMd);
     expect(await readFile(path.join(cwd, "AGENTS.md"), "utf8")).toBe(agentsMd);
+  });
+});
+
+describe("saveTrace", () => {
+  let cwd: string;
+
+  beforeEach(async () => {
+    cwd = await mkdtemp(path.join(os.tmpdir(), "claudex-store-test-"));
+  });
+
+  afterEach(async () => {
+    await rm(cwd, { recursive: true, force: true });
+  });
+
+  const transcriptPath = ".claudex/memory/transcripts/2026-01-01-topic.md";
+
+  it("writes the trace next to the transcript", async () => {
+    const rel = await saveTrace(cwd, transcriptPath, [
+      { agent: "codex", timestamp: Date.UTC(2026, 0, 1), event: { kind: "note", text: "Looking at the parser" } },
+    ]);
+
+    expect(rel).toBe(".claudex/memory/transcripts/2026-01-01-topic.trace.md");
+    const content = await readFile(path.join(cwd, rel ?? ""), "utf8");
+    expect(content).toContain("# Diagnostic trace");
+    expect(content).toContain("2026-01-01-topic.md");
+    expect(content).toContain("2026-01-01T00:00:00.000Z · CODEX · note");
+    expect(content).toContain("Looking at the parser");
+  });
+
+  it("writes nothing for an empty trace", async () => {
+    expect(await saveTrace(cwd, transcriptPath, [])).toBeNull();
+    expect(existsSync(path.join(cwd, ".claudex/memory/transcripts/2026-01-01-topic.trace.md"))).toBe(false);
+  });
+
+  it("fences an output containing backticks", async () => {
+    const rel = await saveTrace(cwd, transcriptPath, [
+      { agent: "claude", timestamp: 0, event: { kind: "tool", label: "Bash ls", status: "success", output: "a\n```\nb" } },
+    ]);
+    const content = await readFile(path.join(cwd, rel ?? ""), "utf8");
+
+    expect(content).toContain("````\na\n```\nb\n````");
+  });
+
+  it("marks a failed tool with its exit code", async () => {
+    const rel = await saveTrace(cwd, transcriptPath, [
+      { agent: "codex", timestamp: 0, event: { kind: "tool", label: "npm test", status: "failure", exitCode: 2 } },
+    ]);
+    const content = await readFile(path.join(cwd, rel ?? ""), "utf8");
+
+    expect(content).toContain("tool [x] npm test (exit 2)");
+  });
+
+  it("flattens a multi-line label to one heading line", async () => {
+    const rel = await saveTrace(cwd, transcriptPath, [
+      { agent: "codex", timestamp: 0, event: { kind: "tool", label: "echo a\n# injected", status: "success" } },
+    ]);
+    const content = await readFile(path.join(cwd, rel ?? ""), "utf8");
+
+    expect(content).toContain("tool [ok] echo a # injected");
+    expect(content).not.toContain("\n# injected");
+  });
+
+  it("refuses to overwrite an existing trace", async () => {
+    const records = [{ agent: "codex" as const, timestamp: 0, event: { kind: "note" as const, text: "x" } }];
+    await saveTrace(cwd, transcriptPath, records);
+
+    await expect(saveTrace(cwd, transcriptPath, records)).rejects.toThrow(/EEXIST/);
   });
 });
