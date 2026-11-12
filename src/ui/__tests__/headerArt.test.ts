@@ -35,12 +35,13 @@ describe("headerArt — equation gallery", () => {
     expect(getHeaderAnimation(DEFAULT_HEADER_ANIMATION).label).toBe("Psychedelic plasma");
   });
 
-  it.each([20, 40, 80, 200])("produces five rows of exact real width at %i columns", (width) => {
+  it.each([20, 40, 80, 200])("produces four rows of exact real width at %i columns", (width) => {
     const expectedWidth = Math.min(width, HEADER_MAX_WIDTH);
 
     for (const { id, staticT } of HEADER_ANIMATIONS) {
       for (const t of [0, staticT, staticT + 8]) {
         const frame = headerFrame(width, t, id);
+        expect(frame).toHaveLength(4);
         expect(frame).toHaveLength(HEADER_ROWS);
         for (const row of frame) {
           expect(displayWidth(rowText(row))).toBe(expectedWidth);

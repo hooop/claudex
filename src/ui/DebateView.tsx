@@ -32,23 +32,19 @@ import { ModelFooter } from "./components/ModelFooter.js";
 import { ModelPicker } from "./components/ModelPicker.js";
 import { PermissionModal } from "./components/PermissionModal.js";
 import { StatusBar } from "./components/StatusBar.js";
+import { DEBATE_HEADER_ROWS, DebateHeader } from "./components/DebateHeader.js";
 import {
-  welcomeDivider,
-  welcomeMemoryLine,
-} from "./components/WelcomeScreen.js";
-import {
-  CLAUDE_FLASH_COLOR,
-  CODEX_FLASH_COLOR,
-  DEFAULT_HEADER_ANIMATION,
-  HEADER_MAX_WIDTH,
-  headerFrame,
-  type HeaderAnimationId,
-} from "./headerArt.js";
+  INITIAL_STATUS,
+  reduceStatus,
+  roundForStart,
+  type DebateStatus,
+  type StatusEvent,
+} from "./debateStatus.js";
 import { BRAND_COLOR, contentWidthFor } from "./theme.js";
 import { line, type TranscriptLine } from "./stream/streamController.js";
 import { TranscriptStream, type TailView } from "./stream/transcriptStream.js";
 import { asciiSymbolsForDisplay } from "./stream/asciiSymbols.js";
-import { truncateEnd, wrapAll } from "./stream/lineBuffer.js";
+import { wrapAll } from "./stream/lineBuffer.js";
 import { sanitizeForDisplay } from "./stream/sanitize.js";
 import { markdownToPlainText } from "./markdown.js";
 import type { ProjectStatus } from "../util/projectStatus.js";
@@ -68,7 +64,6 @@ export function DebateView(props: {
   topic: string;
   cwd: string;
   status: ProjectStatus;
-  headerAnimation?: HeaderAnimationId;
   coordinatorState: CoordinatorState;
   coordinatorNotice: string | null;
   onLifecycleRequest: (request: LifecycleRequest) => Promise<CoordinatorResponse>;
@@ -79,7 +74,6 @@ export function DebateView(props: {
     topic,
     cwd,
     status,
-    headerAnimation = DEFAULT_HEADER_ANIMATION,
     coordinatorState,
     coordinatorNotice,
     onLifecycleRequest,
@@ -94,6 +88,7 @@ export function DebateView(props: {
   const [transcriptLines, setTranscriptLines] = useState<readonly TranscriptLine[]>(INITIAL_TRANSCRIPT_LINES);
   const [scrollOffset, setScrollOffset] = useState(0);
   const [tail, setTail] = useState<TailView | null>(null);
+  const [debateStatus, setDebateStatus] = useState<DebateStatus>(INITIAL_STATUS);
   const [phase, setPhase] = useState<Phase>(session.phase);
   const [thinkingAgent, setThinkingAgent] = useState<AgentId | null>(null);
   const [activity, setActivity] = useState<AgentActivity | null>(null);
@@ -113,6 +108,9 @@ export function DebateView(props: {
     session.suspensionReason,
   );
 
+  // The round of a turn is read when its header is written, which can be before
+  // React re-renders, so the latest status also lives in a ref.
+  const debateStatusRef = useRef<DebateStatus>(INITIAL_STATUS);
   const streamRef = useRef<TranscriptStream | null>(null);
   const transcriptLinesRef = useRef<readonly TranscriptLine[]>(INITIAL_TRANSCRIPT_LINES);
   const transcriptRowsRef = useRef(1);
@@ -155,6 +153,12 @@ export function DebateView(props: {
     setScrollOffset((offset) => (offset === 0 ? 0 : Math.max(0, offset - removed)));
   }, []);
 
+  const applyStatus = useCallback((event: StatusEvent) => {
+    const next = reduceStatus(debateStatusRef.current, event);
+    debateStatusRef.current = next;
+    setDebateStatus(next);
+  }, []);
+
   useEffect(() => {
     if (!stdout) return;
     const onResize = () => {
@@ -181,16 +185,31 @@ export function DebateView(props: {
       onTail: setTail,
       length: () => transcriptLinesRef.current.length,
       rewind: rewindTranscript,
+      round: (entry) =>
+        (entry.from === "claude" || entry.from === "codex") && entry.kind === "message"
+          ? roundForStart(debateStatusRef.current, entry.from)
+          : null,
     });
     streamRef.current = stream;
 
+    // `entry-completed` only carries an id; remember who authored each running entry.
+    const authors = new Map<string, TranscriptEntry["from"]>();
     const onEntry = (entry: TranscriptEntry) => {
+      applyStatus({ kind: "entry", entry });
       if (!isTopicEntry(entry)) stream.entry(entry);
     };
-    const onEntryStarted = (entry: TranscriptEntry) => stream.entryStarted(entry);
+    const onEntryStarted = (entry: TranscriptEntry) => {
+      authors.set(entry.id, entry.from);
+      stream.entryStarted(entry);
+    };
     const onChunk = (id: string, delta: string) => stream.chunk(id, delta);
     const onOutputReset = (id: string, text: string) => stream.reset(id, text);
-    const onEntryCompleted = (id: string, outcome: EntryOutcome) => stream.entryCompleted(id, outcome);
+    const onEntryCompleted = (id: string, outcome: EntryOutcome) => {
+      const agent = authors.get(id);
+      authors.delete(id);
+      if (agent) applyStatus({ kind: "completed", agent, outcome });
+      stream.entryCompleted(id, outcome);
+    };
     const onTurnStart = (agent: AgentId) => {
       setThinkingAgent(agent);
       setActivity({ kind: "waiting", status: "running" });
@@ -211,7 +230,10 @@ export function DebateView(props: {
     const onActivity = (_agent: AgentId, nextActivity: AgentActivity) => setActivity(nextActivity);
     const onContextUsage = (agent: AgentId, usage: AgentContextUsage) =>
       setContextUsage((current) => ({ ...current, [agent]: usage }));
-    const onPhase = (p: Phase) => setPhase(p);
+    const onPhase = (p: Phase) => {
+      applyStatus({ kind: "phase", phase: p });
+      setPhase(p);
+    };
     const onPausedChanged = (p: boolean) => setPaused(p);
     const onSuspensionChanged = (reason: SuspensionReason | null) => setSuspensionReason(reason);
     const onPermissionRequest = (req: PermissionRequest) => {
@@ -221,10 +243,12 @@ export function DebateView(props: {
     const onPermissionCancelled = (reqId: string) =>
       setPendingPermission((current) => (current?.id === reqId ? null : current));
     const onConsensusReached = () => {
+      applyStatus({ kind: "consensus-reached" });
       setConsensusReached(true);
       setImplementationSummary(null);
     };
     const onConsensusInvalidated = () => {
+      applyStatus({ kind: "consensus-invalidated" });
       setConsensusReached(false);
       setImplementationSummary(null);
     };
@@ -278,7 +302,7 @@ export function DebateView(props: {
     };
     // `write` and `stdout` are stable for the lifetime of the Ink instance.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session, topic, appendTranscript]);
+  }, [session, topic, appendTranscript, applyStatus]);
 
   useEffect(() => {
     if (coordinatorNotice) flash(coordinatorNotice);
@@ -521,9 +545,7 @@ export function DebateView(props: {
   const maxInputRows = inputBarMaxRows(footerSurfaces);
   const rows = footerRows(footerSurfaces);
   const preferredFooterHeight = Math.max(1, terminalRows - 1);
-  const introRows =
-    4 + topicHeaderLines(topic, Math.max(1, Math.min(columns, HEADER_MAX_WIDTH))).length;
-  const transcriptRows = Math.max(0, preferredFooterHeight - 1 - introRows - rows);
+  const transcriptRows = Math.max(0, preferredFooterHeight - 1 - DEBATE_HEADER_ROWS - rows);
   transcriptRowsRef.current = transcriptRows;
   const maximumScrollOffset = Math.max(0, transcriptLines.length - transcriptRows);
   const visibleScrollOffset = Math.min(scrollOffset, maximumScrollOffset);
@@ -539,12 +561,7 @@ export function DebateView(props: {
         rows={rows}
         preferredHeight={preferredFooterHeight}
       >
-        <AnimatedHeaderLine
-          columns={columns}
-          animation={headerAnimation}
-          thinkingAgent={thinkingAgent}
-        />
-        <IntroPanel columns={columns} topic={topic} status={status} />
+        <DebateHeader columns={columns} topic={topic} status={debateStatus} memory={status} />
 
         <TranscriptViewport
           lines={transcriptLines}
@@ -690,90 +707,8 @@ function bannerFor(
   return null;
 }
 
-function AnimatedHeaderLine(props: {
-  columns: number;
-  animation: HeaderAnimationId;
-  thinkingAgent: AgentId | null;
-}) {
-  const { columns, animation, thinkingAgent } = props;
-  const [t, setT] = useState(0);
-
-  useEffect(() => {
-    setT(0);
-    const id = setInterval(() => setT((current) => current + 1.6), 90);
-    return () => clearInterval(id);
-  }, [animation]);
-
-  const flashColor =
-    thinkingAgent === "claude"
-      ? CLAUDE_FLASH_COLOR
-      : thinkingAgent === "codex"
-        ? CODEX_FLASH_COLOR
-        : null;
-  const [line] = headerFrame(
-    Math.min(columns, HEADER_MAX_WIDTH),
-    t,
-    animation,
-    flashColor,
-  );
-  if (!line) return null;
-
-  return (
-    <Box width={columns}>
-      <Text>
-        {line.map((band, index) => (
-          <Text key={index} color={band.color}>
-            {band.chars}
-          </Text>
-        ))}
-      </Text>
-    </Box>
-  );
-}
-
 function isTopicEntry(entry: TranscriptEntry): boolean {
   return entry.from === "system" && entry.kind === "system" && entry.text.startsWith("Topic:");
-}
-
-const TOPIC_HEADER_MAX_LINES = 3;
-const TOPIC_HEADER_MORE = "… /topic to see it in full";
-
-/**
- * The topic as the fixed header shows it. The header never scrolls, so a pasted
- * topic shown whole would push the transcript off the screen; `/topic` prints it
- * in full instead.
- */
-export function topicHeaderLines(topic: string, width: number): string[] {
-  const lines = wrapAll(`Topic: ${topic.trim().replace(/\s+/gu, " ")}`, width);
-  if (lines.length <= TOPIC_HEADER_MAX_LINES) return lines;
-  const kept = lines.slice(0, TOPIC_HEADER_MAX_LINES - 1);
-  const overflow = lines.slice(TOPIC_HEADER_MAX_LINES - 1).join(" ");
-  return [...kept, truncateEnd(overflow, width, TOPIC_HEADER_MORE)];
-}
-
-function IntroPanel(props: {
-  columns: number;
-  topic: string;
-  status: Pick<ProjectStatus, "decisionsCount" | "lastSession">;
-}) {
-  const { columns, topic, status } = props;
-  const width = Math.max(1, Math.min(columns, HEADER_MAX_WIDTH));
-  const divider = welcomeDivider(width);
-  const topicLines = topicHeaderLines(topic, width);
-
-  return (
-    <Box flexDirection="column" width={columns}>
-      <Text color="ansi256(102)">{divider}</Text>
-      <Text color="ansi256(102)">{welcomeMemoryLine(status, width)}</Text>
-      <Text color="ansi256(102)">{divider}</Text>
-      {topicLines.map((line, index) => (
-        <Text key={index} color="ansi256(102)">
-          {line}
-        </Text>
-      ))}
-      <Text color="ansi256(102)">{divider}</Text>
-    </Box>
-  );
 }
 
 function TranscriptViewport(props: {

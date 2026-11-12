@@ -363,7 +363,6 @@ export function Root(props: {
       topic={topic}
       cwd={cwd}
       status={status}
-      headerAnimation={headerAnimation}
       coordinatorState={coordinatorState}
       coordinatorNotice={coordinatorNotice}
       onLifecycleRequest={handleLifecycleRequest}

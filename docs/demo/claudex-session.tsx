@@ -191,7 +191,6 @@ function DemoApp() {
       topic={topic}
       cwd={cwd}
       status={status}
-      headerAnimation={headerAnimation}
       coordinatorState={{ kind: "idle" }}
       coordinatorNotice={null}
       onLifecycleRequest={() => Promise.resolve({ ok: true, message: "Demo finished." })}

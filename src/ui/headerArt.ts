@@ -2,11 +2,10 @@
  * The Claudex header gallery.
  *
  * Pure geometry and colour, no rendering: the welcome screen animates the
- * selected equation with Ink, while a debate displays a one-row variant in its
- * fixed viewport. Keeping both uses here prevents them from drifting apart.
+ * selected equation with Ink; the debate header no longer animates.
  */
 
-export const HEADER_ROWS = 5;
+export const HEADER_ROWS = 4;
 export const HEADER_MAX_WIDTH = 96;
 const BANDS = 10;
 const RAMP = " ░▒▓█";

@@ -16,11 +16,9 @@ import type { AgentResult } from "../../orchestrator/types.js";
 import type { AgentId } from "../../types.js";
 import {
   DebateView,
-  topicHeaderLines,
   transcriptBlockLines,
   transcriptWindow,
 } from "../DebateView.js";
-import { displayWidth } from "../stream/lineBuffer.js";
 
 const CLEAR_SCREEN = /\u001b\[[23]J/;
 const CURSOR_UP = /\u001b\[1A/g;
@@ -344,7 +342,7 @@ describe("DebateView — full-screen viewport", () => {
     await tick();
 
     const output = t.chunks.join("");
-    expect(output).toContain("Topic: Test topic");
+    expect(output).toContain("Topic  Test topic");
     expect(output).toContain("a few words");
 
     t.app.unmount();
@@ -453,7 +451,7 @@ describe("DebateView — full-screen viewport", () => {
     await tick();
     const output = t.chunks.join("");
     expect(output.split("\u25b2 Claudex").length - 1).toBe(0);
-    expect(output).toContain("Topic: Test topic");
+    expect(output).toContain("Topic  Test topic");
     expect(output).not.toContain(":: Topic: Test topic");
 
     const footerFrame = [...t.chunks]
@@ -481,10 +479,37 @@ describe("DebateView — full-screen viewport", () => {
 
     const frame = [...t.chunks].reverse().find((chunk) => chunk.includes("FIRST INTERVENTION"));
     expect(frame).toBeDefined();
-    expect(frame!.replace(ANSI_SEQUENCE, "")).toContain("/topic to see it in full");
+    expect(frame!.replace(ANSI_SEQUENCE, "")).toContain("… /topic");
     for (const chunk of t.chunks) {
       expect((chunk.match(CURSOR_UP) ?? []).length).toBeLessThan(t.stdout.rows);
     }
+    t.app.unmount();
+  });
+
+  it("the debate screen has no animated header", async () => {
+    const t = mount();
+    await vi.waitFor(() => expect(t.agents.claude.pending).toBe(true));
+    await tick(400);
+
+    const output = t.chunks.join("");
+    expect(output).toContain("CLAUDEX");
+    expect(output).not.toMatch(/[\u2591-\u2593\u2588]/u);
+    t.app.unmount();
+  });
+
+  it("a Claude turn header shows Round 1 then Round 2", async () => {
+    const t = mount();
+    await vi.waitFor(() => expect(t.agents.claude.pending).toBe(true));
+    t.agents.claude.complete("First view.\n<<CONTINUE>>");
+    await vi.waitFor(() => expect(t.agents.codex.pending).toBe(true));
+    t.agents.codex.complete("Reply.\n<<CONTINUE>>");
+    await vi.waitFor(() => expect(t.agents.claude.pending).toBe(true));
+    await tick();
+
+    const output = t.chunks.join("").replace(ANSI_SEQUENCE, "");
+    expect(output).toMatch(/CLAUDE[^\n]*Round 1/u);
+    expect(output).toMatch(/CLAUDE[^\n]*Round 2/u);
+    expect(output).toMatch(/CODEX[^\n]*Round 1/u);
     t.app.unmount();
   });
 
@@ -543,32 +568,5 @@ describe("bootstrap helpers", () => {
     expect(transcriptWindow(lines, 3, 0)).toEqual(["line 7", "line 8", "line 9"]);
     expect(transcriptWindow(lines, 3, 2)).toEqual(["line 5", "line 6", "line 7"]);
     expect(transcriptWindow(lines, 3, 99)).toEqual(["line 0", "line 1", "line 2"]);
-  });
-});
-
-describe("topic in the header", () => {
-  it("leaves a short topic as is", () => {
-    expect(topicHeaderLines("Test topic", 60)).toEqual(["Topic: Test topic"]);
-  });
-
-  it("caps a long topic at three rows that point to /topic", () => {
-    const lines = topicHeaderLines("word ".repeat(500), 60);
-
-    expect(lines).toHaveLength(3);
-    expect(lines[2]).toMatch(/… \/topic to see it in full$/);
-    for (const line of lines) expect(displayWidth(line)).toBeLessThanOrEqual(60);
-  });
-
-  it("keeps a topic of exactly three rows without a pointer", () => {
-    const lines = topicHeaderLines("x".repeat(60 * 3 - "Topic: ".length), 60);
-
-    expect(lines).toHaveLength(3);
-    expect(lines.join("")).not.toContain("/topic");
-  });
-
-  it("shows a multiline topic on a single logical row", () => {
-    expect(topicHeaderLines("first\nsecond\r\n\tthird", 60)).toEqual([
-      "Topic: first second third",
-    ]);
   });
 });
