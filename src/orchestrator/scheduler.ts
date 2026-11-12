@@ -875,7 +875,7 @@ export class Scheduler {
       job.status = "failed";
       job.error = err instanceof Error ? err.message : String(err);
       entry.kind = "error";
-      entry.text = `Erreur : ${job.error}`;
+      entry.text = `Error: ${job.error}`;
       this.callbacks.onEntryUpdate(entry);
       this.callbacks.onEntryCompleted(entry.id, { status: "error", message: job.error });
       this.callbacks.onTurnError(agent, err);
@@ -1033,7 +1033,7 @@ export class Scheduler {
           entry.text = result.partialText;
         }
         entry.kind = "error";
-        entry.text += `\n\nErreur : ${result.message}`;
+        entry.text += `\n\nError: ${result.message}`;
         this.callbacks.onEntryUpdate(entry);
         this.callbacks.onEntryCompleted(entry.id, { status: "error", message: result.message });
         this.callbacks.onTurnError(agent, new Error(result.message));

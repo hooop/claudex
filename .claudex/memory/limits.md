@@ -194,7 +194,7 @@ an administrator; Codex's own configuration (`~/.codex/config.toml`) during a de
 
 **How to apply:** J and H are closed for the debate, on this machine and in these two kinds of
 folder. At every SDK upgrade, rerun cases E to M (including Lp, Ll) and the controls in both
-kinds of folder (see also the entry above on consent); a control that no longer passes makes its case mute and stops the upgrade. The README must not
+kinds of folder (see also the entry above on consent); a control that no longer passes makes its case meaningless and stops the upgrade. The README must not
 say more than this table.
 
 ## 2026-10-28 — The sandbox of SDK 0.3.310 can make `cwd` non-writable (one-off measurement)
@@ -336,8 +336,8 @@ like A. A and D are identical. The 2026-08-29 conclusion still holds: only `tool
 **Pre-existing gaps, not fixed by this branch:**
 - Case J: the hooks in the analysed repository's `.claude/settings.json` run during a debate turn,
   without any prompt (the SDK shows no workspace trust dialog). This
-  contradicts the README sentence "Claude Code has no shell tool during this phase" for an untrusted
-  repository; the README already asks not to analyse untrusted code, and now says it
+  contradicts the README sentence "Claude Code has no shell tool during this phase" for an untrustworthy
+  repository; the README already asks not to analyse untrustworthy code, and now says it
   also for the repository's Claude Code configuration (its hooks and the MCP servers it declares).
 - Case H: a stdio server declared in the repository's `.mcp.json` is a command the engine launches
   at session startup. Measured: the server is "evil (connected)" without any approval,

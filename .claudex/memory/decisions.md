@@ -48,7 +48,7 @@ a trusted `/` are measured); a single machine, a single account; see `limits.md`
 ## 2026-11-11 — The repository's command-bearing settings require the human's consent
 
 **Nature:** arbitration delegated by the maintainer ("most professional decisions", 2026-11-11, translated from French);
-none of these decisions was taken by the maintainer himself. Design:
+none of these decisions was taken by the maintainer. Design:
 `docs/superpowers/specs/2026-11-11-project-command-settings-design.md`. Measurements in `limits.md`
 (2026-11-11, consent).
 
@@ -79,13 +79,13 @@ none of these decisions was taken by the maintainer himself. Design:
   Any text coming from the repository is escaped (control, format, bidi, zero-width characters,
   displayed as `\uXXXX` / `\u{...}`).
 - **An "unreadable" finding makes consent impossible** (only "quit" is offered):
-  Claude Code may parse what Claudex cannot read (JSON with comments, BOM); approving it
+  Claude Code can parse what Claudex cannot read (JSON with comments, BOM); approving it
   would amount to approving content nobody has seen. The design allowed consenting to it; tightened
   during the review. Cost: a project with JSONC settings cannot be debated until it is
   fixed.
 - **D3: the guard re-reads the file before every Claude query** (debate and `/implement`,
   `createSettingsGuard`, called by `ClaudeAgent` before `query()`). No finding, or identical to
-  the approval: the turn goes out. Otherwise the turn is not sent and fails with a message in French that
+  the approval: the turn goes out. Otherwise the turn is not sent and fails with a message that
   asks to quit and relaunch. A guard that throws an error also refuses the turn.
 - **Consent is never stored**: stored in the project, a repository could pre-fill it;
   elsewhere, Claudex would write outside `.claudex/`. The question comes back at every launch.
@@ -160,8 +160,8 @@ professional decisions", translated from French). Measurements in `limits.md` (2
 ## 2026-10-27 — Claudex keeps the Claude Code engine bundled with the SDK, at an exact version
 
 **Nature:** arbitration delegated by the maintainer, during the upgrade of the Claude Agent SDK from 0.1.77 to
-0.3.310. His first intuition was to use the user's `claude`; he left the technical
-choice open.
+0.3.310. The maintainer's first intuition was to use the user's `claude`; they delegated the technical
+choice.
 
 **Finding:** SDK 0.3.x no longer contains a `cli.js`: it launches a native Claude Code binary
 (2.1.310), installed by an optional dependency specific to each platform (273 MB on disk
