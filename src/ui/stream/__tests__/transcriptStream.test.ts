@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { TranscriptEntry } from "../../../types.js";
 import type { Signal } from "../../../orchestrator/types.js";
 import { displayWidth } from "../lineBuffer.js";
+import type { TranscriptLine } from "../streamController.js";
 import { TranscriptStream, type TailView } from "../transcriptStream.js";
 
 chalk.level = 3;
@@ -12,11 +13,14 @@ function entry(partial: Partial<TranscriptEntry> & Pick<TranscriptEntry, "from" 
   return { id: `e${++seq}`, text: "", timestamp: Date.parse("2026-08-09T14:30:00Z"), ...partial };
 }
 
+/** The old block shape, so the assertions below keep reading the same text. */
+const block = (lines: readonly TranscriptLine[]) => lines.map((l) => l.styled).join("\n") + "\n";
+
 function harness(width = 60) {
   const writes: string[] = [];
   const tails: (TailView | null)[] = [];
   const stream = new TranscriptStream({
-    write: (data) => writes.push(data),
+    write: (lines) => writes.push(block(lines)),
     width: () => width,
     onTail: (tail) => tails.push(tail),
     intervalMs: 0,
@@ -288,7 +292,7 @@ describe("TranscriptStream", () => {
     const writes: string[] = [];
     let width = 30;
     const stream = new TranscriptStream({
-      write: (d) => writes.push(d),
+      write: (lines) => writes.push(block(lines)),
       width: () => width,
       onTail: () => {},
       intervalMs: 0,
@@ -321,7 +325,7 @@ describe("TranscriptStream — cadence", () => {
     vi.useFakeTimers();
     const writes: string[] = [];
     const stream = new TranscriptStream({
-      write: (d) => writes.push(d),
+      write: (lines) => writes.push(block(lines)),
       width: () => 60,
       onTail: () => {},
     });
@@ -369,7 +373,7 @@ describe("TranscriptStream — reset", () => {
     const lines: string[] = [];
     const tails: (TailView | null)[] = [];
     const stream = new TranscriptStream({
-      write: (data) => lines.push(...data.slice(0, -1).split("\n")),
+      write: (written) => lines.push(...written.map((l) => l.styled)),
       width: () => width,
       onTail: (tail) => tails.push(tail),
       intervalMs: 0,
@@ -498,5 +502,27 @@ describe("TranscriptStream — reset", () => {
       return output();
     };
     expect(run(true)).toBe(run(false));
+  });
+});
+
+describe("TranscriptStream — soft wraps", () => {
+  it("marks wrapped continuation lines as soft wraps", () => {
+    const written: TranscriptLine[] = [];
+    const stream = new TranscriptStream({
+      write: (lines) => written.push(...lines),
+      width: () => 30,
+      onTail: () => {},
+      intervalMs: 0,
+    });
+    const e = entry({ from: "claude", kind: "message" });
+    stream.entryStarted(e);
+    stream.chunk(e.id, "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu\n");
+    stream.entryCompleted(e.id, { status: "ok", signal: "continue", counted: true });
+    stream.dispose();
+
+    const body = written.filter((l) => l.styled.includes("alpha") || l.softWrap);
+    expect(body.map((l) => l.softWrap)).toEqual([false, true, true]);
+    // Headers, the blank separators and the verdict are never soft wraps.
+    expect(written.filter((l) => !body.includes(l)).some((l) => l.softWrap)).toBe(false);
   });
 });

@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { StreamController } from "../streamController.js";
+import { StreamController, line, type TranscriptLine } from "../streamController.js";
+
+const L = (...texts: string[]): TranscriptLine[] => texts.map((t) => line(t));
 
 function collector() {
-  const writes: string[] = [];
-  return { writes, write: (data: string) => writes.push(data) };
+  const writes: TranscriptLine[][] = [];
+  return { writes, write: (lines: readonly TranscriptLine[]) => writes.push([...lines]) };
 }
 
 describe("StreamController", () => {
@@ -13,38 +15,41 @@ describe("StreamController", () => {
   it("writes nothing before the render cadence", () => {
     const { writes, write } = collector();
     const c = new StreamController({ write });
-    c.push(["one"]);
+    c.push(L("one"));
     expect(writes).toEqual([]);
     vi.advanceTimersByTime(32);
-    expect(writes).toEqual(["one\n"]);
+    expect(writes).toEqual([[{ styled: "one", softWrap: false }]]);
   });
 
   it("groups a burst of lines into a single write", () => {
     const { writes, write } = collector();
     const c = new StreamController({ write });
-    for (let i = 0; i < 40; i++) c.push([`line ${i}`]);
+    for (let i = 0; i < 40; i++) c.push(L(`line ${i}`));
     vi.advanceTimersByTime(32);
     expect(writes).toHaveLength(1);
-    expect(writes[0]!.split("\n")).toHaveLength(41);
+    expect(writes[0]).toHaveLength(40);
   });
 
-  it("always ends the block with a line end", () => {
+  it("passes each line on whole, with its soft-wrap flag", () => {
     const { writes, write } = collector();
     const c = new StreamController({ write });
-    c.push(["a", "b"]);
+    c.push([line("a"), line("b", true)]);
     c.flush();
-    expect(writes[0]).toBe("a\nb\n");
+    expect(writes[0]).toEqual([
+      { styled: "a", softWrap: false },
+      { styled: "b", softWrap: true },
+    ]);
   });
 
   it("preserves the order between immediate and deferred writes", () => {
     const { writes, write } = collector();
     const c = new StreamController({ write });
-    c.push(["streaming"]);
-    c.push(["intervention"]);
+    c.push(L("streaming"));
+    c.push(L("intervention"));
     c.flush();
-    c.push(["next"]);
+    c.push(L("next"));
     c.flush();
-    expect(writes).toEqual(["streaming\nintervention\n", "next\n"]);
+    expect(writes.map((w) => w.map((l) => l.styled))).toEqual([["streaming", "intervention"], ["next"]]);
   });
 
   it("never writes an empty block", () => {
@@ -59,9 +64,9 @@ describe("StreamController", () => {
   it("emits no clearing sequence", () => {
     const { writes, write } = collector();
     const c = new StreamController({ write });
-    c.push(["some text"]);
+    c.push(L("some text"));
     c.flush();
-    expect(writes.join("")).not.toMatch(/\u001b\[[0-9]*[JH]/);
+    expect(writes.flat().map((l) => l.styled).join("")).not.toMatch(/\u001b\[[0-9]*[JH]/);
   });
 
   it("reports every flush to refresh the footer", () => {
@@ -75,11 +80,11 @@ describe("StreamController", () => {
   it("flushes what remains on dispose, then writes nothing more", () => {
     const { writes, write } = collector();
     const c = new StreamController({ write });
-    c.push(["last"]);
+    c.push(L("last"));
     c.dispose();
-    expect(writes).toEqual(["last\n"]);
-    c.push(["after"]);
+    expect(writes.map((w) => w.map((l) => l.styled))).toEqual([["last"]]);
+    c.push(L("after"));
     vi.advanceTimersByTime(100);
-    expect(writes).toEqual(["last\n"]);
+    expect(writes.map((w) => w.map((l) => l.styled))).toEqual([["last"]]);
   });
 });

@@ -45,6 +45,7 @@ import {
   type HeaderAnimationId,
 } from "./headerArt.js";
 import { BRAND_COLOR, contentWidthFor } from "./theme.js";
+import { line, type TranscriptLine } from "./stream/streamController.js";
 import { TranscriptStream, type TailView } from "./stream/transcriptStream.js";
 import { asciiSymbolsForDisplay } from "./stream/asciiSymbols.js";
 import { truncateEnd, wrapAll } from "./stream/lineBuffer.js";
@@ -52,7 +53,7 @@ import { sanitizeForDisplay } from "./stream/sanitize.js";
 import { markdownToPlainText } from "./markdown.js";
 import type { ProjectStatus } from "../util/projectStatus.js";
 
-const INITIAL_TRANSCRIPT_LINES = [""];
+const INITIAL_TRANSCRIPT_LINES: readonly TranscriptLine[] = [line("")];
 
 /**
  * The debate screen.
@@ -90,7 +91,7 @@ export function DebateView(props: {
     columns: stdout?.columns ?? 80,
     terminalRows: stdout?.rows ?? 24,
   }));
-  const [transcriptLines, setTranscriptLines] = useState<string[]>(INITIAL_TRANSCRIPT_LINES);
+  const [transcriptLines, setTranscriptLines] = useState<readonly TranscriptLine[]>(INITIAL_TRANSCRIPT_LINES);
   const [scrollOffset, setScrollOffset] = useState(0);
   const [tail, setTail] = useState<TailView | null>(null);
   const [phase, setPhase] = useState<Phase>(session.phase);
@@ -113,7 +114,7 @@ export function DebateView(props: {
   );
 
   const streamRef = useRef<TranscriptStream | null>(null);
-  const transcriptLinesRef = useRef<string[]>(INITIAL_TRANSCRIPT_LINES);
+  const transcriptLinesRef = useRef<readonly TranscriptLine[]>(INITIAL_TRANSCRIPT_LINES);
   const transcriptRowsRef = useRef(1);
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Set right before sending an /implement instruction to a specific agent,
@@ -129,8 +130,7 @@ export function DebateView(props: {
   }, []);
 
   const appendTranscript = useCallback(
-    (data: string) => {
-      const incoming = transcriptBlockLines(data);
+    (incoming: readonly TranscriptLine[]) => {
       if (incoming.length === 0) return;
 
       const next = [...transcriptLinesRef.current, ...incoming];
@@ -655,11 +655,11 @@ export function transcriptBlockLines(data: string): string[] {
   return withoutFinalNewline.split("\n");
 }
 
-export function transcriptWindow(
-  lines: readonly string[],
+export function transcriptWindow<T>(
+  lines: readonly T[],
   height: number,
   scrollOffset: number,
-): readonly string[] {
+): readonly T[] {
   const safeHeight = Math.max(0, height);
   const maximumOffset = Math.max(0, lines.length - safeHeight);
   const safeOffset = Math.max(0, Math.min(scrollOffset, maximumOffset));
@@ -777,7 +777,7 @@ function IntroPanel(props: {
 }
 
 function TranscriptViewport(props: {
-  lines: readonly string[];
+  lines: readonly TranscriptLine[];
   height: number;
   columns: number;
   scrollOffset: number;
@@ -788,11 +788,14 @@ function TranscriptViewport(props: {
   const visible = transcriptWindow(lines, height, scrollOffset);
   return (
     <Box flexDirection="column" width={columns} height={height} overflow="hidden">
-      {Array.from({ length: height }, (_, index) => (
-        <Text key={index} wrap="truncate-end">
-          {visible[index] === "" ? " " : (visible[index] ?? " ")}
-        </Text>
-      ))}
+      {Array.from({ length: height }, (_, index) => {
+        const styled = visible[index]?.styled ?? "";
+        return (
+          <Text key={index} wrap="truncate-end">
+            {styled === "" ? " " : styled}
+          </Text>
+        );
+      })}
     </Box>
   );
 }

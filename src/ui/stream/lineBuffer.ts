@@ -13,6 +13,7 @@
  * marks are measured as the terminal will actually render them.
  */
 
+import { stripVTControlCharacters } from "node:util";
 import stringWidth from "string-width";
 
 export interface PhysicalLine {
@@ -25,6 +26,30 @@ const segmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 
 export function displayWidth(text: string): number {
   return stringWidth(text, { countAnsiEscapeCodes: false });
+}
+
+/**
+ * The visible text of a styled line. Agent text went through `AnsiSanitizer`, so
+ * the only escape sequences left are the ones Claudex's own styling added.
+ */
+export function plainOf(styled: string): string {
+  return stripVTControlCharacters(styled);
+}
+
+/**
+ * The part of `text` between display columns `start` (inclusive) and `end`
+ * (exclusive). A wide character straddling either edge is left out, never cut.
+ */
+export function sliceColumns(text: string, start: number, end: number): string {
+  let result = "";
+  let column = 0;
+  for (const { segment } of segmenter.segment(text)) {
+    const width = displayWidth(segment);
+    if (column >= start && column + width <= end) result += segment;
+    column += width;
+    if (column >= end) break;
+  }
+  return result;
 }
 
 function sliceToDisplayWidth(text: string, maxWidth: number): string {

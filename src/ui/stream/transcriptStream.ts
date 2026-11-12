@@ -35,7 +35,7 @@ import { MarkdownStreamer } from "./markdownStream.js";
 import { MarkerFilter } from "./markerFilter.js";
 import { AnsiSanitizer } from "./sanitize.js";
 import { AsciiSymbolSanitizer, asciiSymbolsForDisplay } from "./asciiSymbols.js";
-import { StreamController, type StreamWriter } from "./streamController.js";
+import { StreamController, line, type StreamWriter, type TranscriptLine } from "./streamController.js";
 
 export interface EntryStyle {
   color: string;
@@ -143,7 +143,7 @@ class EntryPipeline {
     this.buffer.setWidth(this.bodyWidth(width));
   }
 
-  push(delta: string): string[] {
+  push(delta: string): TranscriptLine[] {
     const sanitized = this.sanitizer.push(this.filter.push(delta));
     const visible = this.ascii ? this.ascii.push(sanitized) : sanitized;
     return this.buffer.push(visible).map((line) => this.render(line));
@@ -157,13 +157,13 @@ class EntryPipeline {
    * become scrollback can no longer receive it. Left pending, that character
    * reappears at the head of the next committed line — `budget of` / `12 dollars`.
    */
-  interrupt(): string[] {
+  interrupt(): TranscriptLine[] {
     const held = this.ascii ? this.ascii.flush() : "";
     const lines = held ? [...this.buffer.push(held), ...this.buffer.flush()] : this.buffer.flush();
     return lines.map((line) => this.render(line));
   }
 
-  finish(signalConfirmed: boolean): string[] {
+  finish(signalConfirmed: boolean): TranscriptLine[] {
     const sanitized =
       this.sanitizer.push(this.filter.finish(signalConfirmed)) + this.sanitizer.flush();
     const rest = this.ascii ? this.ascii.push(sanitized) + this.ascii.flush() : sanitized;
@@ -181,13 +181,17 @@ class EntryPipeline {
     return Math.max(8, width - (this.style.rail ? RAIL_WIDTH : 0));
   }
 
-  private render(line: PhysicalLine): string {
-    if (!this.formatted) return chalk.dim(terminalColor(this.style.color)(line.text));
+  private render(physical: PhysicalLine): TranscriptLine {
+    return { styled: this.renderStyled(physical), softWrap: physical.continuation };
+  }
+
+  private renderStyled(physical: PhysicalLine): string {
+    if (!this.formatted) return chalk.dim(terminalColor(this.style.color)(physical.text));
     // No trailing space on a blank line: it would be copied out with the text.
-    if (line.text === "") return terminalColor(this.style.color)("│");
+    if (physical.text === "") return terminalColor(this.style.color)("│");
     // A fence marker renders to nothing at all, so the same rule applies to it:
     // the rail must not be left carrying a space that no glyph follows.
-    const styled = this.markdown.style(line);
+    const styled = this.markdown.style(physical);
     if (styled === "") return terminalColor(this.style.color)("│");
     return railPrefix(this.style.color) + styled;
   }
@@ -220,7 +224,7 @@ interface ActiveEntry {
   /** Line count right after the header: where a reset rewinds to. */
   bodyStart: number | null;
   /** Permanent lines written into the running entry, to write again after a reset. */
-  interleaved: string[];
+  interleaved: TranscriptLine[];
 }
 
 export class TranscriptStream {
@@ -238,7 +242,7 @@ export class TranscriptStream {
   /** Pre-formatted permanent lines: the frozen header, the help panel. */
   raw(lines: readonly string[]): void {
     this.interruptActive();
-    this.pushPermanent(lines);
+    this.pushPermanent(lines.map((text) => line(text)));
     this.controller.flush();
   }
 
@@ -257,7 +261,7 @@ export class TranscriptStream {
       // Keep the accepted prompt visually distinct from Claude's first turn.
       // These rows belong only to the terminal presentation; the canonical
       // transcript remains unchanged.
-      if (isInitialSubject(entry)) lines.push("", "");
+      if (isInitialSubject(entry)) lines.push(line(""), line(""));
       this.pushPermanent(lines);
       this.controller.flush();
       return;
@@ -267,7 +271,7 @@ export class TranscriptStream {
       ...this.headerLines(entry, style),
       ...pipe.push(entry.text),
       ...pipe.finish(false),
-      "",
+      line(""),
     ]);
     this.controller.flush();
   }
@@ -331,12 +335,14 @@ export class TranscriptStream {
     const lines = active.pipe.finish(outcome.status === "ok" && outcome.signal !== null);
     if (outcome.status === "error") {
       lines.push(
-        chalk.hex(ERROR_STYLE.color)(
-          `${ERROR_STYLE.badge} Error: ${asciiSymbolsForDisplay(outcome.message)}`,
+        line(
+          chalk.hex(ERROR_STYLE.color)(
+            `${ERROR_STYLE.badge} Error: ${asciiSymbolsForDisplay(outcome.message)}`,
+          ),
         ),
       );
     } else if (outcome.status === "cancelled") {
-      lines.push(chalk.dim("(Cancelled)"));
+      lines.push(line(chalk.dim("(Cancelled)")));
     } else if (active.from === "claude" || active.from === "codex") {
       // Only a debater closes a turn with a decision. The synthesis is written
       // by an agent too, but it speaks as the system and signals nothing.
@@ -344,9 +350,11 @@ export class TranscriptStream {
       const color = AGENT_STYLE[active.from].color;
       // Blank rail line first: the verdict is about the turn, not a last
       // sentence of it, and must not read as one.
-      if (verdict) lines.push(terminalColor(color)("│"), railPrefix(color) + chalk.dim(verdict));
+      if (verdict) {
+        lines.push(line(terminalColor(color)("│")), line(railPrefix(color) + chalk.dim(verdict)));
+      }
     }
-    lines.push("");
+    lines.push(line(""));
 
     this.active = null;
     this.controller.push(lines);
@@ -380,12 +388,12 @@ export class TranscriptStream {
   }
 
   /** Write lines that belong to no running entry, remembering them for a reset. */
-  private pushPermanent(lines: readonly string[]): void {
+  private pushPermanent(lines: readonly TranscriptLine[]): void {
     this.active?.interleaved.push(...lines);
     this.controller.push(lines);
   }
 
-  private headerLines(entry: TranscriptEntry, style: EntryStyle): string[] {
+  private headerLines(entry: TranscriptEntry, style: EntryStyle): TranscriptLine[] {
     const width = this.options.width();
     const target = entry.to ? (entry.to === "both" ? " → both" : ` → ${entry.to}`) : "";
     const clock = entry.kind === "summary" ? "" : clockOf(entry.timestamp);
@@ -403,7 +411,7 @@ export class TranscriptStream {
       gap +
       chalk.dim(clock);
 
-    return [head, terminalColor(style.color)("│")];
+    return [line(head), line(terminalColor(style.color)("│"))];
   }
 }
 

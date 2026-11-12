@@ -353,5 +353,8 @@ native selection.
 
 - Exact column widths, the mini animation's preset and speed, the exact dim shades, as
   long as the palette stays limited and legible on light and dark themes.
-- How the soft-wrap flag is carried on lines.
+- How the soft-wrap flag is carried on lines. Built: each transcript line is
+  `{ styled, softWrap }`; the plain text is not carried but derived with
+  `util.stripVTControlCharacters`, which is equivalent because agent text has already
+  been through `AnsiSanitizer` and only Claudex's own styling remains.
 - The order of tasks in the plan.
