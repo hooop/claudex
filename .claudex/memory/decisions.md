@@ -1,373 +1,373 @@
-# Décisions
+# Decisions
 
-Journal des décisions validées à l'issue d'un débat Claude ↔ Codex.
+Log of the decisions validated at the end of a Claude ↔ Codex debate.
 
-## 2026-11-11 — Claude a un Bash sandboxé pendant le débat (macOS) ; réouverture de l'asymétrie d'exécution
+## 2026-11-11 — Claude has a sandboxed Bash during the debate (macOS); the execution asymmetry is reopened
 
-**Nature :** le mainteneur a mis la fonctionnalité sur la feuille de route (2026-10-28) et a délégué
-tous les choix techniques le 2026-11-11 ; les décisions D1 à D9 sont donc de Claude, pas du
-mainteneur. Design : `docs/superpowers/specs/2026-11-11-sandboxed-bash-design.md`. Mesures dans
-`limits.md` (2026-11-11, Bash sandboxé).
+**Nature:** the maintainer put the feature on the roadmap (2026-10-28) and delegated
+all technical choices on 2026-11-11; decisions D1 to D9 are therefore Claude's, not the
+maintainer's. Design: `docs/superpowers/specs/2026-11-11-sandboxed-bash-design.md`. Measurements in
+`limits.md` (2026-11-11, sandboxed Bash).
 
-**Réouverture, dite comme telle :** la décision du 2026-08-17 (« L'asymétrie d'exécution reste en
-l'état ») est rouverte. Raison nouvelle : sur le SDK 0.3.310, le sandbox du moteur donne au Bash de
-Claude une garantie du système d'exploitation (écriture refusée, pas de réseau) que l'approbation
-humaine ne pouvait pas donner. Le motif qui avait écarté « Bash sous approbation humaine » tient
-toujours et n'est pas rouvert : l'humain n'est pas la garantie, l'OS l'est. S'y ajoute le constat du
-mainteneur que Claude n'exécutait aucune commande avec la version précédente.
+**Reopening, stated as such:** the decision of 2026-08-17 ("The execution asymmetry stays as
+it is") is reopened. New reason: on SDK 0.3.310, the engine's sandbox gives Claude's Bash
+an operating-system guarantee (write refused, no network) that human
+approval could not give. The reason that had ruled out "Bash under human approval" still holds
+and is not reopened: the human is not the guarantee, the OS is. Added to this is the
+maintainer's finding that Claude ran no command with the previous version.
 
-**Décisions :**
-- **D1 : bloc `sandbox`** sur les tours de débat seulement : `enabled`, `failIfUnavailable: true`,
-  `allowUnsandboxedCommands: false`, `autoAllowBashIfSandboxed: true`, réseau fermé
-  (`allowedDomains: []`, `strictAllowlist: true`), `denyWrite` sur le chemin réel de `cwd` (le `.`
-  relatif ne bloque pas, `/var` est un lien symbolique). Chemin non résolu : le tour échoue.
-- **D2 : macOS seulement**, décidé par Claudex avant le tour (`resolveDebateSandbox`). Ailleurs, les
-  options d'aujourd'hui à l'identique. Jamais de Bash sans sandbox, jamais de nouvel essai sans Bash.
-- **D3 : pas d'invite par commande** (`autoAllowBashIfSandboxed`), comme Codex en `approvalPolicy:
-  "never"` ; les commandes qui nomment un chemin hors du projet passent encore par `canUseTool`.
-- **D4 : lecture interdite des dépôts de secrets** (`.ssh`, `.aws`, `.config/gh`, `.claude`, `.codex`,
-  `.npmrc`, etc.), chemins réels des liens symboliques ajoutés. `.gitconfig` n'est pas refusé (git
-  casse). `.npmrc` reste : `npm test` tourne avec lui refusé.
-- **D4b : variables d'environnement secrètes masquées** (`sandbox.credentials.envVars`, mode `deny`)
-  pour tout nom contenant KEY, SECRET, TOKEN, PASSWORD ou CREDENTIAL. Heuristique.
-- **D9 : Claudex retire les répertoires vides que le moteur crée dans le projet** (`.claude/`,
-  `.claude/.cc-writes/`) s'ils étaient absents avant le tour : `rmdir` non récursif, donc jamais de
-  contenu supprimé (`src/agents/engineLeftovers.ts`).
-- Rollback : `resolveDebateSandbox` qui renvoie `null` restitue les options d'avant.
+**Decisions:**
+- **D1: `sandbox` block** on debate turns only: `enabled`, `failIfUnavailable: true`,
+  `allowUnsandboxedCommands: false`, `autoAllowBashIfSandboxed: true`, network closed
+  (`allowedDomains: []`, `strictAllowlist: true`), `denyWrite` on the real path of `cwd` (the relative
+  `.` does not block, `/var` is a symbolic link). Path not resolved: the turn fails.
+- **D2: macOS only**, decided by Claudex before the turn (`resolveDebateSandbox`). Elsewhere, the
+  options of today, unchanged. Never Bash without a sandbox, never a retry without Bash.
+- **D3: no per-command prompt** (`autoAllowBashIfSandboxed`), like Codex with `approvalPolicy:
+  "never"`; commands that name a path outside the project still go through `canUseTool`.
+- **D4: reading of secret stores denied** (`.ssh`, `.aws`, `.config/gh`, `.claude`, `.codex`,
+  `.npmrc`, etc.), with the real paths of symbolic links added. `.gitconfig` is not denied (git
+  breaks). `.npmrc` stays: `npm test` runs with it denied.
+- **D4b: secret environment variables masked** (`sandbox.credentials.envVars`, `deny` mode)
+  for any name containing KEY, SECRET, TOKEN, PASSWORD or CREDENTIAL. Heuristic.
+- **D9: Claudex removes the empty directories the engine creates in the project** (`.claude/`,
+  `.claude/.cc-writes/`) if they were absent before the turn: non-recursive `rmdir`, so content is never
+  deleted (`src/agents/engineLeftovers.ts`).
+- Rollback: `resolveDebateSandbox` returning `null` restores the previous options.
 
-**Écarté :**
-- Approbation humaine par commande : ce n'est pas une garantie (2026-08-17) et rend l'outil inutilisable.
-- Interdire tout le répertoire personnel : casse git et les outils ; une liste est une atténuation,
-  pas une garantie, et c'est dit au README.
-- Linux/WSL sans mesure : la garantie est tout l'enjeu ; une branche à part avec une mesure Linux.
-- L'exécuteur `codex app-server` partagé du 2026-08-17 : inutile, chaque agent a son exécuteur sandboxé.
+**Rejected:**
+- Human approval per command: it is not a guarantee (2026-08-17) and makes the tool unusable.
+- Denying the whole home directory: breaks git and the tools; a list is a mitigation,
+  not a guarantee, and the README says so.
+- Linux/WSL without measurement: the guarantee is the whole point; a separate branch with a Linux measurement.
+- The shared `codex app-server` executor of 2026-08-17: unnecessary, each agent has its own sandboxed executor.
 
-**Ce qui n'est pas démontré :** un dossier jamais approuvé (seuls des dossiers neufs et approuvés sous
-`/` approuvé sont mesurés) ; une seule machine, un seul compte ; voir `limits.md`.
+**What is not demonstrated:** a folder never trusted (only fresh and trusted folders under
+a trusted `/` are measured); a single machine, a single account; see `limits.md`.
 
-## 2026-11-11 — Les réglages porteurs de commande du dépôt demandent le consentement de l'humain
+## 2026-11-11 — The repository's command-bearing settings require the human's consent
 
-**Nature :** arbitrage délégué par le mainteneur (« décisions les plus professionnelles », 2026-11-11) ;
-aucune de ces décisions n'a été prise par le mainteneur lui-même. Design :
-`docs/superpowers/specs/2026-11-11-project-command-settings-design.md`. Mesures dans `limits.md`
-(2026-11-11, consentement).
+**Nature:** arbitration delegated by the maintainer ("most professional decisions", 2026-11-11, translated from French);
+none of these decisions was taken by the maintainer himself. Design:
+`docs/superpowers/specs/2026-11-11-project-command-settings-design.md`. Measurements in `limits.md`
+(2026-11-11, consent).
 
-**Décisions :**
-- **D1 : Claudex lit lui-même les réglages du projet, sans jamais rien exécuter**
-  (`src/agents/projectSettings.ts`). Fichier lu : `<cwd>/.claude/settings.json` seulement
-  (`PROJECT_SETTINGS_FILES`), le seul que les mesures montrent lu par le moteur (Lp et Ll négatifs).
-  Signalés : les six helpers de `COMMAND_SETTING_KEYS` (`apiKeyHelper`, `awsAuthRefresh`,
-  `awsCredentialExport`, `gcpAuthRefresh`, `otelHeadersHelper`, `proxyAuthHelper`, relevés dans
-  l'interface `Settings` de `sdk.d.ts`), toute entrée `env` et, ajouté après la revue finale, les déclarations
-  de marketplaces de plugins (`extraKnownMarketplaces` et son alias documenté `additionalMarketplaces`),
-  montrées entières : elles portent commandes, URL et helpers à plusieurs niveaux, qu'une liste de
-  champs manquerait, et la garde réagit ainsi à tout changement (une URL déplacée). Non mesuré : que
-  le moteur récupère ou exécute quoi que ce soit d'une marketplace déclarée par le projet. Pas montrés, consignés dans
-  `limits.md` : `statusLine.command`, `subagentStatusLine.command`, `fileSuggestion.command` et les
-  règles `permissions.allow` du dépôt. Le fichier est ouvert en non bloquant et
-  doit être un fichier ordinaire de 1 Mio au plus ; tout ce que Claudex ne sait pas lire ou analyser
-  (JSON invalide, commentaires, BOM, autre chose qu'un objet, clé de premier niveau `__proto__`,
-  `constructor` ou `prototype`, fichier spécial, trop gros, permission)
-  donne une constatation « illisible ».
-- **D2 : consentement au lancement, avant toute écriture et avant tout agent** (`src/launch.ts`,
-  `src/cli.tsx`, `src/ui/components/SettingsConsent.tsx`). Pas de `.claudex/` pour un projet refusé ;
-  ni Root ni Codex ne démarrent avant la réponse. La liste complète est imprimée en texte simple dans
-  l'écran normal (l'historique du terminal la garde, quelle que soit sa longueur), puis une petite
-  invite Ink : `y` continue (sans Alt ni Ctrl ; les collages sont ignorés grâce au collage encadré ; les
-  touches des 250 premières ms sont ignorées) ; `n`, `q`, Entrée, Échap, Ctrl+C quittent ; quitter est
-  le défaut. Touche `y` et non `o` comme le disait le design : cohérence avec l'invite de permission.
-  Tout texte venu du dépôt est échappé (caractères de contrôle, de format, bidi, de largeur nulle,
-  affichés en `\uXXXX` / `\u{...}`).
-- **Une constatation « illisible » rend le consentement impossible** (seul « quitter » est offert) :
-  Claude Code peut analyser ce que Claudex ne sait pas lire (JSON avec commentaires, BOM) ; l'approuver
-  reviendrait à approuver un contenu que personne n'a vu. Le design permettait d'y consentir ; resserré
-  pendant la revue. Coût : un projet aux réglages JSONC ne peut pas être débattu tant qu'il n'est pas
-  corrigé.
-- **D3 : la garde relit le fichier avant chaque requête Claude** (débat et `/implement`,
-  `createSettingsGuard`, appelée par `ClaudeAgent` avant `query()`). Aucune constatation, ou identique à
-  l'approbation : le tour part. Sinon le tour n'est pas envoyé et échoue avec un message en français qui
-  demande de quitter et relancer. Une garde qui lève une erreur refuse aussi le tour.
-- **Le consentement n'est jamais mémorisé** : stocké dans le projet, un dépôt pourrait le pré-remplir ;
-  ailleurs, Claudex écrirait hors de `.claudex/`. La question revient à chaque lancement.
-- **Trou accepté pendant un tour `/implement`** (voir `limits.md`) : non mesuré, non fermé. La phase
-  d'implémentation est de confiance par conception (décision 2026-11-11, D4 de l'isolation). Rien ne
-  garantit que l'humain voie une écriture dans `.claude/settings.json` avant qu'elle ait lieu : les
-  règles `allow` (de l'utilisateur, ou le `permissions.allow` du dépôt, que l'écran de consentement ne
-  montre pas) sont résolues avant `canUseTool` et peuvent approuver l'écriture sans invite (on n'a pas
-  mesuré si Claude Code protège ses propres fichiers de réglages contre elles) ; une écriture par Bash
-  ne montre que la commande ; avec `/implement codex`, Codex écrit avec `approvalPolicy: "never"`,
-  sans aucune invite. La garde ne la voit qu'avant le tour Claude suivant. Accepté en connaissance de
-  cause, pas parce qu'il serait petit.
-- **D4/D5 :** les cas L, Lp, Ll, M de `verify:readonly` mesurent le comportement du moteur qui rend la
-  porte nécessaire ; la porte elle-même est du code Claudex, prouvée par les tests unitaires et
-  d'interface, et vérifiée à la main dans un pty.
+**Decisions:**
+- **D1: Claudex reads the project's settings itself, without ever running anything**
+  (`src/agents/projectSettings.ts`). File read: `<cwd>/.claude/settings.json` only
+  (`PROJECT_SETTINGS_FILES`), the only one the measurements show the engine reading (Lp and Ll negative).
+  Flagged: the six helpers of `COMMAND_SETTING_KEYS` (`apiKeyHelper`, `awsAuthRefresh`,
+  `awsCredentialExport`, `gcpAuthRefresh`, `otelHeadersHelper`, `proxyAuthHelper`, collected from
+  the `Settings` interface of `sdk.d.ts`), any `env` entry and, added after the final review, the plugin
+  marketplace declarations (`extraKnownMarketplaces` and its documented alias `additionalMarketplaces`),
+  shown whole: they carry commands, URLs and helpers at several levels, which a list of
+  fields would miss, and the guard thus reacts to any change (a moved URL). Not measured: whether
+  the engine fetches or runs anything from a marketplace declared by the project. Not shown, recorded in
+  `limits.md`: `statusLine.command`, `subagentStatusLine.command`, `fileSuggestion.command` and the
+  repository's `permissions.allow` rules. The file is opened non-blocking and
+  must be a regular file of 1 MiB at most; anything Claudex cannot read or parse
+  (invalid JSON, comments, BOM, anything other than an object, top-level key `__proto__`,
+  `constructor` or `prototype`, special file, too large, permission)
+  gives an "unreadable" finding.
+- **D2: consent at launch, before any write and before any agent** (`src/launch.ts`,
+  `src/cli.tsx`, `src/ui/components/SettingsConsent.tsx`). No `.claudex/` for a refused project;
+  neither Root nor Codex starts before the answer. The full list is printed as plain text in
+  the normal screen (the terminal history keeps it, whatever its length), then a small
+  Ink prompt: `y` continues (without Alt or Ctrl; pastes are ignored thanks to bracketed paste; the
+  keys of the first 250 ms are ignored); `n`, `q`, Enter, Esc, Ctrl+C quit; quitting is
+  the default. Key `y` and not `o` as the design said: consistency with the permission prompt.
+  Any text coming from the repository is escaped (control, format, bidi, zero-width characters,
+  displayed as `\uXXXX` / `\u{...}`).
+- **An "unreadable" finding makes consent impossible** (only "quit" is offered):
+  Claude Code may parse what Claudex cannot read (JSON with comments, BOM); approving it
+  would amount to approving content nobody has seen. The design allowed consenting to it; tightened
+  during the review. Cost: a project with JSONC settings cannot be debated until it is
+  fixed.
+- **D3: the guard re-reads the file before every Claude query** (debate and `/implement`,
+  `createSettingsGuard`, called by `ClaudeAgent` before `query()`). No finding, or identical to
+  the approval: the turn goes out. Otherwise the turn is not sent and fails with a message in French that
+  asks to quit and relaunch. A guard that throws an error also refuses the turn.
+- **Consent is never stored**: stored in the project, a repository could pre-fill it;
+  elsewhere, Claudex would write outside `.claudex/`. The question comes back at every launch.
+- **Gap accepted during an `/implement` turn** (see `limits.md`): not measured, not closed. The
+  implementation phase is trusted by design (decision 2026-11-11, D4 of the isolation). Nothing
+  guarantees that the human sees a write to `.claude/settings.json` before it happens: the
+  `allow` rules (the user's, or the repository's `permissions.allow`, which the consent screen does not
+  show) are resolved before `canUseTool` and can approve the write without a prompt (we have not
+  measured whether Claude Code protects its own settings files against them); a write through Bash
+  shows only the command; with `/implement codex`, Codex writes with `approvalPolicy: "never"`,
+  without any prompt. The guard sees it only before the next Claude turn. Accepted knowingly,
+  not because it would be small.
+- **D4/D5:** cases L, Lp, Ll, M of `verify:readonly` measure the engine behaviour that makes the
+  gate necessary; the gate itself is Claudex code, proven by the unit and
+  interface tests, and checked by hand in a pty.
 
-**Alternatives écartées :**
-- Neutraliser les helpers dans la couche « flag » (`settings: { apiKeyHelper: "" }`) : le sens d'un
-  helper vide n'est pas documenté ; ne peut pas neutraliser une entrée `env` quelconque ; écraserait en
-  `/implement` un helper légitime des réglages de l'utilisateur.
-- Retirer `"project"` de `settingSources` : perd le CLAUDE.md du projet (décision du 2026-10-26), et
-  `/implement` charge de toute façon la couche projet.
-- Refuser tout projet qui déclare un helper : bloque des installations d'entreprise légitimes ; le
-  principe est de laisser l'humain décider.
-- Avertir sans bloquer : la commande tournerait déjà quand l'humain lit l'avertissement.
-- Mémoriser le consentement par projet : voir plus haut.
-- Redemander le consentement en cours de session : un nouvel état modal du scheduler pour un cas rare ;
-  relancer réutilise l'écran du lancement, et la mémoire du débat survit à une relance.
+**Alternatives rejected:**
+- Neutralising the helpers in the "flag" layer (`settings: { apiKeyHelper: "" }`): the meaning of an
+  empty helper is not documented; cannot neutralise an arbitrary `env` entry; would overwrite in
+  `/implement` a legitimate helper from the user's settings.
+- Removing `"project"` from `settingSources`: loses the project's CLAUDE.md (decision of 2026-10-26), and
+  `/implement` loads the project layer anyway.
+- Refusing any project that declares a helper: blocks legitimate enterprise setups; the
+  principle is to let the human decide.
+- Warning without blocking: the command would already be running when the human reads the warning.
+- Storing consent per project: see above.
+- Asking for consent again mid-session: a new modal state of the scheduler for a rare case;
+  relaunching reuses the launch screen, and the debate memory survives a relaunch.
 
-**Fichiers concernés :** `src/agents/projectSettings.ts`, `src/agents/claudeAgent.ts`, `src/launch.ts`,
+**Files involved:** `src/agents/projectSettings.ts`, `src/agents/claudeAgent.ts`, `src/launch.ts`,
 `src/cli.tsx`, `src/ui/Root.tsx`, `src/ui/components/SettingsConsent.tsx`,
 `scripts/readonly-verification/`, `README.md`, `AGENTS.md`.
 
-**Comment appliquer :** ne pas rouvrir la mémorisation du consentement ni le consentement à un fichier
-illisible sans raison nouvelle. À chaque montée du SDK, relire `COMMAND_SETTING_KEYS` contre `sdk.d.ts`
-et relancer Lp et Ll pour confirmer `PROJECT_SETTINGS_FILES` (voir `limits.md`).
+**How to apply:** do not reopen storing consent or consenting to an unreadable file
+without a new reason. At every SDK upgrade, re-read `COMMAND_SETTING_KEYS` against `sdk.d.ts`
+and rerun Lp and Ll to confirm `PROJECT_SETTINGS_FILES` (see `limits.md`).
 
 ---
 
-## 2026-11-11 — Le débat de Claude n'exécute ni hook, ni serveur MCP, ni connecteur
+## 2026-11-11 — Claude's debate runs no hook, no MCP server and no connector
 
-**Nature :** arbitrage délégué par le mainteneur (design approuvé le 2026-10-28, « décisions les plus
-professionnelles »). Mesures dans `limits.md` (2026-11-11).
+**Nature:** arbitration delegated by the maintainer (design approved on 2026-10-28, "most
+professional decisions", translated from French). Measurements in `limits.md` (2026-11-11).
 
-**Décisions :**
-- **D1 : quatre réglages, sur les seuls tours de débat** (`DEBATE_ISOLATION` dans
-  `src/agents/debateOptions.ts`) : `strictMcpConfig: true` sans `mcpServers` (aucun serveur MCP, quelle
-  que soit sa source), et `settings: { disableAllHooks, disableClaudeAiConnectors,
-  disableSkillShellExecution }` tous à `true`. Ces réglages passent par la couche « flag » du SDK, la
-  plus prioritaire des couches modifiables par l'utilisateur : elle l'emporte sur les réglages du dépôt
-  analysé, y compris un `disableAllHooks: false` posé par un dépôt hostile (mesuré, cas J).
-- **D4 : la phase d'implémentation garde hooks, serveurs MCP et connecteurs.** `/implement` est le
-  moment où l'humain confie le dépôt aux agents avec leurs outils habituels (formateurs, contrôles
-  qualité, serveurs MCP). Cette phase écrit déjà par conception ; les retirer casserait ce que les
-  utilisateurs attendent pour peu de gain. Le README dit que les hooks et serveurs stdio du dépôt y
-  tournent comme dans Claude Code, mais sans son dialogue de confiance.
-- **Cas L (`apiKeyHelper` du dépôt) hors de cette branche** (arbitrage humain direct) : aucun réglage
-  documenté ne le coupe ; il aura sa propre branche, et le README le signale comme trou connu.
+**Decisions:**
+- **D1: four settings, on debate turns only** (`DEBATE_ISOLATION` in
+  `src/agents/debateOptions.ts`): `strictMcpConfig: true` without `mcpServers` (no MCP server, whatever
+  its source), and `settings: { disableAllHooks, disableClaudeAiConnectors,
+  disableSkillShellExecution }` all set to `true`. These settings go through the SDK's "flag" layer, the
+  highest-priority of the user-modifiable layers: it overrides the settings of the analysed
+  repository, including a `disableAllHooks: false` set by a hostile repository (measured, case J).
+- **D4: the implementation phase keeps hooks, MCP servers and connectors.** `/implement` is the
+  moment the human entrusts the repository to the agents with their usual tools (formatters, quality
+  checks, MCP servers). This phase already writes by design; removing them would break what
+  users expect for little gain. The README says that the repository's hooks and stdio servers
+  run there as in Claude Code, but without its trust dialog.
+- **Case L (the repository's `apiKeyHelper`) outside this branch** (direct human arbitration): no
+  documented setting turns it off; it will get its own branch, and the README flags it as a known gap.
 
-**Alternatives écartées :**
-- `managedSettings` (couche « policy ») : ignorée par défaut sur une machine qui a déjà une couche
-  gérée par un administrateur, et son `disableAllHooks` y devient `allowManagedHooksOnly`. La couche
-  « flag » s'applique sur toutes les machines.
-- Mesurer le chemin d'approbation des connecteurs (ancien cas I) : impossible à conclure ; les retirer
-  du débat est plus simple et vérifiable.
-- `settingSources: []` pendant le débat : couperait aussi le CLAUDE.md du projet, gardé exprès
-  (décision du 2026-10-26).
+**Alternatives rejected:**
+- `managedSettings` ("policy" layer): ignored by default on a machine that already has a layer
+  managed by an administrator, and its `disableAllHooks` becomes `allowManagedHooksOnly` there. The
+  "flag" layer applies on every machine.
+- Measuring the connectors' approval path (former case I): impossible to conclude; removing them
+  from the debate is simpler and verifiable.
+- `settingSources: []` during the debate: would also cut off the project's CLAUDE.md, kept on purpose
+  (decision of 2026-10-26).
 
-**Fichiers concernés :** `src/agents/debateOptions.ts`, `src/agents/claudeAgent.ts`,
+**Files involved:** `src/agents/debateOptions.ts`, `src/agents/claudeAgent.ts`,
 `scripts/readonly-verification/`, `scripts/verify-claude-readonly.ts`, `README.md`, `AGENTS.md`.
 
-## 2026-10-27 — Claudex garde le moteur Claude Code fourni par le SDK, à version exacte
+## 2026-10-27 — Claudex keeps the Claude Code engine bundled with the SDK, at an exact version
 
-**Nature :** arbitrage délégué par le mainteneur, pendant la montée du SDK Claude Agent de 0.1.77 à
-0.3.310. Sa première intuition était d'utiliser le `claude` de l'utilisateur ; il a laissé le choix
-technique.
+**Nature:** arbitration delegated by the maintainer, during the upgrade of the Claude Agent SDK from 0.1.77 to
+0.3.310. His first intuition was to use the user's `claude`; he left the technical
+choice open.
 
-**Constat :** le SDK 0.3.x ne contient plus de `cli.js` : il lance un binaire natif Claude Code
-(2.1.310), installé par une dépendance optionnelle propre à chaque plateforme (273 Mo sur disque
-en darwin-arm64 ; installation complète du SDK 331 Mo contre 92 Mo pour 0.1.77). La lecture seule du
-débat a été mesurée sur un moteur précis, voir `limits.md` (2026-10-27).
+**Finding:** SDK 0.3.x no longer contains a `cli.js`: it launches a native Claude Code binary
+(2.1.310), installed by an optional dependency specific to each platform (273 MB on disk
+on darwin-arm64; full SDK install 331 MB against 92 MB for 0.1.77). The debate's read-only mode
+was measured on a specific engine, see `limits.md` (2026-10-27).
 
-**Décisions :**
-- **D1 : Claudex laisse le SDK lancer le moteur qu'il fournit.** Pas de `pathToClaudeCodeExecutable`.
-  La garantie de lecture seule est mesurée sur une version exacte du moteur : avec le binaire fourni,
-  la version que l'utilisateur exécute est celle qui a été testée. Le binaire est de toute façon
-  installé (dépendance optionnelle du SDK). La connexion ne change pas : le binaire fourni lit les
-  mêmes identifiants Claude Code.
-- **D2 : le SDK est épinglé à une version exacte** (`"@anthropic-ai/claude-agent-sdk": "0.3.310"`,
-  sans `^`). Une montée de version est une branche délibérée, qui relance `npm run verify:readonly`
-  sur l'ancienne et sur la nouvelle version.
+**Decisions:**
+- **D1: Claudex lets the SDK launch the engine it bundles.** No `pathToClaudeCodeExecutable`.
+  The read-only guarantee is measured on an exact engine version: with the bundled binary,
+  the version the user runs is the one that was tested. The binary is installed anyway
+  (optional dependency of the SDK). Login does not change: the bundled binary reads the
+  same Claude Code credentials.
+- **D2: the SDK is pinned to an exact version** (`"@anthropic-ai/claude-agent-sdk": "0.3.310"`,
+  without `^`). A version upgrade is a deliberate branch, which reruns `npm run verify:readonly`
+  on the old and on the new version.
 
-**Alternatives écartées :**
-- Le `claude` de l'utilisateur via `pathToClaudeCodeExecutable` : même téléchargement, garantie plus
-  faible (la version exécutée serait celle que l'utilisateur a installée, plus ancienne ou plus
-  récente que tout ce qui a été mesuré, et le SDK parle un protocole de contrôle versionné avec son
-  propre binaire), et des modes d'échec en plus (aucun `claude` dans le `PATH`, mauvaise version).
-- Une plage avec `^` : une version du SDK non testée atteindrait les utilisateurs, alors qu'une
-  version peut changer la garantie de lecture seule.
+**Alternatives rejected:**
+- The user's `claude` via `pathToClaudeCodeExecutable`: same download, weaker
+  guarantee (the version run would be the one the user installed, older or more
+  recent than anything that was measured, and the SDK speaks a versioned control protocol with its
+  own binary), and extra failure modes (no `claude` in the `PATH`, wrong version).
+- A range with `^`: an untested SDK version would reach users, whereas a
+  version can change the read-only guarantee.
 
-**Fichiers concernés :** `package.json`, `package-lock.json`, `scripts/verify-claude-readonly.ts`,
+**Files involved:** `package.json`, `package-lock.json`, `scripts/verify-claude-readonly.ts`,
 `AGENTS.md`, `README.md`.
 
-## 2026-10-26 — Claudex ne touche plus à CLAUDE.md ni à AGENTS.md
+## 2026-10-26 — Claudex no longer touches CLAUDE.md or AGENTS.md
 
-**Nature :** arbitrage humain direct, avant la distribution sur une marketplace.
+**Nature:** direct human arbitration, before distribution on a marketplace.
 
-**Constat :** au lancement, Claudex créait `CLAUDE.md` et `AGENTS.md`, ou leur ajoutait une section
-de mémoire. Ce texte était relu par toutes les sessions Claude Code ou Codex ouvertes ensuite dans
-le dépôt, débat ou pas, y compris la consigne « débat jusqu'à consensus avant toute écriture de
-code ». La section revenait au lancement suivant si l'utilisateur la supprimait, et le modèle
-pointait vers `devlog.md`, qui n'est pas versionné.
+**Finding:** at launch, Claudex created `CLAUDE.md` and `AGENTS.md`, or appended a memory
+section to them. This text was read by every Claude Code or Codex session opened afterwards in
+the repository, debate or not, including the instruction "debate until consensus before writing any
+code" (translated from French). The section came back at the next launch if the user deleted it, and the template
+pointed to `devlog.md`, which is not versioned.
 
-**Décisions :**
-- Claudex n'écrit rien hors de `.claudex/`. `CLAUDE.md` et `AGENTS.md` appartiennent à l'utilisateur
-  et restent lus par les agents pendant le débat.
-- Les règles du débat (`CONSENSUS_INSTRUCTIONS`), envoyées une fois à chaque agent par le même
-  chemin, nomment `decisions.md` et `limits.md`. Nommés, pas recopiés (coût en tokens, voir
-  `limits.md`). Le devlog n'est plus désigné : c'est un index local des sessions.
-- Les fichiers produits par les versions précédentes ne sont pas nettoyés automatiquement ; le README
-  indique qu'on peut supprimer la section.
+**Decisions:**
+- Claudex writes nothing outside `.claudex/`. `CLAUDE.md` and `AGENTS.md` belong to the user
+  and are still read by the agents during the debate.
+- The debate rules (`CONSENSUS_INSTRUCTIONS`), sent once to each agent through the same
+  path, name `decisions.md` and `limits.md`. Named, not copied (token cost, see
+  `limits.md`). The devlog is no longer referred to: it is a local index of sessions.
+- Files produced by previous versions are not cleaned up automatically; the README
+  says the section can be deleted.
 
-**Alternatives écartées :** écriture sur consentement au premier lancement (une option de plus à
-maintenir pour un bénéfice limité aux sessions hors Claudex) ;
-garder la génération en retirant seulement la phrase sur le binôme (le fichier reste modifié sans
-demande).
+**Alternatives rejected:** writing on consent at first launch (one more option to
+maintain for a benefit limited to sessions outside Claudex);
+keeping the generation while removing only the sentence about the pair (the file is still modified without
+being asked).
 
-**Fichiers concernés :** `src/memory/store.ts`, `src/orchestrator/scheduler.ts`, `README.md`.
+**Files involved:** `src/memory/store.ts`, `src/orchestrator/scheduler.ts`, `README.md`.
 
-## 2026-09-28 — Le débat utilise un viewport plein écran géré par Claudex
+## 2026-09-28 — The debate uses a full-screen viewport managed by Claudex
 
-**Nature :** arbitrage humain direct après essais visuels du header animé.
+**Nature:** direct human arbitration after visual trials of the animated header.
 
-**Constat :** le scrollback natif du terminal déplace nécessairement tout l'écran ; il ne peut pas
-conserver un header et un footer fixes. Mélanger une trame Ink plein écran avec des écritures dans
-ce scrollback masquait les réponses courtes, dupliquait certaines lignes et faisait empiéter les
-réponses longues sur le footer.
+**Finding:** the terminal's native scrollback necessarily moves the whole screen; it cannot
+keep a fixed header and footer. Mixing a full-screen Ink frame with writes into
+that scrollback hid short answers, duplicated some lines and made long
+answers overlap the footer.
 
-**Décisions :**
-- Claudex utilise l'alternate screen fourni par Ink 7, comme `vim`, `less` ou `htop` ; une
-  réécriture avec curses est inutile.
-- Pendant une session, `DebateView` possède l'intégralité des lignes formatées et n'écrit rien
-  derrière sa trame. Header, transcript et footer ont chacun une zone bornée.
-- Le transcript se parcourt avec la molette (mode terminal 1007 quand il est supporté), les flèches,
-  Page Up/Page Down et Home/End. Le header et le footer ne bougent jamais.
-- Le scrollback natif n'est pas disponible dans l'alternate screen. La trace durable reste le
-  transcript canonique archivé dans `.claudex/memory/transcripts/` lors de la fermeture normale.
+**Decisions:**
+- Claudex uses the alternate screen provided by Ink 7, like `vim`, `less` or `htop`; a
+  rewrite with curses is unnecessary.
+- During a session, `DebateView` owns all the formatted lines and writes nothing
+  behind its frame. Header, transcript and footer each have a bounded area.
+- The transcript is scrolled with the mouse wheel (terminal mode 1007 when it is supported), the arrows,
+  Page Up/Page Down and Home/End. The header and the footer never move.
+- Native scrollback is not available in the alternate screen. The durable record remains the
+  canonical transcript archived in `.claudex/memory/transcripts/` on normal exit.
 
-**Fichiers concernés :** `src/cli.tsx`, `src/ui/DebateView.tsx`,
+**Files involved:** `src/cli.tsx`, `src/ui/DebateView.tsx`,
 `src/ui/components/DynamicFooter.tsx`, `src/ui/stream/`, `README.md`.
 
-## 2026-08-04 — Architecture C (file de livraisons)
+## 2026-08-04 — Architecture C (delivery queue)
 
-**Approche retenue :** Architecture C, validée par les deux agents.
+**Approach adopted:** Architecture C, validated by both agents.
 
-**Éléments actés :**
-- File de livraisons par destinataire
-- Snapshots immuables construits par le drain
-- Batches d'intervention avec barrière
-- Consensus causal uniquement
-- Synthèse read-only invalidable par epoch
-- Acquittement par job sur tous les chemins
-- Ordonnanceur complet et fermé sur tous ses états
+**Items agreed:**
+- Delivery queue per recipient
+- Immutable snapshots built by the drain
+- Intervention batches with a barrier
+- Causal consensus only
+- Read-only synthesis invalidatable by epoch
+- Per-job acknowledgement on all paths
+- Complete scheduler, closed over all its states
 
-**Statut à la consignation :** aucun fichier modifié, implémentation non démarrée — décision récupérée manuellement suite à un bug de détection de consensus (marqueur non reconnu à cause d'un formatage markdown), qui a empêché la synthèse automatique de se générer. Le détail complet du raisonnement du débat n'a pas pu être archivé automatiquement (commande `/save` absente de cette version de session) ; seule cette décision finale, capturée depuis l'écran, a pu être préservée.
+**Status when recorded:** no file modified, implementation not started — decision recovered manually following a consensus-detection bug (marker not recognised because of Markdown formatting), which prevented the synthesis from being generated automatically. The full detail of the debate's reasoning could not be archived automatically (`/save` command absent from this session's version); only this final decision, captured from the screen, could be preserved.
 
-## 2026-08-06 — Commande /handoff pour génération de fichier d'implémentation
+## 2026-08-06 — /handoff command to generate an implementation file
 
-**Approche retenue :** Ajouter une commande `/handoff`, coexistant avec `/implement`, qui génère un fichier markdown autoportant (contexte projet + synthèse consensuelle) destiné à être transmis tel quel à une session `claude` ou `codex` native pour implémentation. `/handoff` devient le chemin recommandé par défaut ; `/implement` reste disponible pour rester dans Claudex sur des changements ponctuels.
+**Approach adopted:** Add a `/handoff` command, coexisting with `/implement`, that generates a self-contained Markdown file (project context + consensus synthesis) meant to be passed as is to a native `claude` or `codex` session for implementation. `/handoff` becomes the path recommended by default; `/implement` remains available to stay in Claudex for one-off changes.
 
-**Accords :**
-- Fonction `saveHandoff(cwd, topic, summary)` dans `store.ts` — sémantique « nouveau fichier » (comme `saveTranscript()`), pas « journal » (comme `appendDecision()`)
-- Garde explicite sur `session.implementationSummary?.trim()` avant d'autoriser `/handoff` (garde qui n'existe pas aujourd'hui sur `/implement`)
-- Nouvelle API publique `recordHandoffGenerated(path)` sur `Scheduler` (appelle `addEntry()` privé), déléguée par `DebateSession` pour l'UI
-- Structure du fichier généré : intro + `## Mémoire projet` (`readMemorySummary()` verbatim) + `## Spécification consensuelle` (`implementationSummary`) + `## Consigne d'exécution`
-- Gestion de collision de timestamp par suffixe numérique (`-2`, `-3`, …), création exclusive avec réessai uniquement sur `EEXIST`
-- `SYNTHESIS_PROMPT` étendu de façon conditionnelle (fichiers/composants, interfaces, comportements, tests — uniquement s'ils ressortent du débat, sans rubrique vide inventée)
-- UX mise à jour pour recommander `/handoff` : bannière post-consensus, placeholder de saisie, `HelpPanel`, `README.md`
-- Aucune modification de `/implement`, de la mécanique de débat (Architecture C) ni des critères de consensus
+**Agreements:**
+- Function `saveHandoff(cwd, topic, summary)` in `store.ts` — "new file" semantics (like `saveTranscript()`), not "log" (like `appendDecision()`)
+- Explicit guard on `session.implementationSummary?.trim()` before allowing `/handoff` (a guard that does not exist today on `/implement`)
+- New public API `recordHandoffGenerated(path)` on `Scheduler` (calls the private `addEntry()`), delegated by `DebateSession` for the UI
+- Structure of the generated file: intro + `## Project memory` (`readMemorySummary()` verbatim) + `## Agreed specification` (`implementationSummary`) + `## Execution instructions` (headings translated from French)
+- Timestamp collision handling by numeric suffix (`-2`, `-3`, …), exclusive creation with retry only on `EEXIST`
+- `SYNTHESIS_PROMPT` extended conditionally (files/components, interfaces, behaviours, tests — only if they come out of the debate, with no invented empty section)
+- UX updated to recommend `/handoff`: post-consensus banner, input placeholder, `HelpPanel`, `README.md`
+- No change to `/implement`, to the debate mechanics (Architecture C) or to the consensus criteria
 
-**Fichiers concernés :**
+**Files involved:**
 - `src/orchestrator/commands.ts`
 - `src/memory/store.ts`
 - `src/orchestrator/scheduler.ts`
 - `src/orchestrator/session.ts`
 - `src/ui/DebateView.tsx`
 - `README.md`
-- `src/orchestrator/__tests__/commands.test.ts` (nouveau)
-- `src/memory/__tests__/store.test.ts` (nouveau)
+- `src/orchestrator/__tests__/commands.test.ts` (new)
+- `src/memory/__tests__/store.test.ts` (new)
 
-## 2026-08-11 — L'autonomie est illimitée par défaut ; le consensus survit à une intervention
+## 2026-08-11 — Autonomy is unbounded by default; consensus survives an intervention
 
-**Nature :** arbitrage humain direct, hors débat Claude ↔ Codex. Tranche une question que le
-handoff du 2026-08-10 laissait explicitement ouverte (« Budget d'autonomie : métrique ; valeur ;
-politique de persistance ou question interactive »), et remplace le comportement fail-closed qui
-avait été implémenté en attendant.
+**Nature:** direct human arbitration, outside a Claude ↔ Codex debate. Settles a question that the
+handoff of 2026-08-10 explicitly left open ("Autonomy budget: metric; value;
+persistence policy or interactive question", translated from French), and replaces the fail-closed behaviour that
+had been implemented in the meantime.
 
-**Contexte :** les deux comportements se combinaient en piège fermé. Aucune politique d'autonomie
-n'étant configurée, aucun tour automatique ne pouvait démarrer ; seules les interventions humaines
-faisaient avancer le débat ; et les tours nés d'une intervention étaient exclus du consensus. Les
-deux agents pouvaient être d'accord sans que la session puisse jamais se clore.
+**Context:** the two behaviours combined into a closed trap. With no autonomy policy
+configured, no automatic turn could start; only human interventions
+moved the debate forward; and turns born from an intervention were excluded from consensus. The
+two agents could agree without the session ever being able to close.
 
-**Décisions :**
-- **Absence de politique d'autonomie = illimité.** Le risque qu'un budget obligatoire borne est
-  l'emballement non supervisé. Claudex n'a aucun mode non supervisé : `src/cli.tsx` refuse de
-  démarrer sans TTY, et Échap met en pause au clavier même pendant un tour. La supervision est
-  structurelle, pas budgétaire. Ce n'est donc pas une valeur par défaut arbitraire : c'est le
-  constat qu'aucune borne n'est nécessaire dans le seul mode qui existe.
-- `/autonomy starts N` et `/autonomy time <durée>` restent, comme bornes **optionnelles**, pour
-  qui prévoit de s'éloigner du terminal. `unbounded` redevient un retrait de borne.
-- L'état de suspension `autonomy-required` est supprimé : il n'est plus atteignable.
-- **Le consensus dépend de l'epoch seule, plus de l'origine du tour.** Un tour qui répond à la
-  dernière intervention porte l'epoch que cette intervention a créée ; deux agents qui s'accordent
-  juste après une question humaine s'accordent réellement. Toute entrée plus récente les invalide
-  déjà via `incrementEpoch()`.
-- Au consensus, les livraisons automatiques encore en attente sont abandonnées : sinon un `/resume`
-  après la synthèse rejouerait un tour mis en file avant l'accord et rouvrirait un débat clos. Seule
-  une vraie intervention doit le rouvrir, par une nouvelle epoch.
+**Decisions:**
+- **No autonomy policy = unbounded.** The risk that a mandatory budget bounds is
+  unsupervised runaway. Claudex has no unsupervised mode: `src/cli.tsx` refuses to
+  start without a TTY, and Esc pauses from the keyboard even during a turn. Supervision is
+  structural, not budgetary. So this is not an arbitrary default value: it is the
+  finding that no bound is needed in the only mode that exists.
+- `/autonomy starts N` and `/autonomy time <duration>` remain, as **optional** bounds, for
+  those who plan to step away from the terminal. `unbounded` again means removing a bound.
+- The `autonomy-required` suspension state is removed: it is no longer reachable.
+- **Consensus depends on the epoch alone, no longer on the origin of the turn.** A turn that answers the
+  latest intervention carries the epoch that this intervention created; two agents that agree
+  right after a human question really agree. Any newer input already invalidates them
+  via `incrementEpoch()`.
+- At consensus, automatic deliveries still pending are dropped: otherwise a `/resume`
+  after the synthesis would replay a turn queued before the agreement and reopen a closed debate. Only
+  a real intervention should reopen it, through a new epoch.
 
-**Fichiers concernés :** `src/orchestrator/scheduler.ts`, `src/types.ts`, `src/orchestrator/types.ts`,
+**Files involved:** `src/orchestrator/scheduler.ts`, `src/types.ts`, `src/orchestrator/types.ts`,
 `src/ui/DebateView.tsx`, `src/ui/components/StatusBar.tsx`, `src/__tests__/scheduler.test.ts`,
 `src/ui/__tests__/root.test.tsx`, `README.md`.
 
-**Attention pour les tests :** des agents factices qui répondent toujours `<<CONTINUE>>` ne sont
-plus freinés par rien. Un fixture qui a besoin d'un débat fini doit poser sa propre borne
-(`root.test.tsx` le fait), pas compter sur un blocage global.
+**Note for tests:** fake agents that always answer `<<CONTINUE>>` are no longer
+held back by anything. A fixture that needs a finished debate must set its own bound
+(`root.test.tsx` does), not rely on a global block.
 
-## 2026-08-17 — Les règles du débat ne nomment plus aucun agent
+## 2026-08-17 — The debate rules no longer name any agent
 
-**Nature :** arbitrage humain à l'issue d'un échange Claude ↔ Codex conduit hors Claudex, pièces
-mesurées à l'appui. Corrige une asymétrie inscrite dans le prompt depuis l'origine.
+**Nature:** human arbitration at the end of a Claude ↔ Codex exchange conducted outside Claudex, with measured
+evidence in support. Corrects an asymmetry written into the prompt since the beginning.
 
-**Constat mesuré :** sur les 37 sessions de débat retrouvées dans `~/.claude/projects/`, Claude
-n'émet plus aucun appel d'outil après son premier tour, et 55 % de ses tours s'ouvrent sur un accord
-explicite (« Je confirme », « Tu as raison », « Je reconnais »). Les occurrences du mot « objection »
-sont presque toutes des négations (« je n'ai plus d'objection »). Le motif est identique sur Sonnet
-4.5, Opus 4.5 et Sonnet 5 : il vient du harnais, pas du modèle.
+**Measured finding:** across the 37 debate sessions found in `~/.claude/projects/`, Claude
+makes no tool call at all after its first turn, and 55% of its turns open with explicit
+agreement ("I confirm", "You are right", "I acknowledge"; translated from French). The occurrences of the word "objection"
+are almost all negations ("I have no more objections", translated from French). The pattern is identical on Sonnet
+4.5, Opus 4.5 and Sonnet 5: it comes from the harness, not from the model.
 
-**Cause identifiée :** `CONSENSUS_INSTRUCTIONS` disait « Claude n'a pas d'outil d'exécution et doit
-demander à Codex de vérifier ». Les deux agents recevaient cette phrase : elle disqualifiait la seule
-capacité de l'un et signalait à l'autre que son contradicteur ne pouvait rien contrôler.
+**Identified cause:** `CONSENSUS_INSTRUCTIONS` said "Claude has no execution tool and must
+ask Codex to verify" (translated from French). Both agents received this sentence: it disqualified the only
+capability of one and signalled to the other that its opponent could check nothing.
 
-**Décisions :**
-- Aucune règle ne nomme un agent en dehors des rôles `self` et `other`. Vérifié comme une propriété :
-  un test permute les deux noms dans les instructions et exige d'obtenir exactement celles de l'autre.
-- La règle de preuve devient symétrique : qui exécute donne la commande exacte et sa sortie brute ;
-  qui ne peut pas exécuter la réclame et refuse une affirmation empirique non étayée. Exiger la
-  preuve fait partie du rôle autant que la fournir.
-- Le consensus demande d'avoir examiné au moins une alternative sérieuse. Poursuivre exigeait une
-  objection *nouvelle* quand s'accorder n'exigeait rien : dans le doute, l'accord était le coup valide
-  le moins cher. Il n'est jamais demandé de fabriquer un désaccord.
-- L'interdiction des marqueurs Markdown est retirée des deux prompts. C'est une contrainte
-  d'affichage, déjà appliquée par le renderer ; l'imposer au modèle dégradait les handoffs, qui sont
-  par la décision du 2026-08-06 des documents Markdown autoportants.
+**Decisions:**
+- No rule names an agent outside the `self` and `other` roles. Checked as a property:
+  a test swaps the two names in the instructions and requires getting exactly the other's.
+- The evidence rule becomes symmetric: whoever runs gives the exact command and its raw output;
+  whoever cannot run asks for it and refuses an unsupported empirical claim. Demanding
+  evidence is as much part of the role as providing it.
+- Consensus requires having examined at least one serious alternative. Continuing required a
+  *new* objection while agreeing required nothing: when in doubt, agreement was the cheapest
+  valid move. Manufacturing disagreement is never asked for.
+- The ban on Markdown markers is removed from both prompts. It is a display
+  constraint, already applied by the renderer; imposing it on the model degraded the handoffs, which are,
+  by the decision of 2026-08-06, self-contained Markdown documents.
 
-**Fichiers concernés :** `src/orchestrator/scheduler.ts`, `src/__tests__/scheduler.test.ts`.
+**Files involved:** `src/orchestrator/scheduler.ts`, `src/__tests__/scheduler.test.ts`.
 
-**Ce qui n'est pas démontré :** une cause documentée a été retirée, pas la déférence elle-même. À
-revérifier sur les prochaines sessions avec les mêmes mesures — appels d'outils après le premier
-tour, phrases d'ouverture, qui produit les preuves. Les 37 traces archivées donnent la ligne de base.
+**What is not demonstrated:** a documented cause was removed, not the deference itself. To be
+re-checked on the next sessions with the same measurements — tool calls after the first
+turn, opening sentences, who produces the evidence. The 37 archived traces give the baseline.
 
-## 2026-08-17 — L'asymétrie d'exécution reste en l'état, en attendant la mesure
+## 2026-08-17 — The execution asymmetry stays as it is, pending measurement
 
-**Nature :** décision de séquencement, prise après le correctif de prompt ci-dessus.
+**Nature:** sequencing decision, taken after the prompt fix above.
 
-**Décision :** ne rien construire pour l'instant. Le correctif de prompt vient de retirer la cause
-la plus probable de la déférence pour un coût nul ; construire un canal d'exécution partagé avant
-d'avoir mesuré son effet reviendrait à payer une complexité d'ordonnanceur pour un problème
-peut-être déjà résolu.
+**Decision:** build nothing for now. The prompt fix has just removed the most
+probable cause of the deference at zero cost; building a shared execution channel before
+having measured its effect would mean paying scheduler complexity for a problem
+perhaps already solved.
 
-**Condition de réouverture :** si, sur les prochaines sessions, Claude continue de n'appeler aucun
-outil après son premier tour et d'ouvrir ses réponses par un accord, alors la capacité est bien en
-cause et le canal se justifie.
+**Reopening condition:** if, over the next sessions, Claude keeps calling no
+tool after its first turn and opening its answers with agreement, then the capability is indeed
+at issue and the channel is justified.
 
-**Ce qui serait construit dans ce cas — et ce qui est écarté :**
-- Retenu : un fil `codex app-server` dédié en `readOnly` + `networkAccess: false`, distinct du fil
-  débatteur, dont n'importe quel agent demande une commande et dont la sortie brute entre dans les
-  deux transcrits. Même garantie d'écriture qu'aujourd'hui, aucune dépendance nouvelle.
-- Écarté : donner Bash à Claude sous approbation humaine. Cela remplace une garantie du système
-  d'exploitation par l'attention de l'humain, qui ne peut pas déduire de `npm test` les fichiers
-  qu'il écrit. C'est précisément le raisonnement de `claudeAgent.ts`.
-- Sur les lectures non restreintes de `command/exec` (relevé par Codex, vérifié dans le schéma v2) :
-  ce n'est pas un obstacle nouveau. Le fil débatteur Codex a déjà exactement cette exposition, elle
-  est documentée dans le README et acceptée. Un second exécuteur en lecture seule n'ajoute aucune
-  classe de risque.
+**What would be built in that case — and what is rejected:**
+- Adopted: a dedicated `codex app-server` thread in `readOnly` + `networkAccess: false`, separate from the
+  debater thread, from which any agent requests a command and whose raw output goes into both
+  transcripts. Same write guarantee as today, no new dependency.
+- Rejected: giving Claude Bash under human approval. This replaces an operating-system
+  guarantee with the human's attention, and the human cannot infer from `npm test` the files
+  it writes. This is precisely the reasoning of `claudeAgent.ts`.
+- On the unrestricted reads of `command/exec` (raised by Codex, checked in the v2 schema):
+  this is not a new obstacle. The Codex debater thread already has exactly this exposure; it
+  is documented in the README and accepted. A second read-only executor adds no
+  class of risk.
