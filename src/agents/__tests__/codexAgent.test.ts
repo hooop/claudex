@@ -8,7 +8,7 @@ vi.mock("node:child_process", () => ({ spawn: spawnMock }));
 
 import { CodexAgent } from "../codexAgent.js";
 
-type Scenario = "success" | "limit" | "invalid-completion" | "mismatched-completion" | "silent";
+type Scenario = "scripted" | "success" | "limit" | "invalid-completion" | "mismatched-completion" | "silent";
 
 class FakeAppServer extends EventEmitter {
   readonly stdin = new PassThrough();
@@ -19,7 +19,10 @@ class FakeAppServer extends EventEmitter {
   signalCode: NodeJS.Signals | null = null;
   private input = "";
 
-  constructor(private readonly scenario: Scenario) {
+  constructor(
+    private readonly scenario: Scenario,
+    private readonly script: unknown[] = [],
+  ) {
     super();
     this.stdin.on("data", (chunk: Buffer) => {
       this.input += chunk.toString();
@@ -62,6 +65,14 @@ class FakeAppServer extends EventEmitter {
 
   private finishTurn(): void {
     if (this.scenario === "silent") return;
+    if (this.scenario === "scripted") {
+      for (const message of this.script) this.write(message);
+      this.write({
+        method: "turn/completed",
+        params: { threadId: "thread-1", turn: { id: "turn-1", status: "completed", error: null } },
+      });
+      return;
+    }
     if (this.scenario === "invalid-completion") {
       this.write({
         method: "turn/completed",
@@ -276,5 +287,239 @@ describe("CodexAgent app-server streaming", () => {
     controller.abort();
 
     await expect(resultPromise).resolves.toMatchObject({ kind: "cancelled" });
+  });
+});
+
+const note = (method: string, params: Record<string, unknown>) => ({
+  method,
+  params: { threadId: "thread-1", turnId: "turn-1", ...params },
+});
+const delta = (itemId: string, text: string) => note("item/agentMessage/delta", { itemId, delta: text });
+const started = (item: Record<string, unknown>) => note("item/started", { item });
+const completed = (item: Record<string, unknown>) => note("item/completed", { item });
+const message = (id: string, text: string, phase?: string | null) => ({
+  id,
+  type: "agentMessage",
+  text,
+  ...(phase === undefined ? {} : { phase }),
+});
+
+async function runScript(script: unknown[], withNotes: boolean) {
+  spawnMock.mockReturnValue(new FakeAppServer("scripted", script));
+  const deltas: string[] = [];
+  const notes: Array<[string, boolean]> = [];
+  const result = await new CodexAgent().send("Topic", {
+    cwd: "/tmp",
+    writeAccess: false,
+    onTextDelta: (d) => deltas.push(d),
+    ...(withNotes ? { onNote: (text: string, streamed: boolean) => notes.push([text, streamed]) } : {}),
+  });
+  return { result, deltas, notes };
+}
+
+describe("CodexAgent notes and trace", () => {
+  beforeEach(() => spawnMock.mockReset());
+
+  it("moves a commentary item out of the answer", async () => {
+    const { result, notes } = await runScript(
+      [
+        delta("c1", "Reading memory."),
+        completed(message("c1", "Reading memory.", "commentary")),
+        delta("a1", "Use X.\n\n<<CONTINUE>>"),
+        completed(message("a1", "Use X.\n\n<<CONTINUE>>", "final_answer")),
+      ],
+      true,
+    );
+
+    expect(result).toEqual({ kind: "success", text: "Use X.\n\n<<CONTINUE>>" });
+    expect(notes).toEqual([["Reading memory.", true]]);
+  });
+
+  it("reports a streamed note as the exact suffix streamed, blank line included", async () => {
+    const { result, deltas, notes } = await runScript(
+      [
+        delta("a1", "A"),
+        completed(message("a1", "A", "final_answer")),
+        delta("c1", "Checking."),
+        completed(message("c1", "Checking.", "commentary")),
+        delta("a2", "B"),
+        completed(message("a2", "B", "final_answer")),
+      ],
+      true,
+    );
+
+    expect(deltas).toEqual(["A", "\n\n", "Checking.", "\n\n", "B"]);
+    expect(notes).toEqual([["\n\nChecking.", true]]);
+    expect(result).toEqual({ kind: "success", text: "A\n\nB" });
+  });
+
+  it("keeps a streamed commentary item in partialText when the turn fails", async () => {
+    const { result } = await runScript(
+      [
+        delta("c1", "Working."),
+        note("turn/completed", {
+          turn: { id: "turn-1", status: "failed", error: { message: "boom" } },
+        }),
+      ],
+      true,
+    );
+
+    expect(result).toMatchObject({ kind: "error", partialText: "Working." });
+  });
+
+  it("holds back deltas of an item started as commentary", async () => {
+    const { result, deltas, notes } = await runScript(
+      [
+        started(message("c1", "", "commentary")),
+        delta("c1", "Checking "),
+        delta("c1", "files."),
+        completed(message("c1", "Checking files.", "commentary")),
+        completed(message("a1", "Answer.", "final_answer")),
+      ],
+      true,
+    );
+
+    expect(deltas.join("")).toBe("Answer.");
+    expect(notes).toEqual([["Checking files.", false]]);
+    expect(result).toEqual({ kind: "success", text: "Answer." });
+  });
+
+  it.each([null, undefined])("keeps an item with phase %s as answer", async (phase) => {
+    const { result, notes } = await runScript(
+      [delta("a1", "Hello"), completed(message("a1", "Hello", phase))],
+      true,
+    );
+
+    expect(result).toEqual({ kind: "success", text: "Hello" });
+    expect(notes).toEqual([]);
+  });
+
+  it("separates two answer items with a blank line", async () => {
+    const { result, deltas } = await runScript(
+      [
+        delta("a1", "First."),
+        completed(message("a1", "First.", "final_answer")),
+        delta("a2", "Second."),
+        completed(message("a2", "Second.", "final_answer")),
+      ],
+      false,
+    );
+
+    expect(result).toEqual({ kind: "success", text: "First.\n\nSecond." });
+    expect(deltas).toEqual(["First.", "\n\n", "Second."]);
+  });
+
+  it("separates whole answer items that were never streamed", async () => {
+    const { result, deltas } = await runScript(
+      [completed(message("a1", "First.")), completed(message("a2", "Second."))],
+      false,
+    );
+
+    expect(result).toEqual({ kind: "success", text: "First.\n\nSecond." });
+    expect(deltas.join("")).toBe("First.\n\nSecond.");
+  });
+
+  it("only-commentary turn keeps its marker", async () => {
+    const { result, notes } = await runScript(
+      [
+        delta("c1", "Checked.\n\n<<CONSENSUS>>"),
+        completed(message("c1", "Checked.\n\n<<CONSENSUS>>", "commentary")),
+      ],
+      true,
+    );
+
+    expect(result).toEqual({ kind: "success", text: "Checked.\n\n<<CONSENSUS>>" });
+    expect(notes).toHaveLength(1);
+  });
+
+  it("keeps notes in the text without onNote", async () => {
+    const { result } = await runScript(
+      [
+        delta("c1", "Reading."),
+        completed(message("c1", "Reading.", "commentary")),
+        delta("a1", "Answer."),
+        completed(message("a1", "Answer.", "final_answer")),
+      ],
+      false,
+    );
+
+    expect(result).toEqual({ kind: "success", text: "Reading.\n\nAnswer." });
+  });
+
+  it("reports a finished command with its full output", async () => {
+    spawnMock.mockReturnValue(
+      new FakeAppServer("scripted", [
+        completed({
+          id: "cmd-1",
+          type: "commandExecution",
+          command: "ls",
+          status: "completed",
+          exitCode: 0,
+          aggregatedOutput: "ok\n",
+        }),
+        completed({ id: "fc-1", type: "fileChange", status: "failed", changes: [{ path: "a.ts", kind: "update" }] }),
+      ]),
+    );
+    const traces: unknown[] = [];
+
+    await new CodexAgent().send("Topic", { cwd: "/tmp", writeAccess: false, onTrace: (e) => traces.push(e) });
+
+    expect(traces).toEqual([
+      { kind: "tool", label: "ls", status: "success", exitCode: 0, output: "ok\n" },
+      { kind: "tool", label: "edits a.ts", status: "failure" },
+    ]);
+  });
+});
+
+describe("CodexAgent partial text and held items", () => {
+  beforeEach(() => spawnMock.mockReset());
+
+  const noteThenPartialAnswer = [
+    delta("c1", "Reading."),
+    completed(message("c1", "Reading.", "commentary")),
+    delta("a1", "Partial answer"),
+  ];
+
+  it("keeps a completed note in partialText when the turn fails", async () => {
+    const { result, notes } = await runScript(
+      [...noteThenPartialAnswer, note("error", { error: { message: "boom" }, willRetry: false })],
+      true,
+    );
+
+    expect(notes).toEqual([["Reading.", true]]);
+    expect(result).toEqual({ kind: "error", message: "boom", partialText: "Reading.Partial answer" });
+  });
+
+  it("keeps a completed note in partialText when the turn is cancelled", async () => {
+    spawnMock.mockReturnValue(new FakeAppServer("scripted", noteThenPartialAnswer));
+    const controller = new AbortController();
+
+    const result = await new CodexAgent().send("Topic", {
+      cwd: "/tmp",
+      writeAccess: false,
+      signal: controller.signal,
+      onNote: vi.fn(),
+      onTextDelta: (d) => {
+        if (d === "Partial answer") controller.abort();
+      },
+    });
+
+    expect(result).toEqual({ kind: "cancelled", partialText: "Reading.Partial answer" });
+  });
+
+  it("shows a held item that never completes before the turn ends", async () => {
+    const { result, deltas, notes } = await runScript(
+      [
+        delta("a1", "A"),
+        completed(message("a1", "A", "final_answer")),
+        started(message("c1", "", "commentary")),
+        delta("c1", "B"),
+      ],
+      true,
+    );
+
+    expect(notes).toEqual([]);
+    expect(result).toEqual({ kind: "success", text: "A\n\nB" });
+    expect(deltas).toEqual(["A", "\n\n", "B"]);
   });
 });

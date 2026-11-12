@@ -189,6 +189,8 @@ export type SessionEvents = {
   "entry-started": [entry: TranscriptEntry];
   /** The actual delta, not a cumulative snapshot — the renderer appends it as-is. */
   "output-chunk": [entryId: string, delta: string];
+  /** The entry's live body was rewritten; `text` replaces everything shown so far. */
+  "output-reset": [entryId: string, text: string];
   "entry-completed": [entryId: string, outcome: EntryOutcome];
   /**
    * Cumulative snapshot of a growing entry. Kept for consumers that want the

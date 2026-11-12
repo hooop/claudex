@@ -477,3 +477,225 @@ describe("ClaudeAgent — engine leftovers", () => {
     expect(result).toMatchObject({ kind: "success" });
   });
 });
+
+describe("ClaudeAgent notes and trace", () => {
+  beforeEach(() => queryMock.mockReset());
+
+  const textDelta = (text: string) => ({
+    type: "stream_event",
+    session_id: "session-1",
+    event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text } },
+  });
+  const toolStart = {
+    type: "stream_event",
+    session_id: "session-1",
+    event: {
+      type: "content_block_start",
+      index: 1,
+      content_block: { type: "tool_use", id: "tool-1", name: "Read", input: { file_path: "a.ts" } },
+    },
+  };
+  const toolResult = (content: unknown, isError = false) => ({
+    type: "user",
+    session_id: "session-1",
+    message: {
+      content: [{ type: "tool_result", tool_use_id: "tool-1", content, is_error: isError }],
+    },
+  });
+  const sdkOptions = { cwd: "/tmp", writeAccess: false };
+
+  function checkedStream(finalText: string) {
+    return [textDelta("Let me check."), toolStart, toolResult("file body"), textDelta(finalText), successResult()];
+  }
+
+  it("turns text before a tool use into a note", async () => {
+    queryMock.mockReturnValue(messages(checkedStream("It is safe.\n\n<<CONSENSUS>>")) as never);
+    const notes: Array<[string, boolean]> = [];
+    const deltas: string[] = [];
+
+    const result = await new ClaudeAgent().send("Topic", {
+      ...sdkOptions,
+      onTextDelta: (d) => deltas.push(d),
+      onNote: (note, streamed) => notes.push([note, streamed]),
+    });
+
+    expect(result).toMatchObject({ kind: "success", text: "It is safe.\n\n<<CONSENSUS>>" });
+    expect(notes).toEqual([["Let me check.", true]]);
+    expect(deltas.join("").startsWith("Let me check.")).toBe(true);
+  });
+
+  it("applies the rule to non-streamed assistant messages", async () => {
+    queryMock.mockReturnValue(
+      messages([
+        {
+          type: "assistant",
+          session_id: "session-1",
+          message: {
+            content: [
+              { type: "text", text: "Let me check." },
+              { type: "tool_use", id: "tool-1", name: "Read", input: { file_path: "a.ts" } },
+            ],
+          },
+        },
+        toolResult("file body"),
+        { type: "assistant", session_id: "session-1", message: { content: [{ type: "text", text: "It is safe." }] } },
+        successResult(),
+      ]) as never,
+    );
+    const notes: Array<[string, boolean]> = [];
+    const deltas: string[] = [];
+
+    const result = await new ClaudeAgent().send("Topic", {
+      ...sdkOptions,
+      onTextDelta: (d) => deltas.push(d),
+      onNote: (note, streamed) => notes.push([note, streamed]),
+    });
+
+    expect(deltas).toEqual(["It is safe."]);
+    expect(notes).toEqual([["Let me check.", false]]);
+    expect(result).toMatchObject({ kind: "success", text: "It is safe." });
+  });
+
+  const assistant = (content: unknown[]) => ({ type: "assistant", session_id: "session-1", message: { content } });
+  const toolUse = (id: string) => ({ type: "tool_use", id, name: "Read", input: { file_path: "a.ts" } });
+
+  it("closes non-streamed text as a note when a later message holds the tool use", async () => {
+    queryMock.mockReturnValue(
+      messages([
+        assistant([{ type: "text", text: "Let me check." }]),
+        assistant([toolUse("tool-1")]),
+        toolResult("file body"),
+        assistant([{ type: "text", text: "It is safe." }]),
+        successResult(),
+      ]) as never,
+    );
+    const notes: Array<[string, boolean]> = [];
+    const deltas: string[] = [];
+
+    const result = await new ClaudeAgent().send("Topic", {
+      ...sdkOptions,
+      onTextDelta: (d) => deltas.push(d),
+      onNote: (note, streamed) => notes.push([note, streamed]),
+    });
+
+    expect(deltas).toEqual(["Let me check.", "It is safe."]);
+    expect(notes).toEqual([["Let me check.", true]]);
+    expect(result).toMatchObject({ kind: "success", text: "It is safe." });
+  });
+
+  it("closes each non-streamed round before its tool use", async () => {
+    queryMock.mockReturnValue(
+      messages([
+        assistant([{ type: "text", text: "A" }]),
+        assistant([toolUse("tool-1")]),
+        toolResult("first"),
+        assistant([{ type: "text", text: "B" }]),
+        assistant([toolUse("tool-2")]),
+        assistant([{ type: "text", text: "C" }]),
+        successResult(),
+      ]) as never,
+    );
+    const notes: Array<[string, boolean]> = [];
+
+    const result = await new ClaudeAgent().send("Topic", {
+      ...sdkOptions,
+      onNote: (note, streamed) => notes.push([note, streamed]),
+    });
+
+    expect(notes).toEqual([
+      ["A", true],
+      ["B", true],
+    ]);
+    expect(result).toMatchObject({ kind: "success", text: "C" });
+  });
+
+  it("leaves a turn without tools unchanged", async () => {
+    queryMock.mockReturnValue(messages([textDelta("Hel"), textDelta("lo"), successResult()]) as never);
+    const onNote = vi.fn();
+
+    const result = await new ClaudeAgent().send("Topic", { ...sdkOptions, onNote });
+
+    expect(result).toMatchObject({ kind: "success", text: "Hello" });
+    expect(onNote).not.toHaveBeenCalled();
+  });
+
+  it("falls back to every segment when the answer is empty", async () => {
+    queryMock.mockReturnValue(messages(checkedStream("<<CONTINUE>>")) as never);
+
+    const result = await new ClaudeAgent().send("Topic", { ...sdkOptions, onNote: vi.fn() });
+
+    expect(result).toMatchObject({ kind: "success", text: "Let me check.\n\n<<CONTINUE>>" });
+  });
+
+  it("keeps notes without onNote", async () => {
+    queryMock.mockReturnValue(messages(checkedStream("It is safe.")) as never);
+
+    const result = await new ClaudeAgent().send("Topic", sdkOptions);
+
+    expect(result).toMatchObject({ kind: "success", text: "Let me check.It is safe." });
+  });
+
+  it("produces no note for a tool use right after another tool use", async () => {
+    const secondTool = {
+      ...toolStart,
+      event: {
+        ...toolStart.event,
+        index: 2,
+        content_block: { type: "tool_use", id: "tool-2", name: "Grep", input: { pattern: "x" } },
+      },
+    };
+    queryMock.mockReturnValue(
+      messages([textDelta("Look."), toolStart, secondTool, textDelta("Done."), successResult()]) as never,
+    );
+    const notes: string[] = [];
+
+    await new ClaudeAgent().send("Topic", { ...sdkOptions, onNote: (note) => notes.push(note) });
+
+    expect(notes).toEqual(["Look."]);
+  });
+
+  it("keeps notes in the partial text of a cancelled turn", async () => {
+    const controller = new AbortController();
+    async function* stream() {
+      yield textDelta("Let me check.");
+      yield toolStart;
+      controller.abort();
+      yield textDelta("more");
+    }
+    queryMock.mockReturnValue(stream() as never);
+
+    const result = await new ClaudeAgent().send("Topic", {
+      ...sdkOptions,
+      signal: controller.signal,
+      onNote: vi.fn(),
+    });
+
+    expect(result).toEqual({ kind: "cancelled", partialText: "Let me check." });
+  });
+
+  it("reports a tool result with its output", async () => {
+    queryMock.mockReturnValue(messages(checkedStream("Done.")) as never);
+    const events: unknown[] = [];
+
+    await new ClaudeAgent().send("Topic", { ...sdkOptions, onTrace: (e) => events.push(e) });
+
+    expect(events).toEqual([{ kind: "tool", label: "reads a.ts", status: "success", output: "file body" }]);
+  });
+
+  it("reports a failed tool result and joins text blocks", async () => {
+    queryMock.mockReturnValue(
+      messages([
+        toolStart,
+        toolResult([{ type: "text", text: "no such" }, { type: "text", text: "file" }], true),
+        successResult(),
+      ]) as never,
+    );
+    const events: unknown[] = [];
+
+    await new ClaudeAgent().send("Topic", { ...sdkOptions, onTrace: (e) => events.push(e) });
+
+    expect(events).toEqual([
+      { kind: "tool", label: "reads a.ts", status: "failure", output: "no such\nfile" },
+    ]);
+  });
+});

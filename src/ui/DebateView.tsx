@@ -141,6 +141,20 @@ export function DebateView(props: {
     [],
   );
 
+  // A working note removed from the running message: drop the lines after
+  // `toLength` so the renderer can write the body again.
+  const rewindTranscript = useCallback((toLength: number) => {
+    const current = transcriptLinesRef.current;
+    const removed = current.length - toLength;
+    if (removed <= 0) return;
+
+    const next = current.slice(0, toLength);
+    transcriptLinesRef.current = next;
+    setTranscriptLines(next);
+    // Mirror of `appendTranscript`: a reader scrolled up keeps the same lines in view.
+    setScrollOffset((offset) => (offset === 0 ? 0 : Math.max(0, offset - removed)));
+  }, []);
+
   useEffect(() => {
     if (!stdout) return;
     const onResize = () => {
@@ -165,6 +179,8 @@ export function DebateView(props: {
       write: appendTranscript,
       width: () => contentWidthFor(stdout?.columns ?? 80),
       onTail: setTail,
+      length: () => transcriptLinesRef.current.length,
+      rewind: rewindTranscript,
     });
     streamRef.current = stream;
 
@@ -173,6 +189,7 @@ export function DebateView(props: {
     };
     const onEntryStarted = (entry: TranscriptEntry) => stream.entryStarted(entry);
     const onChunk = (id: string, delta: string) => stream.chunk(id, delta);
+    const onOutputReset = (id: string, text: string) => stream.reset(id, text);
     const onEntryCompleted = (id: string, outcome: EntryOutcome) => stream.entryCompleted(id, outcome);
     const onTurnStart = (agent: AgentId) => {
       setThinkingAgent(agent);
@@ -216,6 +233,7 @@ export function DebateView(props: {
     session.on("entry", onEntry);
     session.on("entry-started", onEntryStarted);
     session.on("output-chunk", onChunk);
+    session.on("output-reset", onOutputReset);
     session.on("entry-completed", onEntryCompleted);
     session.on("turn-start", onTurnStart);
     session.on("turn-end", onTurnEnd);
@@ -239,6 +257,7 @@ export function DebateView(props: {
       session.off("entry", onEntry);
       session.off("entry-started", onEntryStarted);
       session.off("output-chunk", onChunk);
+      session.off("output-reset", onOutputReset);
       session.off("entry-completed", onEntryCompleted);
       session.off("turn-start", onTurnStart);
       session.off("turn-end", onTurnEnd);

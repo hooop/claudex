@@ -40,6 +40,8 @@ The topic is not restricted to architecture. Anything settled before code gets w
 
 **Full-screen terminal interface.** The header and input stay fixed while the transcript scrolls independently. Use the wheel or `↑`/`↓`, `Page Up`/`Page Down`, and `Home`/`End` to navigate; the complete transcript is archived in `.claudex/memory/transcripts/`.
 
+Each archived transcript may come with a `.trace.md` diagnostic file holding the agents' working notes and the full output of their tool calls. It is local, git-ignored like the rest of the transcripts, and can contain project data the agents read.
+
 **Long pastes.** A paste longer than 500 characters, or spanning several lines, appears in the input as a single `[Pasted text · N characters]` label. Its full text, line breaks included, is sent on Enter and shown in the transcript; the fixed header shows only the first lines of the topic, and `/topic` prints it in full.
 
 ## What leaves the machine

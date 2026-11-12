@@ -14,6 +14,7 @@ import type {
   Phase,
   SessionLifecycle,
   SuspensionReason,
+  TraceRecord,
   TranscriptEntry,
 } from "../types.js";
 import { Scheduler } from "./scheduler.js";
@@ -50,6 +51,7 @@ export class DebateSession extends TypedEmitter<SessionEvents> {
       onEntry: (entry) => this.emit("entry", entry),
       onEntryStarted: (entry) => this.emit("entry-started", entry),
       onOutputChunk: (entryId, delta) => this.emit("output-chunk", entryId, delta),
+      onOutputReset: (entryId, text) => this.emit("output-reset", entryId, text),
       onEntryCompleted: (entryId, outcome) => this.emit("entry-completed", entryId, outcome),
       onEntryUpdate: (entry) => this.emit("entry-update", entry),
       onTurnStart: (agent) => this.emit("turn-start", agent),
@@ -149,6 +151,10 @@ export class DebateSession extends TypedEmitter<SessionEvents> {
 
   snapshot(): readonly TranscriptEntry[] {
     return this.scheduler.snapshot();
+  }
+
+  trace(): readonly TraceRecord[] {
+    return this.scheduler.trace();
   }
 
   /**

@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { AutonomyBudget, TranscriptEntry } from "../types.js";
+import type { AutonomyBudget, TraceRecord, TranscriptEntry } from "../types.js";
 
 const MEMORY_DIR = ".claudex/memory";
 
@@ -216,6 +216,59 @@ export async function saveTranscript(
 
   const file = await writeExclusive(dir, `${stamp}-${slug}`, ".md", lines.join("\n"));
   return path.relative(cwd, file);
+}
+
+function fence(content: string): string {
+  // Reduced rather than spread: an output can hold more runs than a call accepts arguments.
+  const longest = (content.match(/`+/g) ?? []).reduce((max, run) => Math.max(max, run.length), 0);
+  return "`".repeat(Math.max(3, longest + 1));
+}
+
+/**
+ * Diagnostic companion of an archived transcript: the agents' working notes and
+ * the tool output the debate view no longer shows. Written as received (the
+ * scheduler already caps each output). Agent-authored text only goes inside
+ * fenced blocks; the tool label is flattened so it cannot open a new heading.
+ * Rejects on an existing file rather than overwriting it.
+ */
+export async function saveTrace(
+  cwd: string,
+  transcriptPath: string,
+  records: readonly TraceRecord[],
+): Promise<string | null> {
+  if (records.length === 0) return null;
+
+  const tracePath = `${transcriptPath.replace(/\.md$/u, "")}.trace.md`;
+  const lines = [
+    "# Diagnostic trace",
+    "",
+    `Working notes and tool output of the debate archived in ${path.basename(transcriptPath)}. ` +
+      "Local file, not part of the debate.",
+    "",
+  ];
+  for (const { agent, timestamp, event } of records) {
+    const head = `${new Date(timestamp).toISOString()} · ${agent.toUpperCase()}`;
+    if (event.kind === "note") {
+      lines.push(`## ${head} · note`, "");
+      const body = event.text;
+      const f = fence(body);
+      lines.push(f, body, f, "");
+      continue;
+    }
+    const label = event.label.replace(/\s+/gu, " ").trim();
+    const status = event.status === "success" ? "[ok]" : "[x]";
+    const exit = event.exitCode == null ? "" : ` (exit ${event.exitCode})`;
+    lines.push(`## ${head} · tool ${status} ${label}${exit}`, "");
+    if (event.output) {
+      const f = fence(event.output);
+      lines.push(f, event.output, f, "");
+    }
+  }
+
+  const absolute = path.join(cwd, tracePath);
+  await mkdir(path.dirname(absolute), { recursive: true });
+  await writeFile(absolute, lines.join("\n"), { encoding: "utf8", flag: "wx" });
+  return tracePath;
 }
 
 /**

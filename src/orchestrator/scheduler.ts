@@ -22,6 +22,8 @@ import type {
   Phase,
   SessionLifecycle,
   SuspensionReason,
+  TraceEvent,
+  TraceRecord,
   TranscriptEntry,
 } from "../types.js";
 import {
@@ -31,6 +33,7 @@ import {
   WAIT_HUMAN_MARKER,
 } from "../types.js";
 import { extractSignal } from "./markers.js";
+import { capTraceOutput } from "./trace.js";
 import type {
   AgentResult,
   DeliveryBlock,
@@ -62,6 +65,8 @@ export interface SchedulerCallbacks {
   onEntryStarted: (entry: TranscriptEntry) => void;
   /** The delta itself — what the agent just produced, not the text so far. */
   onOutputChunk: (entryId: string, delta: string) => void;
+  /** The entry's live body was rewritten (a note removed, or the result differs from the stream). */
+  onOutputReset: (entryId: string, text: string) => void;
   onEntryCompleted: (entryId: string, outcome: EntryOutcome) => void;
   onEntryUpdate: (entry: TranscriptEntry) => void;
   onTurnStart: (agent: AgentId) => void;
@@ -87,6 +92,8 @@ export class Scheduler {
   // ─────────────────────────────────────────────────────────────────────────
   readonly transcript: TranscriptEntry[] = [];
   phase: Phase = "debate";
+  // Diagnostic log kept next to the transcript, never delivered to an agent.
+  private readonly traceRecords: TraceRecord[] = [];
 
   // ─────────────────────────────────────────────────────────────────────────
   // Consensus and synthesis
@@ -431,6 +438,13 @@ export class Scheduler {
   /** Immutable point-in-time copy; valid for /save even while a turn runs. */
   snapshot(): readonly TranscriptEntry[] {
     return freezeTranscript(this.transcript);
+  }
+
+  /** Immutable point-in-time copy of the session trace. */
+  trace(): readonly TraceRecord[] {
+    return Object.freeze(
+      this.traceRecords.map((record) => Object.freeze({ ...record, event: Object.freeze({ ...record.event }) })),
+    );
   }
 
   /**
@@ -834,6 +848,9 @@ export class Scheduler {
     const entry = this.addEntry({ from: agent, kind: "message", text: "" }, { streaming: true });
     this.currentEntry = entry;
     let liveText = "";
+    // Only a turn with notes can end with a result that differs from what was
+    // streamed for a reason the view must show; without notes it behaves as before.
+    let hadNotes = false;
     let lastActivity = "waiting:running";
 
     const emitActivity = (activity: AgentActivity) => {
@@ -843,6 +860,26 @@ export class Scheduler {
       lastActivity = signature;
       this.callbacks.onActivity(agent, activity);
     };
+
+    // Notes are separated from the answer only in debate turns; implementation
+    // turns keep them in the message, as before (spec D5).
+    const onNote =
+      this.phase === "debate"
+        ? (note: string, streamed: boolean) => {
+            if (!this.isRunLive(runToken)) return;
+            hadNotes = true;
+            const text = note.trim();
+            if (text !== "") this.recordTrace(agent, { kind: "note", text });
+            // The raw note, paragraph break included, is what was streamed.
+            if (streamed && liveText.endsWith(note)) {
+              liveText = liveText.slice(0, liveText.length - note.length);
+              entry.text = liveText;
+              this.callbacks.onOutputReset(entry.id, liveText);
+              this.callbacks.onEntryUpdate(entry);
+            }
+            if (text !== "") emitActivity({ kind: "note", status: "running", label: text });
+          }
+        : undefined;
 
     try {
       const result = await this.agents[agent].send(message, {
@@ -858,6 +895,10 @@ export class Scheduler {
           this.callbacks.onEntryUpdate(entry);
         },
         onActivity: emitActivity,
+        ...(onNote ? { onNote } : {}),
+        onTrace: (event) => {
+          if (this.isRunLive(runToken)) this.recordTrace(agent, event);
+        },
         onContextUsage: (usage) => {
           if (this.isRunLive(runToken)) this.callbacks.onContextUsage(agent, usage);
         },
@@ -868,7 +909,7 @@ export class Scheduler {
       });
 
       if (!this.isRunLive(runToken)) return "stop";
-      return this.handleJobResult(job, entry, result);
+      return this.handleJobResult(job, entry, result, hadNotes ? liveText : null);
     } catch (err) {
       if (!this.isRunLive(runToken)) return "stop";
       // Unexpected exception (shouldn't happen with new contract)
@@ -892,7 +933,13 @@ export class Scheduler {
     }
   }
 
-  private handleJobResult(job: DeliveryJob, entry: TranscriptEntry, result: AgentResult): JobOutcome {
+  private handleJobResult(
+    job: DeliveryJob,
+    entry: TranscriptEntry,
+    result: AgentResult,
+    /** What the live view shows, when the turn had notes; `null` otherwise. */
+    noteTrimmedText: string | null,
+  ): JobOutcome {
     const agent = job.agent;
     const jobEpoch = job.epoch;
 
@@ -901,6 +948,10 @@ export class Scheduler {
         // Only an answered turn proves the agent read the rules it carried. A
         // failed one may be replaced by a new delivery, which must bring them.
         this.instructed[agent] = true;
+
+        // The adapter's fallback (every segment, when the answer is empty) was
+        // not what the live view last showed, so the view starts over from it.
+        this.resetOutputIfChanged(entry, noteTrimmedText, result.text);
 
         // Parse the single shared protocol grammar before changing any causal
         // state. The visible body never includes a recognised marker.
@@ -1031,6 +1082,7 @@ export class Scheduler {
         // Show partial text in transcript if any
         if (result.partialText) {
           entry.text = result.partialText;
+          this.resetOutputIfChanged(entry, noteTrimmedText, result.partialText);
         }
         entry.kind = "error";
         entry.text += `\n\nError: ${result.message}`;
@@ -1047,6 +1099,7 @@ export class Scheduler {
 
         if (result.partialText) {
           entry.text = result.partialText;
+          this.resetOutputIfChanged(entry, noteTrimmedText, result.partialText);
         }
         entry.kind = "error";
         entry.text += "\n\n(Cancelled)";
@@ -1055,6 +1108,16 @@ export class Scheduler {
 
         return "cancelled";
       }
+    }
+  }
+
+  /**
+   * After a turn with notes, the live view may no longer match the text the
+   * entry keeps (the adapter's fallback, or a partial text): show the latter.
+   */
+  private resetOutputIfChanged(entry: TranscriptEntry, noteTrimmedText: string | null, text: string): void {
+    if (noteTrimmedText !== null && text !== noteTrimmedText) {
+      this.callbacks.onOutputReset(entry.id, text);
     }
   }
 
@@ -1377,6 +1440,9 @@ export class Scheduler {
           this.callbacks.onEntryUpdate(entry);
         },
         onActivity: emitActivity,
+        onTrace: (event) => {
+          if (this.isRunLive(runToken)) this.recordTrace(agent, event);
+        },
         onContextUsage: (usage) => {
           if (this.isRunLive(runToken)) this.callbacks.onContextUsage(agent, usage);
         },
@@ -1495,6 +1561,14 @@ export class Scheduler {
     this.paused = reason !== null;
     this.callbacks.onSuspensionChange(reason);
     if (wasPaused !== this.paused) this.callbacks.onPausedChange(this.paused);
+  }
+
+  private recordTrace(agent: AgentId, event: TraceEvent): void {
+    const recorded =
+      event.kind === "tool" && event.output !== undefined
+        ? { ...event, output: capTraceOutput(event.output) }
+        : event;
+    this.traceRecords.push({ agent, timestamp: Date.now(), event: recorded });
   }
 
   private isRunLive(token: symbol): boolean {
@@ -1626,6 +1700,7 @@ function activitySignature(activity: AgentActivity): string {
   if (activity.kind === "waiting" || activity.kind === "responding") {
     return `${activity.kind}:${activity.status}`;
   }
+  if (activity.kind === "note") return `note:${activity.status}:${activity.label}`;
   return [
     activity.kind,
     activity.status,
@@ -1668,7 +1743,9 @@ export const CONSENSUS_INSTRUCTIONS = (self: string, other: string) =>
     "Write your debate messages in the language of the human's messages; if you cannot determine or use that language, write in English. Everything else you write (code, code comments, commit messages, and the content of any file, including during the implementation phase) is in English, whatever the language of the conversation.",
     "Before proposing an architecture or a decision, read `.claudex/memory/decisions.md` (decisions already settled) and `.claudex/memory/limits.md` (constraints and things explicitly ruled out) if they exist, and do not call a settled decision into question without saying so explicitly and without a new reason.",
     "Do not use any emoji or decorative pictogram. For a status, use only ASCII forms such as [ok], [x] or [!].",
-    "A claim about the real behaviour of code (correct, buggy, fast) must be backed up. If you verified it by running something, give the exact command and its raw output. If you cannot run it, ask the other to verify it, and do not accept an empirical claim that comes with neither its command nor its output. Demanding the evidence is as much part of your role as providing it.",
+    "A claim about the real behaviour of code (correct, buggy, fast) must be backed up. If you verified it by running something, give the exact command and its raw output, or at least the relevant lines of it, keeping enough context to read them and keeping errors and meaningful exit codes. An excerpt must never misrepresent the overall result (for example, quoting passing tests while others failed): say what you left out. If you cannot run it, ask the other to verify it, and do not accept an empirical claim that comes with neither its command nor its output. Demanding the evidence is as much part of your role as providing it.",
+    "Argue as briefly as possible, but as precisely as necessary. Aim for about 200 words; this is a target, not a limit: go further when a technical demonstration needs it. Put your position or main objection first. Skip introductions, do not restate or summarise the other's message, do not repeat what is already agreed, and do not end with a recap that adds nothing. Prefer one or two important arguments per message and keep the others for later turns. Use headings or lists only when they make the message easier to follow.",
+    "Write your message after your last tool call. Text written before a tool call is a private working note that neither the human nor the other agent sees in the debate, so your message must contain everything needed to understand your argument and check your conclusions.",
     `End every answer with a line exactly equal to "${CONTINUE_MARKER}" if you still have a new objection or question for ${other}, to "${CONSENSUS_MARKER}" if you have nothing more to add, the current proposal suits you, and you have examined at least one serious alternative and can say why it is worse, or to "${WAIT_HUMAN_MARKER}" when information from the human is truly essential before going on.`,
     `"${NO_TOPIC_MARKER}" is reserved for the very first qualification and only when the input really contains no topic to debate; never use it for an incomplete topic, which calls for "${WAIT_HUMAN_MARKER}".`,
   ].join(" ") +

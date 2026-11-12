@@ -8,6 +8,7 @@ import type { CodingAgent } from "../agents/types.js";
 import {
   appendDevlog,
   rememberAutonomyBudget,
+  saveTrace,
   saveTranscript,
   sessionTitle,
 } from "../memory/store.js";
@@ -17,6 +18,20 @@ import { getProjectStatus } from "../util/projectStatus.js";
 import { WelcomeScreen } from "./components/WelcomeScreen.js";
 import { DebateView } from "./DebateView.js";
 import { DEFAULT_HEADER_ANIMATION, type HeaderAnimationId } from "./headerArt.js";
+
+/** A trace failure must never undo the transcript save; it only adds to the notice. */
+async function saveTraceNotice(
+  cwd: string,
+  transcriptPath: string,
+  session: DebateSession,
+): Promise<string> {
+  try {
+    await saveTrace(cwd, transcriptPath, session.trace());
+    return "";
+  } catch (error) {
+    return ` (trace not saved: ${error instanceof Error ? error.message : String(error)})`;
+  }
+}
 
 export type TerminalDestination = "new" | "quit";
 
@@ -118,9 +133,13 @@ export function Root(props: {
           pending.stage = "archive";
         }
 
+        let traceNotice = "";
         if (pending.archive) {
           try {
-            await saveTranscript(cwd, pending.topic, pending.snapshot ?? [], { completeness: "stable" });
+            const savedTo = await saveTranscript(cwd, pending.topic, pending.snapshot ?? [], {
+              completeness: "stable",
+            });
+            traceNotice = await saveTraceNotice(cwd, savedTo, pending.session);
           } catch (error) {
             const detail = error instanceof Error ? error.message : String(error);
             const message =
@@ -134,7 +153,7 @@ export function Root(props: {
         finishTerminal(pending);
         return {
           ok: true,
-          message: pending.archive ? "Session stopped and archived." : "Entry without a topic closed.",
+          message: pending.archive ? `Session stopped and archived.${traceNotice}` : "Entry without a topic closed.",
         };
       })().finally(() => {
         terminalOperationRef.current = null;
@@ -251,7 +270,10 @@ export function Root(props: {
         const snapshot = current.snapshot();
         const saveOperation = saveTranscript(cwd, topic, snapshot, { completeness: "partial" })
           .then<CoordinatorResponse, CoordinatorResponse>(
-            (savedTo) => ({ ok: true, message: `Partial snapshot saved to ${savedTo}` }),
+            async (savedTo) => ({
+              ok: true,
+              message: `Partial snapshot saved to ${savedTo}${await saveTraceNotice(cwd, savedTo, current)}`,
+            }),
             (error: unknown) => ({
               ok: false,
               message: `Snapshot failed: ${error instanceof Error ? error.message : String(error)}`,

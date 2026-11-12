@@ -5,6 +5,7 @@ import type {
   AgentId,
   PermissionDecision,
   PermissionRequest,
+  ToolTraceEvent,
 } from "../types.js";
 
 export const AUTO_MODEL_LABEL = "auto (detected on the 1st turn)";
@@ -17,6 +18,10 @@ export interface AgentSendOptions {
   onContextUsage?: (usage: AgentContextUsage) => void;
   /** Ephemeral tool/command state for the single-line dynamic footer. */
   onActivity?: (activity: AgentActivity) => void;
+  /** Separation is active only when this is passed. `streamed` says whether the note's text already went through onTextDelta, as the suffix since the last boundary. */
+  onNote?: (note: string, streamed: boolean) => void;
+  /** A finished tool or command, with its full output when the adapter has it. */
+  onTrace?: (event: ToolTraceEvent) => void;
   /**
    * Permission request callback. The toolUseId should come from the SDK when available.
    */

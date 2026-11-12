@@ -6,6 +6,7 @@ import { type DebateSandbox, debateQueryOptions } from "./debateOptions.js";
 import { removeEngineLeftovers, snapshotEngineLeftovers } from "./engineLeftovers.js";
 import { SETTINGS_CHANGED_MESSAGE, type SessionGuard } from "./projectSettings.js";
 import { AUTO_MODEL_LABEL, type AgentSendOptions, type CodingAgent } from "./types.js";
+import { composeTurnText, type TurnSegment } from "./turnText.js";
 
 /**
  * Full tool access for implementation phase.
@@ -98,12 +99,23 @@ export class ClaudeAgent implements CodingAgent {
       options.signal.addEventListener("abort", externalAbort, { once: true });
     }
 
+    // `text` is everything said so far (notes included); `segments` plus
+    // `currentSegment` split it at each tool use, for the note separation.
     let text = "";
+    const segments: TurnSegment[] = [];
+    let currentSegment = "";
     let latestAssistantContext: AssistantContext | null = null;
     let streamedSinceAssistant = false;
     let assistantError: string | undefined;
     const activeTools = new Map<string, RunningTool>();
     const pendingToolInputs = new Map<number, PendingToolInput>();
+
+    const closeSegmentAsNote = (streamed: boolean) => {
+      if (!options.onNote || currentSegment === "") return;
+      segments.push({ kind: "note", text: currentSegment });
+      options.onNote(currentSegment, streamed);
+      currentSegment = "";
+    };
 
     const emitLatestRunningTool = () => {
       const latest = [...activeTools.values()].at(-1);
@@ -124,10 +136,17 @@ export class ClaudeAgent implements CodingAgent {
       emitLatestRunningTool();
     };
 
-    const completeTool = (id: string, failed: boolean) => {
+    const completeTool = (id: string, failed: boolean, output: string) => {
       const completed = activeTools.get(id);
       if (!completed) return;
       activeTools.delete(id);
+
+      options.onTrace?.({
+        kind: "tool",
+        label: completed.activity.label,
+        status: failed ? "failure" : "success",
+        output,
+      });
 
       if (activeTools.size > 0) {
         emitLatestRunningTool();
@@ -229,11 +248,13 @@ export class ClaudeAgent implements CodingAgent {
           if (delta) {
             streamedSinceAssistant = true;
             text += delta;
+            currentSegment += delta;
             options.onTextDelta?.(delta);
           }
 
           if (event?.type === "content_block_start" && event.content_block?.type === "tool_use") {
             const tool = event.content_block;
+            closeSegmentAsNote(true);
             pendingToolInputs.set(event.index, {
               id: tool.id,
               name: tool.name,
@@ -255,9 +276,17 @@ export class ClaudeAgent implements CodingAgent {
         if (msg.type === "assistant") {
           latestAssistantContext = assistantContextOf(msg) ?? latestAssistantContext;
           const fullText = extractAssistantText(msg);
+          // Text from earlier non-streamed messages is a note once a tool use follows
+          // it; it already went through onTextDelta, hence streamed.
+          if (!streamedSinceAssistant && extractAssistantToolUses(msg).length > 0) closeSegmentAsNote(true);
           if (fullText && !streamedSinceAssistant) {
             text += fullText;
-            options.onTextDelta?.(fullText);
+            const answer = options.onNote ? splitNonStreamedText(msg, (note) => {
+              segments.push({ kind: "note", text: note });
+              options.onNote?.(note, false);
+            }) : fullText;
+            currentSegment += answer;
+            if (answer) options.onTextDelta?.(answer);
           }
           streamedSinceAssistant = false;
 
@@ -270,7 +299,7 @@ export class ClaudeAgent implements CodingAgent {
         }
 
         if (msg.type === "user") {
-          for (const result of extractToolResults(msg)) completeTool(result.id, result.failed);
+          for (const result of extractToolResults(msg)) completeTool(result.id, result.failed, result.output);
         }
 
         if (msg.type === "result") {
@@ -308,7 +337,9 @@ export class ClaudeAgent implements CodingAgent {
       }
 
       // Success: complete text with no errors
-      return { kind: "success", text };
+      if (!options.onNote) return { kind: "success", text };
+      if (currentSegment !== "") segments.push({ kind: "answer", text: currentSegment });
+      return { kind: "success", text: composeTurnText(segments) };
     } catch (err) {
       if (abortController.signal.aborted) {
         return { kind: "cancelled", partialText: text || undefined };
@@ -340,6 +371,7 @@ interface ContentBlock {
   input?: unknown;
   tool_use_id?: string;
   is_error?: boolean;
+  content?: unknown;
 }
 
 type ToolActivity = Extract<AgentActivity, { kind: "command" | "tool" }>;
@@ -448,12 +480,40 @@ function extractAssistantToolUses(msg: unknown): Array<{ id: string; name: strin
   );
 }
 
-function extractToolResults(msg: unknown): Array<{ id: string; failed: boolean }> {
+/**
+ * Text blocks before a tool use are working notes, reported through `onNote`;
+ * the returned text, after the last tool use, is the answer part.
+ */
+function splitNonStreamedText(msg: unknown, onNote: (note: string) => void): string {
+  const content = (msg as { message?: { content?: unknown } }).message?.content;
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  let pending = "";
+  for (const block of content as ContentBlock[]) {
+    if (block.type === "text" && typeof block.text === "string") pending += block.text;
+    else if (block.type === "tool_use") {
+      if (pending !== "") onNote(pending);
+      pending = "";
+    }
+  }
+  return pending;
+}
+
+function toolResultText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return (content as ContentBlock[])
+    .filter((block) => block.type === "text" && typeof block.text === "string")
+    .map((block) => block.text)
+    .join("\n");
+}
+
+function extractToolResults(msg: unknown): Array<{ id: string; failed: boolean; output: string }> {
   const content = (msg as { message?: { content?: unknown } }).message?.content;
   if (!Array.isArray(content)) return [];
   return (content as ContentBlock[]).flatMap((block) =>
     block.type === "tool_result" && block.tool_use_id
-      ? [{ id: block.tool_use_id, failed: block.is_error === true }]
+      ? [{ id: block.tool_use_id, failed: block.is_error === true, output: toolResultText(block.content) }]
       : [],
   );
 }

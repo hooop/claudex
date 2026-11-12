@@ -362,3 +362,141 @@ describe("TranscriptStream — frozen lines", () => {
     expect(plain().split("\n")).not.toContain("│ ");
   });
 });
+
+describe("TranscriptStream — reset", () => {
+  /** A writer that keeps whole lines, like `DebateView`, so it can rewind. */
+  function rewindingHarness(width = 60) {
+    const lines: string[] = [];
+    const tails: (TailView | null)[] = [];
+    const stream = new TranscriptStream({
+      write: (data) => lines.push(...data.slice(0, -1).split("\n")),
+      width: () => width,
+      onTail: (tail) => tails.push(tail),
+      intervalMs: 0,
+      length: () => lines.length,
+      rewind: (toLength) => {
+        lines.length = toLength;
+      },
+    });
+    const plainLines = () => lines.map((line) => line.replace(/\u001b\[[0-9;]*m/g, ""));
+    return { stream, lines, tails, plainLines };
+  }
+
+  it("removes a note from the running entry", () => {
+    const { stream, plainLines, tails } = rewindingHarness();
+    const e = entry({ from: "claude", kind: "message" });
+    stream.entryStarted(e);
+    stream.chunk(e.id, "Looking around.\nStill looking");
+    stream.flush();
+    stream.reset(e.id, "");
+    expect(tails.at(-1)).toBeNull();
+    stream.chunk(e.id, "Answer.");
+    stream.entryCompleted(e.id, { status: "ok", signal: "continue" });
+
+    const lines = plainLines();
+    expect(lines[0]).toContain("Claude");
+    expect(lines[1]).toBe("│");
+    expect(lines[2]).toBe("│ Answer.");
+    expect(lines.join("\n")).not.toContain("Looking around.");
+    expect(lines.join("\n")).not.toContain("Still looking");
+  });
+
+  it("keeps interleaved lines after a reset", () => {
+    const { stream, plainLines } = rewindingHarness();
+    const e = entry({ from: "claude", kind: "message" });
+    stream.entryStarted(e);
+    stream.chunk(e.id, "Note line\n");
+    stream.entry(entry({ from: "human", kind: "message", text: "Please hurry." }));
+    stream.reset(e.id, "");
+    stream.chunk(e.id, "Answer.\n");
+    stream.entryCompleted(e.id, { status: "ok", signal: "continue" });
+
+    const lines = plainLines();
+    const text = lines.join("\n");
+    expect(text).not.toContain("Note line");
+    expect(text.split("Please hurry.").length - 1).toBe(1);
+    const header = lines.findIndex((line) => line.includes("Claude"));
+    const intervention = lines.findIndex((line) => line.includes("Please hurry."));
+    const answer = lines.indexOf("│ Answer.");
+    expect(header).toBe(0);
+    expect(intervention).toBeGreaterThan(header);
+    expect(answer).toBeGreaterThan(intervention);
+  });
+
+  it("re-renders the new body before the interleaved lines", () => {
+    const { stream, plainLines } = rewindingHarness();
+    const e = entry({ from: "claude", kind: "message" });
+    stream.entryStarted(e);
+    stream.chunk(e.id, "Kept part. Note");
+    stream.raw(["--- frozen ---"]);
+    stream.reset(e.id, "Kept part.");
+    stream.entryCompleted(e.id, { status: "ok", signal: "continue" });
+
+    const lines = plainLines();
+    expect(lines.slice(2, 4)).toEqual(["│ Kept part.", "--- frozen ---"]);
+    expect(lines.join("\n")).not.toContain("Note");
+  });
+
+  it("holds back a protocol marker in the reset text until the verdict", () => {
+    const { stream, plainLines } = rewindingHarness();
+    const e = entry({ from: "codex", kind: "message" });
+    stream.entryStarted(e);
+    stream.chunk(e.id, "Draft.\n");
+    stream.reset(e.id, "Final.\n<<CONTINUE>>");
+    expect(plainLines().join("\n")).not.toContain("<<CONTINUE>>");
+    stream.entryCompleted(e.id, { status: "ok", signal: "continue" });
+
+    const text = plainLines().join("\n");
+    expect(text).toContain("│ Final.");
+    expect(text).not.toContain("Draft.");
+    expect(text).not.toContain("<<CONTINUE>>");
+  });
+
+  it("forgets the interleaved lines once the entry is complete", () => {
+    const { stream, plainLines } = rewindingHarness();
+    const first = entry({ from: "claude", kind: "message" });
+    stream.entryStarted(first);
+    stream.raw(["--- once ---"]);
+    stream.entryCompleted(first.id, { status: "ok", signal: "continue" });
+    const second = entry({ from: "codex", kind: "message" });
+    stream.entryStarted(second);
+    stream.chunk(second.id, "Note\n");
+    stream.reset(second.id, "");
+    stream.entryCompleted(second.id, { status: "ok", signal: "continue" });
+
+    expect(plainLines().filter((line) => line === "--- once ---")).toHaveLength(1);
+    expect(plainLines().join("\n")).not.toContain("Note");
+  });
+
+  it("ignores a reset for an inactive entry", () => {
+    const { stream, plainLines } = rewindingHarness();
+    const done = entry({ from: "claude", kind: "message" });
+    stream.entryStarted(done);
+    stream.chunk(done.id, "Finished.\n");
+    stream.entryCompleted(done.id, { status: "ok", signal: "continue" });
+    const running = entry({ from: "codex", kind: "message" });
+    stream.entryStarted(running);
+    stream.chunk(running.id, "Running.\n");
+    stream.flush();
+    const before = plainLines();
+
+    stream.reset(done.id, "");
+    stream.reset("unknown", "");
+
+    expect(plainLines()).toEqual(before);
+  });
+
+  it("does nothing without a rewinding writer", () => {
+    const run = (withReset: boolean) => {
+      const { stream, output } = harness();
+      const e = entry({ id: "fixed", from: "claude", kind: "message" });
+      stream.entryStarted(e);
+      stream.chunk(e.id, "Looking.\n");
+      if (withReset) stream.reset(e.id, "");
+      stream.chunk(e.id, "Answer.\n");
+      stream.entryCompleted(e.id, { status: "ok", signal: "continue" });
+      return output();
+    };
+    expect(run(true)).toBe(run(false));
+  });
+});

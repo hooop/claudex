@@ -29,6 +29,8 @@ export function describeActivity(activity: AgentActivity): string {
   if (activity.kind === "waiting") return "preparing its answer…";
   if (activity.kind === "responding") return "answering…";
 
+  if (activity.kind === "note") return flattenActivityLabel(activity.label) || "working…";
+
   const label = flattenActivityLabel(activity.label) || (activity.kind === "command" ? "command" : "tool");
   const duration = formatDuration(activity.durationMs);
 
