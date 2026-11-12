@@ -2,7 +2,7 @@ import { EventEmitter } from "node:events";
 import { render } from "ink";
 import { act } from "react";
 import { describe, expect, it, vi } from "vitest";
-import { WELCOME_COMMANDS, type CommandSuggestion } from "../CommandPalette.js";
+import { DEBATE_COMMANDS, matchingCommands, WELCOME_COMMANDS, type CommandSuggestion } from "../CommandPalette.js";
 import {
   INPUT_BACKGROUND_COLOR,
   INPUT_BAR_MIN_ROWS,
@@ -111,7 +111,7 @@ async function ready(terminal: ReturnType<typeof fakeTerminal>): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 10));
 }
 
-describe("InputBar — navigation contextuelle", () => {
+describe("InputBar — contextual navigation", () => {
   it("opens and filters the palette as soon as the input starts with a slash", async () => {
     const onPaletteChange = vi.fn();
     const terminal = mount(undefined, undefined, WELCOME_COMMANDS, onPaletteChange);
@@ -125,6 +125,10 @@ describe("InputBar — navigation contextuelle", () => {
     expect(output).toContain("/model codex <name>");
     expect(output).not.toContain("/help —");
     expect(onPaletteChange).toHaveBeenLastCalledWith(true);
+    // The debate palette offers /topic under its new name.
+    expect(matchingCommands(DEBATE_COMMANDS, "/to")).toEqual([
+      { completion: "/topic", usage: "/topic", description: "show the full topic" },
+    ]);
     terminal.app.unmount();
   });
 
@@ -278,7 +282,7 @@ describe("InputBar — navigation contextuelle", () => {
   });
 });
 
-describe("InputBar — collage", () => {
+describe("InputBar — paste", () => {
   it("keeps every chunk of a raw paste that arrived in one block", async () => {
     const terminal = mount();
     await ready(terminal);

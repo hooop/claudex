@@ -151,7 +151,7 @@ class EntryPipeline {
    * The ASCII sanitizer is flushed too: it withholds a trailing digit or `#` in
    * case the next chunk turns it into a keycap emoji, and a line that is about to
    * become scrollback can no longer receive it. Left pending, that character
-   * reappears at the head of the next committed line — `budget de` / `12 euros`.
+   * reappears at the head of the next committed line — `budget of` / `12 dollars`.
    */
   interrupt(): string[] {
     const held = this.ascii ? this.ascii.flush() : "";
