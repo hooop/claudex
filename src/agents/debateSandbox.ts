@@ -6,8 +6,8 @@ import { CREDENTIAL_READ_DENY, type DebateSandbox } from "./debateOptions.js";
 // Same idea as Codex's default shell environment policy, which drops variables
 // whose name contains KEY, SECRET or TOKEN. A heuristic: a secret held in a
 // variable named otherwise stays visible. Not PWD (it would hide the shell's
-// $PWD) and not PAT (it matches PATH); AUTH skips AUTHOR (GIT_AUTHOR_NAME).
-const SECRET_ENV_NAME = /KEY|SECRET|TOKEN|PASSWORD|CREDENTIAL|AUTH(?!OR)|DSN|DATABASE_URL/i;
+// $PWD) and not PAT (it matches PATH); AUTH skips AUTHOR (GIT_AUTHOR_NAME) but not AUTHORIZATION.
+const SECRET_ENV_NAME = /KEY|SECRET|TOKEN|PASSWORD|CREDENTIAL|AUTH(?!OR(?!IZ))|DSN|DATABASE_URL/i;
 
 async function realpathOrNull(path: string): Promise<string | null> {
   try {

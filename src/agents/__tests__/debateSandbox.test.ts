@@ -76,6 +76,13 @@ it("variables secrètes : AUTH, DSN et DATABASE_URL en plus, mais ni PWD, ni PAT
   expect(result?.secretEnvNames).toEqual(["DATABASE_URL", "OAUTH_CODE", "SENTRY_DSN", "XAUTH_TOKEN"]);
 });
 
+it("variables secrètes : AUTHORIZATION est caché, GIT_COMMITTER_NAME et GIT_AUTHOR_EMAIL restent visibles", async () => {
+  const { dir } = tempProject();
+  const env = { HTTP_AUTHORIZATION: "Bearer x", AUTHORIZATION_HEADER: "x", GIT_AUTHOR_EMAIL: "e", GIT_COMMITTER_NAME: "n" };
+  const result = await resolveDebateSandbox(dir, "darwin", "/h", env);
+  expect(result?.secretEnvNames).toEqual(["AUTHORIZATION_HEADER", "HTTP_AUTHORIZATION"]);
+});
+
 it("variables secrètes : noms reconnus sans tenir compte de la casse, triés", async () => {
   const { dir } = tempProject();
   const env = { github_token: "x", MY_API_KEY: "x", DB_PASSWORD: "x", PATH: "/bin", HOME: "/h", AWS_SECRET: "x", GIT_CREDENTIAL: "x" };
