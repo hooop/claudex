@@ -204,7 +204,7 @@ function entryBody(entry: TranscriptEntry, style: EntryStyle, width: number): st
 }
 
 function isInitialSubject(entry: TranscriptEntry): boolean {
-  return entry.from === "system" && entry.kind === "system" && entry.text.startsWith("Sujet :");
+  return entry.from === "system" && entry.kind === "system" && entry.text.startsWith("Topic:");
 }
 
 export class TranscriptStream {

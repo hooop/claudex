@@ -340,7 +340,7 @@ describe("DebateView — viewport plein écran", () => {
     await tick();
 
     const output = t.chunks.join("");
-    expect(output).toContain("Sujet : Sujet de test");
+    expect(output).toContain("Topic: Sujet de test");
     expect(output).toContain("quelques mots");
 
     t.app.unmount();
@@ -428,8 +428,8 @@ describe("DebateView — viewport plein écran", () => {
     await tick();
     const output = t.chunks.join("");
     expect(output.split("\u25b2 Claudex").length - 1).toBe(0);
-    expect(output).toContain("Sujet : Sujet de test");
-    expect(output).not.toContain(":: Sujet : Sujet de test");
+    expect(output).toContain("Topic: Sujet de test");
+    expect(output).not.toContain(":: Topic: Sujet de test");
 
     const footerFrame = [...t.chunks]
       .reverse()
@@ -482,7 +482,7 @@ describe("DebateView — viewport plein écran", () => {
     await vi.waitFor(() => expect(t.agents.claude.pending).toBe(true));
     t.chunks.length = 0;
 
-    await press(t, "/sujet");
+    await press(t, "/topic");
     await press(t, "\r");
 
     await vi.waitFor(() => {
@@ -523,7 +523,7 @@ describe("helpers d'amorçage", () => {
 
 describe("sujet dans le header", () => {
   it("laisse un sujet court tel quel", () => {
-    expect(topicHeaderLines("Sujet de test", 60)).toEqual(["Sujet : Sujet de test"]);
+    expect(topicHeaderLines("Sujet de test", 60)).toEqual(["Topic: Sujet de test"]);
   });
 
   it("borne un long sujet à trois lignes qui renvoient vers /sujet", () => {
@@ -535,7 +535,7 @@ describe("sujet dans le header", () => {
   });
 
   it("garde un sujet d'exactement trois lignes sans renvoi", () => {
-    const lines = topicHeaderLines("x".repeat(60 * 3 - "Sujet : ".length), 60);
+    const lines = topicHeaderLines("x".repeat(60 * 3 - "Topic: ".length), 60);
 
     expect(lines).toHaveLength(3);
     expect(lines.join("")).not.toContain("/sujet");
@@ -543,7 +543,7 @@ describe("sujet dans le header", () => {
 
   it("affiche un sujet multiligne sur une seule ligne logique", () => {
     expect(topicHeaderLines("première\nseconde\r\n\ttroisième", 60)).toEqual([
-      "Sujet : première seconde troisième",
+      "Topic: première seconde troisième",
     ]);
   });
 });

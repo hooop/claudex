@@ -713,7 +713,7 @@ function AnimatedHeaderLine(props: {
 }
 
 function isTopicEntry(entry: TranscriptEntry): boolean {
-  return entry.from === "system" && entry.kind === "system" && entry.text.startsWith("Sujet :");
+  return entry.from === "system" && entry.kind === "system" && entry.text.startsWith("Topic:");
 }
 
 const TOPIC_HEADER_MAX_LINES = 3;
@@ -725,7 +725,7 @@ const TOPIC_HEADER_MORE = "… /sujet pour le voir en entier";
  * in full instead.
  */
 export function topicHeaderLines(topic: string, width: number): string[] {
-  const lines = wrapAll(`Sujet : ${topic.trim().replace(/\s+/gu, " ")}`, width);
+  const lines = wrapAll(`Topic: ${topic.trim().replace(/\s+/gu, " ")}`, width);
   if (lines.length <= TOPIC_HEADER_MAX_LINES) return lines;
   const kept = lines.slice(0, TOPIC_HEADER_MAX_LINES - 1);
   const overflow = lines.slice(TOPIC_HEADER_MAX_LINES - 1).join(" ");

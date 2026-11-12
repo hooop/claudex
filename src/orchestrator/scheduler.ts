@@ -181,16 +181,16 @@ export class Scheduler {
    * and therefore does not consume the autonomy budget.
    */
   async start(topic: string): Promise<void> {
-    this.assertOpen("démarrer un sujet");
+    this.assertOpen("start a topic");
     if (this.topicState !== "not-started") {
-      throw new Error("Cette session possède déjà un sujet.");
+      throw new Error("This session already has a topic.");
     }
 
     const trimmed = topic.trim();
     if (!trimmed) return;
     this.topic = trimmed;
     this.topicState = "provisional";
-    this.addEntry({ from: "system", kind: "system", text: `Sujet : ${trimmed}` });
+    this.addEntry({ from: "system", kind: "system", text: `Topic: ${trimmed}` });
     this.enqueueProvisionalValidation();
     await this.ensureDraining();
   }
@@ -207,7 +207,7 @@ export class Scheduler {
       this.incrementEpoch();
       if (this.provisionalWasNonTopic) {
         // The previous entry held no subject at all, so this message is not a
-        // clarification of it — it replaces it. Keeping "Coucou" as the subject
+        // clarification of it — it replaces it. Keeping "Hello" as the subject
         // and appending the real one underneath would qualify the wrong text.
         this.topic = text.trim() || this.topic;
         this.provisionalClarifications = [];
@@ -315,7 +315,7 @@ export class Scheduler {
   }
 
   setAutonomyBudget(budget: AutonomyBudget): void {
-    this.assertOpen("configurer l'autonomie");
+    this.assertOpen("configure autonomy");
     validateAutonomyBudget(budget);
     this.autonomyBudget = budget;
     this.resetAutonomyWindow();
@@ -337,16 +337,16 @@ export class Scheduler {
    * Begin implementation phase.
    */
   beginImplementation(): void {
-    this.assertOpen("démarrer l'implémentation");
+    this.assertOpen("start the implementation");
     if (this.topicState !== "accepted") {
-      throw new Error("Le sujet doit être validé avant de démarrer l'implémentation.");
+      throw new Error("The topic must be validated before the implementation can start.");
     }
     if (this.phase === "implementation") return;
     this.phase = "implementation";
     this.addEntry({
       from: "system",
       kind: "system",
-      text: "Phase d'implémentation démarrée : accès en écriture accordé aux deux agents. Rien ne se lance tout seul — désigne qui code avec /claude <instruction> ou /codex <instruction>.",
+      text: "Implementation phase started: both agents have write access. Nothing starts on its own; pick who codes with /claude <instruction> or /codex <instruction>.",
     });
     this.callbacks.onPhaseChange(this.phase);
   }
@@ -357,8 +357,8 @@ export class Scheduler {
    * entries, without touching phase or write access.
    */
   recordHandoffGenerated(path: string): void {
-    this.assertOpen("enregistrer le handoff");
-    this.addEntry({ from: "system", kind: "system", text: `Handoff généré : ${path}` });
+    this.assertOpen("record the handoff");
+    this.addEntry({ from: "system", kind: "system", text: `Handoff generated: ${path}` });
   }
 
   /**
@@ -383,9 +383,9 @@ export class Scheduler {
    * Set the model for an agent.
    */
   setModel(agent: AgentId, model: string): void {
-    this.assertOpen("changer de modèle");
+    this.assertOpen("change the model");
     this.agents[agent].setModel(model);
-    this.addEntry({ from: "system", kind: "system", text: `${agent} → modèle : ${model}` });
+    this.addEntry({ from: "system", kind: "system", text: `${agent} → model: ${model}` });
   }
 
   /**
@@ -480,7 +480,7 @@ export class Scheduler {
     this.ensureDraining().then(undefined, (error: unknown) => {
       if (this.lifecycle !== "open") return;
       const message = error instanceof Error ? error.message : String(error);
-      this.addEntry({ from: "system", kind: "error", text: `Erreur interne du scheduler : ${message}` });
+      this.addEntry({ from: "system", kind: "error", text: `Internal scheduler error: ${message}` });
       this.setSuspension("failed");
     });
   }
@@ -923,7 +923,7 @@ export class Scheduler {
           this.phase === "debate" && (job.origin === "initial" || job.origin === "automatic");
         if (requiresProtocolMarker && signal === null) {
           const message =
-            "Réponse reçue sans marqueur de protocole final ; aucune continuation automatique n'a été décidée.";
+            "Response received without a final protocol marker; no automatic continuation was decided.";
           job.status = "failed";
           job.error = message;
           if (job.origin === "initial") this.latestProvisionalResponse = { agent, text: cleanText };
@@ -932,15 +932,15 @@ export class Scheduler {
           this.addEntry({
             from: "system",
             kind: "error",
-            text: `${message} Utilise /resume pour redemander une réponse valide${
-              job.origin === "initial" ? " ou /accept-topic pour valider ce sujet manuellement" : ""
+            text: `${message} Use /resume to ask again for a valid response${
+              job.origin === "initial" ? " or /accept-topic to validate this topic manually" : ""
             }.`,
           });
           return "protocol-error";
         }
 
         if (signal === "no-topic" && job.origin !== "initial") {
-          const message = `${NO_TOPIC_MARKER} n'est valide que pour la qualification initiale du sujet.`;
+          const message = `${NO_TOPIC_MARKER} is only valid for the initial qualification of the topic.`;
           job.status = "failed";
           job.error = message;
           this.callbacks.onEntryCompleted(entry.id, { status: "error", message });
@@ -1049,7 +1049,7 @@ export class Scheduler {
           entry.text = result.partialText;
         }
         entry.kind = "error";
-        entry.text += "\n\n(Annulé)";
+        entry.text += "\n\n(Cancelled)";
         this.callbacks.onEntryUpdate(entry);
         this.callbacks.onEntryCompleted(entry.id, { status: "cancelled" });
 
@@ -1391,11 +1391,11 @@ export class Scheduler {
       // Check if synthesis is still valid after await
       if (this.pendingSynthesis !== capturedSynthesis || capturedEpoch !== this.consensusEpoch) {
         // Invalidated — discard result
-        entry.text = "(Synthèse invalidée par une nouvelle intervention)";
+        entry.text = "(Synthesis invalidated by a new intervention)";
         this.callbacks.onEntryUpdate(entry);
         this.callbacks.onEntryCompleted(entry.id, { status: "ok", signal: null });
         // Already-written output can't be taken back, so say so instead.
-        this.addEntry({ from: "system", kind: "system", text: "Synthèse invalidée par une nouvelle intervention." });
+        this.addEntry({ from: "system", kind: "system", text: "Synthesis invalidated by a new intervention." });
         return "continue";
       }
 
@@ -1415,12 +1415,12 @@ export class Scheduler {
         synthesis.status = "failed";
         synthesis.error = result.kind === "error" ? result.message : "Cancelled";
         entry.kind = "error";
-        entry.text = liveText + `\n\nErreur de synthèse : ${synthesis.error}`;
+        entry.text = liveText + `\n\nSynthesis error: ${synthesis.error}`;
         this.callbacks.onEntryUpdate(entry);
         this.callbacks.onEntryCompleted(
           entry.id,
           result.kind === "error"
-            ? { status: "error", message: `Synthèse : ${result.message}` }
+            ? { status: "error", message: `Synthesis: ${result.message}` }
             : { status: "cancelled" },
         );
         return result.kind === "cancelled" ? "cancelled" : "failed";
@@ -1430,9 +1430,9 @@ export class Scheduler {
       synthesis.status = "failed";
       synthesis.error = err instanceof Error ? err.message : String(err);
       entry.kind = "error";
-      entry.text = `Erreur de synthèse : ${synthesis.error}`;
+      entry.text = `Synthesis error: ${synthesis.error}`;
       this.callbacks.onEntryUpdate(entry);
-      this.callbacks.onEntryCompleted(entry.id, { status: "error", message: `Synthèse : ${synthesis.error}` });
+      this.callbacks.onEntryCompleted(entry.id, { status: "error", message: `Synthesis: ${synthesis.error}` });
       return "failed";
     } finally {
       if (this.currentRunToken === runToken) {
@@ -1459,7 +1459,7 @@ export class Scheduler {
       this.addEntry({
         from: req.agent,
         kind: "permission",
-        text: `Demande d'autorisation : ${req.toolName}${preview ? ` — ${preview}` : ""}`,
+        text: `Permission request: ${req.toolName}${preview ? ` — ${preview}` : ""}`,
       });
 
       // Show if this is the first in queue
@@ -1503,7 +1503,7 @@ export class Scheduler {
 
   private assertOpen(action: string): void {
     if (this.lifecycle !== "open") {
-      throw new Error(`Impossible de ${action} : la session est ${this.lifecycle}.`);
+      throw new Error(`Cannot ${action}: the session is ${this.lifecycle}.`);
     }
   }
 
@@ -1518,8 +1518,8 @@ export class Scheduler {
     if (this.currentEntry && this.currentRunToken) {
       this.currentEntry.kind = "error";
       this.currentEntry.text = this.currentEntry.text
-        ? `${this.currentEntry.text}\n\n(Interrompu par la fermeture de session)`
-        : "(Interrompu par la fermeture de session)";
+        ? `${this.currentEntry.text}\n\n(Interrupted by the session closing)`
+        : "(Interrupted by the session closing)";
       this.callbacks.onEntryUpdate(this.currentEntry);
       this.callbacks.onEntryCompleted(this.currentEntry.id, { status: "cancelled" });
       if (this.currentAgent) this.callbacks.onTurnEnd(this.currentAgent);
@@ -1669,7 +1669,7 @@ export const CONSENSUS_INSTRUCTIONS = (self: string, other: string) =>
     "Before proposing an architecture or a decision, read `.claudex/memory/decisions.md` (decisions already settled) and `.claudex/memory/limits.md` (constraints and things explicitly ruled out) if they exist, and do not call a settled decision into question without saying so explicitly and without a new reason.",
     "Do not use any emoji or decorative pictogram. For a status, use only ASCII forms such as [ok], [x] or [!].",
     "A claim about the real behaviour of code (correct, buggy, fast) must be backed up. If you verified it by running something, give the exact command and its raw output. If you cannot run it, ask the other to verify it, and do not accept an empirical claim that comes with neither its command nor its output. Demanding the evidence is as much part of your role as providing it.",
-    `End every answer with a line exactly equal to "${CONTINUE_MARKER}" if you still have a new objection or question for ${other}, to "${CONSENSUS_MARKER}" if you have nothing more to add, the current proposal suits you, and you have examined at least one serious alternative and can say why it is worse, or to "${WAIT_HUMAN_MARKER}" when information from the human is truly needed before going on.`,
+    `End every answer with a line exactly equal to "${CONTINUE_MARKER}" if you still have a new objection or question for ${other}, to "${CONSENSUS_MARKER}" if you have nothing more to add, the current proposal suits you, and you have examined at least one serious alternative and can say why it is worse, or to "${WAIT_HUMAN_MARKER}" when information from the human is truly essential before going on.`,
     `"${NO_TOPIC_MARKER}" is reserved for the very first qualification and only when the input really contains no topic to debate; never use it for an incomplete topic, which calls for "${WAIT_HUMAN_MARKER}".`,
   ].join(" ") +
   "\n\n" +
@@ -1716,7 +1716,7 @@ function validateAutonomyBudget(budget: AutonomyBudget): void {
         ? budget.maximumMs
         : null;
   if (value !== null && (!Number.isSafeInteger(value) || value <= 0)) {
-    throw new Error("Le budget d'autonomie doit être un entier strictement positif.");
+    throw new Error("The autonomy budget must be a strictly positive integer.");
   }
 }
 

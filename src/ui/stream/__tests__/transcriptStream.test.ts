@@ -55,14 +55,14 @@ describe("TranscriptStream", () => {
     const e = entry({
       from: "system",
       kind: "system",
-      text: `Sujet : ${"architecture distribuée ".repeat(5)}\navec reprise`,
+      text: `Topic: ${"architecture distribuée ".repeat(5)}\navec reprise`,
     });
     const canonicalText = e.text;
 
     stream.entry(e);
 
     const rendered = plain().trimEnd();
-    expect(rendered).toMatch(/^:: Sujet : /);
+    expect(rendered).toMatch(/^:: Topic: /);
     expect(rendered).toMatch(/\.\.\.$/);
     expect(displayWidth(rendered)).toBeLessThanOrEqual(40);
     expect(rendered).not.toContain("\n");
@@ -71,11 +71,11 @@ describe("TranscriptStream", () => {
 
   it("laisse deux lignes vides entre le sujet et le premier tour de Claude", () => {
     const { stream, plain } = harness();
-    stream.entry(entry({ from: "system", kind: "system", text: "Sujet : architecture" }));
+    stream.entry(entry({ from: "system", kind: "system", text: "Topic: architecture" }));
     stream.entryStarted(entry({ from: "claude", kind: "message" }));
 
     const lines = plain().split("\n");
-    const subject = lines.findIndex((line) => line.includes("Sujet : architecture"));
+    const subject = lines.findIndex((line) => line.includes("Topic: architecture"));
     const claude = lines.findIndex((line) => line.includes("Claude"));
     expect(lines.slice(subject + 1, claude)).toEqual(["", ""]);
   });

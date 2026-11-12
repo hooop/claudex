@@ -3,68 +3,68 @@ import { extractSignal, scanMarkerLine } from "../markers.js";
 import { CONSENSUS_INSTRUCTIONS } from "../scheduler.js";
 
 describe("scanMarkerLine", () => {
-  it("reconnaît un marqueur seul sur sa ligne", () => {
+  it("recognises a marker alone on its line", () => {
     expect(scanMarkerLine("<<CONSENSUS>>")).toEqual({ kind: "match", marker: "<<CONSENSUS>>" });
     expect(scanMarkerLine("<<CONTINUE>>")).toEqual({ kind: "match", marker: "<<CONTINUE>>" });
     expect(scanMarkerLine("<<NO_TOPIC>>")).toEqual({ kind: "match", marker: "<<NO_TOPIC>>" });
     expect(scanMarkerLine("<<WAIT_HUMAN>>")).toEqual({ kind: "match", marker: "<<WAIT_HUMAN>>" });
   });
 
-  it("tolère une décoration markdown bornée", () => {
+  it("tolerates bounded markdown decoration", () => {
     expect(scanMarkerLine("**<<CONSENSUS>>**").kind).toBe("match");
     expect(scanMarkerLine("  _ <<CONTINUE>> _  ").kind).toBe("match");
   });
 
-  it("refuse une décoration au-delà de la borne", () => {
-    // Deux runs de padding et un run de décoration au maximum, de chaque côté.
+  it("rejects decoration beyond the bound", () => {
+    // At most two padding runs and one decoration run, on each side.
     expect(scanMarkerLine("*".repeat(5) + "<<CONSENSUS>>").kind).toBe("no");
     expect(scanMarkerLine(" ".repeat(17) + "<<CONSENSUS>>").kind).toBe("no");
     expect(scanMarkerLine("<<CONSENSUS>>" + " ".repeat(17)).kind).toBe("no");
   });
 
-  it("signale un préfixe qui pourrait encore devenir un marqueur", () => {
+  it("reports a prefix that could still become a marker", () => {
     expect(scanMarkerLine("<<CONSE").kind).toBe("partial");
     expect(scanMarkerLine("<").kind).toBe("partial");
     expect(scanMarkerLine("").kind).toBe("partial");
     expect(scanMarkerLine("  **").kind).toBe("partial");
   });
 
-  it("refuse une ligne qui contient autre chose que le marqueur", () => {
-    expect(scanMarkerLine("nous sommes d'accord <<CONSENSUS>>").kind).toBe("no");
-    expect(scanMarkerLine("<<CONSENSUS>> mais avec une réserve").kind).toBe("no");
+  it("rejects a line that holds anything besides the marker", () => {
+    expect(scanMarkerLine("we agree <<CONSENSUS>>").kind).toBe("no");
+    expect(scanMarkerLine("<<CONSENSUS>> but with a reservation").kind).toBe("no");
     expect(scanMarkerLine("<<CONSENSUSX>>").kind).toBe("no");
-    expect(scanMarkerLine("une phrase normale").kind).toBe("no");
+    expect(scanMarkerLine("a normal sentence").kind).toBe("no");
   });
 });
 
 describe("extractSignal", () => {
-  it("détache un marqueur terminal du corps du message", () => {
-    expect(extractSignal("D'accord.\n\n<<CONSENSUS>>")).toEqual({
-      cleanText: "D'accord.",
+  it("detaches a terminal marker from the message body", () => {
+    expect(extractSignal("Agreed.\n\n<<CONSENSUS>>")).toEqual({
+      cleanText: "Agreed.",
       signal: "consensus",
     });
     expect(extractSignal("Objection.\n<<CONTINUE>>")).toEqual({
       cleanText: "Objection.",
       signal: "continue",
     });
-    expect(extractSignal("Il me faut le volume.\n<<WAIT_HUMAN>>").signal).toBe("wait-human");
-    expect(extractSignal("Aucun sujet.\n<<NO_TOPIC>>").signal).toBe("no-topic");
+    expect(extractSignal("I need the volume.\n<<WAIT_HUMAN>>").signal).toBe("wait-human");
+    expect(extractSignal("No topic.\n<<NO_TOPIC>>").signal).toBe("no-topic");
   });
 
-  it("ignore les blancs après le marqueur", () => {
-    expect(extractSignal("Texte\n\n<<CONSENSUS>>\n\n   \n").signal).toBe("consensus");
+  it("ignores whitespace after the marker", () => {
+    expect(extractSignal("Text\n\n<<CONSENSUS>>\n\n   \n").signal).toBe("consensus");
   });
 
-  it("ne signale rien quand le marqueur est suivi de contenu", () => {
-    const text = "Texte\n<<CONSENSUS>>\nen fait non";
+  it("signals nothing when the marker is followed by content", () => {
+    const text = "Text\n<<CONSENSUS>>\nactually no";
     expect(extractSignal(text)).toEqual({ cleanText: text, signal: null });
   });
 
-  it("ne signale rien sans marqueur", () => {
-    expect(extractSignal("Juste du texte.\n")).toEqual({ cleanText: "Juste du texte.", signal: null });
+  it("signals nothing without a marker", () => {
+    expect(extractSignal("Just some text.\n")).toEqual({ cleanText: "Just some text.", signal: null });
   });
 
-  it("accepte un message réduit au seul marqueur", () => {
+  it("accepts a message reduced to the marker alone", () => {
     expect(extractSignal("<<CONSENSUS>>")).toEqual({ cleanText: "", signal: "consensus" });
   });
 });

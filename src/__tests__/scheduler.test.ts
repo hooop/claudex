@@ -202,7 +202,7 @@ describe("Scheduler", () => {
     /**
      * An agent that cannot tell who wrote what it is reading eventually answers
      * as if it were its counterpart — observed in a real session, where Claude
-     * replied "ma réponse à Claude" and claimed a command-execution ability only
+     * replied "my reply to Claude" and claimed a command-execution ability only
      * Codex has. The debate rules are sent once, on the first turn, so nothing
      * else keeps either party oriented over a long conversation.
      */
@@ -473,11 +473,11 @@ describe("Scheduler", () => {
       await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
       agents.claude.complete("Qualification\n\n<<CONTINUE>>");
       await vi.waitFor(() => expect(agents.codex.isPending()).toBe(true));
-      agents.codex.complete("Codex répond\n\n<<CONTINUE>>");
+      agents.codex.complete("Codex answers\n\n<<CONTINUE>>");
       await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
 
       scheduler.intervene("consensus ?", "both");
-      agents.claude.complete("Je vérifie\n\n<<CONTINUE>>");
+      agents.claude.complete("I am checking\n\n<<CONTINUE>>");
 
       // The batch runs the expected speaker first, so Codex agrees, then Claude
       // confirms — and Claude is therefore the one handed the synthesis.
@@ -500,7 +500,7 @@ describe("Scheduler", () => {
       // The synthesis goes to whoever confirmed last, and the debate pauses
       // once it lands.
       await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
-      agents.claude.complete("Spécification finale");
+      agents.claude.complete("Final specification");
       await vi.waitFor(() => expect(callbacks.onSynthesisReady).toHaveBeenCalled());
 
       const claudeSends = agents.claude.getSendCount();
@@ -943,10 +943,10 @@ describe("Scheduler", () => {
      * actually accepted.
      */
     it("keeps the session open on a genuine non-topic and waits for the human", async () => {
-      scheduler.start("bonjour");
+      scheduler.start("hello");
       await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
 
-      agents.claude.complete("Bonjour ! Donne-moi un sujet technique à examiner.\n\n<<NO_TOPIC>>");
+      agents.claude.complete("Hello! Give me a technical topic to examine.\n\n<<NO_TOPIC>>");
 
       await vi.waitFor(() => expect(scheduler.suspension()).toBe("waiting-human"));
       expect(scheduler.topicStatus()).toBe("provisional");
@@ -956,62 +956,62 @@ describe("Scheduler", () => {
     });
 
     it("lets the next message replace the subject instead of clarifying it", async () => {
-      scheduler.start("bonjour");
+      scheduler.start("hello");
       await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
-      agents.claude.complete("Pas de sujet ici.\n\n<<NO_TOPIC>>");
+      agents.claude.complete("No topic here.\n\n<<NO_TOPIC>>");
       await vi.waitFor(() => expect(scheduler.suspension()).toBe("waiting-human"));
 
-      scheduler.intervene("Quelle architecture pour la file d'attente ?", "both");
+      scheduler.intervene("What architecture for the queue?", "both");
 
-      // The real subject qualifies on its own; "bonjour" must not survive as
+      // The real subject qualifies on its own; "hello" must not survive as
       // the topic with the real one appended underneath as a clarification.
       await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
       const message = agents.claude.lastMessage ?? "";
-      expect(message).toContain("Quelle architecture pour la file d'attente ?");
-      expect(message).not.toContain("Proposed topic:\nbonjour");
+      expect(message).toContain("What architecture for the queue?");
+      expect(message).not.toContain("Proposed topic:\nhello");
 
-      agents.claude.complete("Analysons.\n\n<<CONTINUE>>");
+      agents.claude.complete("Let us analyse.\n\n<<CONTINUE>>");
       await vi.waitFor(() => expect(callbacks.onTopicAccepted).toHaveBeenCalledOnce());
     });
 
     it("distinguishes a real topic needing clarification and waits for the human", async () => {
-      scheduler.start("Choix d'architecture");
+      scheduler.start("Architecture choice");
       await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
 
-      agents.claude.complete("Quel volume de trafic faut-il soutenir ?\n\n<<WAIT_HUMAN>>");
+      agents.claude.complete("What traffic volume must be sustained?\n\n<<WAIT_HUMAN>>");
 
       await vi.waitFor(() => expect(scheduler.suspension()).toBe("waiting-human"));
       expect(callbacks.onTopicAccepted).toHaveBeenCalledOnce();
       expect(agents.codex.getSendCount()).toBe(0);
 
-      scheduler.intervene("10 000 requêtes par seconde", "both");
+      scheduler.intervene("10,000 requests per second", "both");
       await vi.waitFor(() => expect(agents.codex.isPending()).toBe(true));
-      expect(agents.codex.lastMessage).toContain("Quel volume de trafic");
-      expect(agents.codex.lastMessage).toContain("10 000 requêtes par seconde");
+      expect(agents.codex.lastMessage).toContain("What traffic volume");
+      expect(agents.codex.lastMessage).toContain("10,000 requests per second");
     });
 
     it("coalesces rapid clarifications and ignores the obsolete validation result", async () => {
-      scheduler.start("Une architecture");
+      scheduler.start("An architecture");
       await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
 
-      expect(scheduler.intervene("pour un service local", "both")).toBe(true);
-      expect(scheduler.intervene("sans dépendance réseau", "both")).toBe(true);
-      agents.claude.complete("Réponse à l'ancienne version\n\n<<CONTINUE>>");
+      expect(scheduler.intervene("for a local service", "both")).toBe(true);
+      expect(scheduler.intervene("without a network dependency", "both")).toBe(true);
+      agents.claude.complete("Answer to the old version\n\n<<CONTINUE>>");
 
       await vi.waitFor(() => expect(agents.claude.getSendCount()).toBe(2));
-      expect(agents.claude.lastMessage).toContain("pour un service local");
-      expect(agents.claude.lastMessage).toContain("sans dépendance réseau");
+      expect(agents.claude.lastMessage).toContain("for a local service");
+      expect(agents.claude.lastMessage).toContain("without a network dependency");
       expect(agents.codex.getSendCount()).toBe(0);
 
-      agents.claude.complete("Version courante qualifiée\n\n<<CONTINUE>>");
+      agents.claude.complete("Current version qualified\n\n<<CONTINUE>>");
       await vi.waitFor(() => expect(agents.codex.isPending()).toBe(true));
       expect(callbacks.onTopicAccepted).toHaveBeenCalledOnce();
     });
 
     it("requires an explicit retry or manual acceptance after a missing marker", async () => {
-      scheduler.start("Sujet valide");
+      scheduler.start("Valid topic");
       await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
-      agents.claude.complete("Analyse utile mais sans marqueur");
+      agents.claude.complete("Useful analysis but no marker");
 
       await vi.waitFor(() => expect(scheduler.suspension()).toBe("protocol-error"));
       expect(callbacks.onTopicAccepted).not.toHaveBeenCalled();
@@ -1019,37 +1019,37 @@ describe("Scheduler", () => {
 
       expect(scheduler.acceptTopic()).toBe(true);
       await vi.waitFor(() => expect(agents.codex.isPending()).toBe(true));
-      expect(agents.codex.lastMessage).toContain("Analyse utile mais sans marqueur");
+      expect(agents.codex.lastMessage).toContain("Useful analysis but no marker");
     });
   });
 
   describe("WAIT_HUMAN inside immutable batches", () => {
     it("lets the second captured job finish, then suspends without losing either reply", async () => {
-      scheduler.start("Sujet");
+      scheduler.start("Topic");
       await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
       agents.claude.complete("Qualification\n\n<<CONTINUE>>");
       await vi.waitFor(() => expect(agents.codex.isPending()).toBe(true));
       scheduler.pause();
-      agents.codex.complete("Contexte Codex\n\n<<CONTINUE>>");
+      agents.codex.complete("Codex context\n\n<<CONTINUE>>");
       await vi.waitFor(() => expect(scheduler.suspension()).toBe("manual"));
 
-      scheduler.intervene("Précision initiale", "both");
+      scheduler.intervene("Initial clarification", "both");
       await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
-      agents.claude.complete("Question humaine de Claude\n\n<<WAIT_HUMAN>>");
+      agents.claude.complete("Human question from Claude\n\n<<WAIT_HUMAN>>");
 
       // The second job was captured before Claude answered and still runs.
       await vi.waitFor(() => expect(agents.codex.isPending()).toBe(true));
-      expect(agents.codex.lastMessage).not.toContain("Question humaine de Claude");
-      agents.codex.complete("Réponse parallèle de Codex\n\n<<CONTINUE>>");
+      expect(agents.codex.lastMessage).not.toContain("Human question from Claude");
+      agents.codex.complete("Parallel answer from Codex\n\n<<CONTINUE>>");
 
       await vi.waitFor(() => expect(scheduler.suspension()).toBe("waiting-human"));
       expect(agents.claude.isPending()).toBe(false);
       expect(agents.codex.isPending()).toBe(false);
 
-      scheduler.intervene("Réponse de l'utilisateur", "both");
+      scheduler.intervene("User answer", "both");
       await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
-      expect(agents.claude.lastMessage).toContain("Réponse parallèle de Codex");
-      expect(agents.claude.lastMessage).toContain("Réponse de l'utilisateur");
+      expect(agents.claude.lastMessage).toContain("Parallel answer from Codex");
+      expect(agents.claude.lastMessage).toContain("User answer");
     });
   });
 
@@ -1061,7 +1061,7 @@ describe("Scheduler", () => {
       // it on one keypress. Demanding a policy first protected nothing and
       // disabled the one behaviour the tool exists for.
       const noPolicy = new Scheduler(agents, { cwd: "/tmp", starter: "claude" }, callbacks);
-      noPolicy.start("Sujet");
+      noPolicy.start("Topic");
       await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
       agents.claude.complete("Qualification\n\n<<CONTINUE>>");
 
@@ -1076,11 +1076,11 @@ describe("Scheduler", () => {
         { cwd: "/tmp", starter: "claude", autonomyBudget: { kind: "automatic-starts", maximum: 1 } },
         callbacks,
       );
-      bounded.start("Sujet");
+      bounded.start("Topic");
       await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
       agents.claude.complete("Qualification\n\n<<CONTINUE>>");
       await vi.waitFor(() => expect(agents.codex.isPending()).toBe(true));
-      agents.codex.complete("Premier départ automatique\n\n<<CONTINUE>>");
+      agents.codex.complete("First automatic start\n\n<<CONTINUE>>");
 
       await vi.waitFor(() => expect(bounded.suspension()).toBe("autonomy-exhausted"));
       expect(agents.claude.getSendCount()).toBe(1);

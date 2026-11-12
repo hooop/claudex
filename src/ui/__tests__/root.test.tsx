@@ -390,7 +390,7 @@ describe("Root — cycle de vie du header", () => {
 
     await vi.waitFor(() => {
       const output = terminal.chunks.join("").replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "");
-      expect(output).toContain("Sujet : /Users/me/app.ts:12 TypeError at main");
+      expect(output).toContain("Topic: /Users/me/app.ts:12 TypeError at main");
     });
     expect(terminal.chunks.join("")).not.toContain("Pas de débat en cours");
     app.unmount();
