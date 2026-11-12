@@ -21,5 +21,6 @@ debat.md/
 
 # Claude Code configuration: what is written on purpose and helps anyone who
 # clones the repository is versioned (the subagents), what is specific to one
-# machine is not.
+# machine is not, nor are the git worktrees agents create there.
 .claude/settings.local.json
+.claude/worktrees/
