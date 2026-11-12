@@ -1516,6 +1516,21 @@ describe("working notes and trace", () => {
     }
   });
 
+  it("removes a whitespace-only note from the live text without recording it", async () => {
+    const scheduler = startDebate("claude");
+    await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
+    const entry = messageEntryOf("claude");
+
+    agents.claude.streamText("Answer.");
+    agents.claude.streamText("\n\n");
+    agents.claude.emitNote("\n\n", true);
+
+    expect(entry.text).toBe("Answer.");
+    expect(callbacks.onOutputReset).toHaveBeenCalledWith(entry.id, "Answer.");
+    expect(scheduler.trace()).toEqual([]);
+    expect(callbacks.onActivity).not.toHaveBeenCalledWith("claude", expect.objectContaining({ kind: "note" }));
+  });
+
   it("ignores notes and traces from a turn that is over", async () => {
     const scheduler = startDebate("claude");
     await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));

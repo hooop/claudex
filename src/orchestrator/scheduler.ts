@@ -869,7 +869,7 @@ export class Scheduler {
             if (!this.isRunLive(runToken)) return;
             hadNotes = true;
             const text = note.trim();
-            this.recordTrace(agent, { kind: "note", text });
+            if (text !== "") this.recordTrace(agent, { kind: "note", text });
             // The raw note, paragraph break included, is what was streamed.
             if (streamed && liveText.endsWith(note)) {
               liveText = liveText.slice(0, liveText.length - note.length);
@@ -877,7 +877,7 @@ export class Scheduler {
               this.callbacks.onOutputReset(entry.id, liveText);
               this.callbacks.onEntryUpdate(entry);
             }
-            emitActivity({ kind: "note", status: "running", label: text });
+            if (text !== "") emitActivity({ kind: "note", status: "running", label: text });
           }
         : undefined;
 
