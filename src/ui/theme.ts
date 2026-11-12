@@ -45,10 +45,25 @@ export function contentWidthFor(columns: number): number {
   return Math.max(24, Math.min(columns - 2, MAX_CONTENT_WIDTH));
 }
 
-export const HUMAN_STYLE = { color: "#f5c542", badge: "YOU" };
-export const SYSTEM_STYLE = { color: "#8b949e", badge: "::" };
-export const ERROR_STYLE = { color: "#ff5c5c", badge: "!" };
-export const SUMMARY_STYLE = { color: "#57d68d", badge: "[ok] DEBATE SUMMARY (unattributed)" };
-
-/** Consensus reached: the same green as the debate summary. */
+/** Consensus reached: the green of the closing frame and the status line. */
 export const CONSENSUS_COLOR = "#57d68d";
+
+/** Claudex's own interface glyphs, defined once. Agent prose never uses them. */
+export const GLYPH = {
+  mark: "◆",
+  rail: "│",
+  ruleHeavy: "━",
+  ok: "✓",
+  next: "→",
+  ask: "?",
+  warn: "!",
+  dot: "·",
+} as const;
+
+/** Below this width the debate header's status and the mini animation are hidden. */
+export const NARROW_COLUMNS = 60;
+
+export const HUMAN_STYLE = { color: "#f5c542", badge: "YOU" };
+export const SYSTEM_STYLE = { color: "#8b949e", badge: GLYPH.dot };
+export const ERROR_STYLE = { color: "#ff5c5c", badge: GLYPH.warn };
+export const SUMMARY_STYLE = { color: CONSENSUS_COLOR, badge: "CONSENSUS" };

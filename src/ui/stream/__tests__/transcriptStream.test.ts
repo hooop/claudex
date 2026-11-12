@@ -1,7 +1,7 @@
 import chalk from "chalk";
 import { describe, expect, it, vi } from "vitest";
 import type { TranscriptEntry } from "../../../types.js";
-import type { Signal } from "../../../orchestrator/types.js";
+import type { EntryOutcome, Signal } from "../../../orchestrator/types.js";
 import { ERROR_STYLE } from "../../theme.js";
 import { displayWidth } from "../lineBuffer.js";
 import type { TranscriptLine } from "../streamController.js";
@@ -40,8 +40,7 @@ describe("TranscriptStream", () => {
     stream.entryCompleted(e.id, { status: "ok", signal: "continue", counted: true });
 
     const lines = plain().split("\n");
-    expect(lines[0]).toContain("Claude");
-    expect(lines[0]).not.toContain("● Claude");
+    expect(lines[0]).toMatch(/^◆ CLAUDE {2,}\d\d:\d\d$/u);
     expect(lines).toContain("│ Hello.");
     expect(output()).toContain("\u001b[38;5;210m");
   });
@@ -67,7 +66,7 @@ describe("TranscriptStream", () => {
     stream.entry(e);
 
     const rendered = plain().trimEnd();
-    expect(rendered).toMatch(/^:: Topic: /);
+    expect(rendered).toMatch(/^· Topic: /);
     expect(rendered).toMatch(/\.\.\.$/);
     expect(displayWidth(rendered)).toBeLessThanOrEqual(40);
     expect(rendered).not.toContain("\n");
@@ -81,7 +80,7 @@ describe("TranscriptStream", () => {
 
     const lines = plain().split("\n");
     const subject = lines.findIndex((line) => line.includes("Topic: architecture"));
-    const claude = lines.findIndex((line) => line.includes("Claude"));
+    const claude = lines.findIndex((line) => line.includes("CLAUDE"));
     expect(lines.slice(subject + 1, claude)).toEqual(["", ""]);
   });
 
@@ -182,16 +181,15 @@ describe("TranscriptStream", () => {
     };
 
     it("names the decision and who gets the turn", () => {
-      expect(verdictOf("claude", "continue")).toContain("-> continues · hands over to Codex");
-      expect(verdictOf("codex", "continue")).toContain("-> continues · hands over to Claude");
+      expect(verdictOf("claude", "continue")).toContain("→ Continues · over to Codex");
+      expect(verdictOf("codex", "continue")).toContain("→ Continues · over to Claude");
     });
 
     // A lone agreement lets the debate run, the pair stops it: the two
     // situations must not read the same.
     it("tells the first agreement from the one that closes the debate", () => {
       const first = verdictOf("claude", "consensus");
-      expect(first).toContain("Claude is ready for a consensus");
-      expect(first).toContain("over to Codex");
+      expect(first).toContain("✓ Ready for consensus · over to Codex");
       expect(first).not.toContain("approved");
 
       const last = verdictOf("codex", "consensus", true);
@@ -200,11 +198,11 @@ describe("TranscriptStream", () => {
     });
 
     it("tells an agreement from a human wait", () => {
-      expect(verdictOf("codex", "wait-human")).toContain("[pause] waiting for your answer");
+      expect(verdictOf("codex", "wait-human")).toContain("? Waiting for your answer");
     });
 
     it("says explicitly that a turn signalled nothing", () => {
-      expect(verdictOf("claude", null)).toContain("[!] no decision signalled");
+      expect(verdictOf("claude", null)).toContain("! No decision signalled");
     });
 
     // Originally silent, when a non-topic closed the session: the return to the
@@ -212,8 +210,7 @@ describe("TranscriptStream", () => {
     // must announce its decision and what follows like all the others.
     it("announces that there is no topic, and what happens next", () => {
       const verdict = verdictOf("claude", "no-topic");
-      expect(verdict).toContain("No topic to debate");
-      expect(verdict).toContain("next message");
+      expect(verdict).toContain("· No topic to debate · the debate starts on your next message");
     });
 
     it("stays silent on the synthesis, which decides nothing", () => {
@@ -222,7 +219,7 @@ describe("TranscriptStream", () => {
       stream.entryStarted(e);
       stream.chunk(e.id, "Final specification.\n");
       stream.entryCompleted(e.id, { status: "ok", signal: null, counted: true });
-      expect(plain()).not.toContain("no decision signalled");
+      expect(plain()).not.toContain("No decision signalled");
     });
 
     it("lets an error replace the verdict", () => {
@@ -246,7 +243,7 @@ describe("TranscriptStream", () => {
     const e2 = entry({ from: "codex", kind: "message" });
     cancelled.stream.entryStarted(e2);
     cancelled.stream.entryCompleted(e2.id, { status: "cancelled" });
-    expect(cancelled.plain()).toContain("(Cancelled)");
+    expect(cancelled.plain()).toContain("· Cancelled");
   });
 
   it("visually tells Claude, Codex and the human apart", () => {
@@ -260,9 +257,9 @@ describe("TranscriptStream", () => {
     expect(colors.size).toBeGreaterThanOrEqual(3);
     expect(output()).toContain("\u001b[38;5;210m");
     expect(output()).toContain("\u001b[38;5;159m");
-    expect(plain()).toContain("│ Claude");
-    expect(plain()).toContain("│ Codex");
-    expect(plain()).not.toMatch(/● (?:Claude|Codex)|CLAUDE|CODEX/);
+    expect(plain()).toContain("◆ CLAUDE");
+    expect(plain()).toContain("◆ CODEX");
+    expect(plain()).toContain("◆ YOU");
   });
 
   it("never rewrites what is already written", () => {
@@ -399,9 +396,8 @@ describe("TranscriptStream — reset", () => {
     stream.entryCompleted(e.id, { status: "ok", signal: "continue", counted: true });
 
     const lines = plainLines();
-    expect(lines[0]).toContain("Claude");
-    expect(lines[1]).toBe("│");
-    expect(lines[2]).toBe("│ Answer.");
+    expect(lines[0]).toContain("CLAUDE");
+    expect(lines[1]).toBe("│ Answer.");
     expect(lines.join("\n")).not.toContain("Looking around.");
     expect(lines.join("\n")).not.toContain("Still looking");
   });
@@ -420,7 +416,7 @@ describe("TranscriptStream — reset", () => {
     const text = lines.join("\n");
     expect(text).not.toContain("Note line");
     expect(text.split("Please hurry.").length - 1).toBe(1);
-    const header = lines.findIndex((line) => line.includes("Claude"));
+    const header = lines.findIndex((line) => line.includes("CLAUDE"));
     const intervention = lines.findIndex((line) => line.includes("Please hurry."));
     const answer = lines.indexOf("│ Answer.");
     expect(header).toBe(0);
@@ -438,7 +434,7 @@ describe("TranscriptStream — reset", () => {
     stream.entryCompleted(e.id, { status: "ok", signal: "continue", counted: true });
 
     const lines = plainLines();
-    expect(lines.slice(2, 4)).toEqual(["│ Kept part.", "--- frozen ---"]);
+    expect(lines.slice(1, 3)).toEqual(["│ Kept part.", "--- frozen ---"]);
     expect(lines.join("\n")).not.toContain("Note");
   });
 
@@ -568,5 +564,258 @@ describe("TranscriptStream — multi-line input", () => {
     });
     stream.raw(["a\nb", "c\r\nd"]);
     expect(rows).toEqual(["a", "b", "c", "d"]);
+  });
+});
+
+describe("TranscriptStream — turn blocks", () => {
+  const ok = (signal: Signal, extra: Partial<Extract<EntryOutcome, { status: "ok" }>> = {}): EntryOutcome => ({
+    status: "ok",
+    signal,
+    counted: true,
+    ...extra,
+  });
+  const clock = (e: TranscriptEntry) => {
+    const d = new Date(e.timestamp);
+    return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  };
+
+  function withRound(round: (e: TranscriptEntry) => number | null, width = 60) {
+    const writes: string[] = [];
+    const stream = new TranscriptStream({
+      write: (lines) => writes.push(block(lines)),
+      width: () => width,
+      onTail: () => {},
+      intervalMs: 0,
+      round,
+    });
+    const plainRows = () => writes.join("").replace(/\u001b\[[0-9;]*m/g, "").split("\n");
+    return { stream, plainRows };
+  }
+
+  it("right-aligns round and clock to the content width", () => {
+    const { stream, plainRows } = withRound(() => 3);
+    const e = entry({ from: "claude", kind: "message" });
+    stream.entryStarted(e);
+    const header = plainRows()[0]!;
+    expect(header.startsWith("◆ CLAUDE")).toBe(true);
+    expect(header.endsWith(`Round 3 · ${clock(e)}`)).toBe(true);
+    expect(displayWidth(header)).toBe(60);
+  });
+
+  it("omits the round when the callback returns null", () => {
+    const { stream, plainRows } = withRound(() => null);
+    const e = entry({ from: "codex", kind: "message" });
+    stream.entryStarted(e);
+    const header = plainRows()[0]!;
+    expect(header.endsWith(`  ${clock(e)}`)).toBe(true);
+    expect(header).not.toContain("Round");
+    expect(displayWidth(header)).toBe(60);
+  });
+
+  it("calls the round callback once per agent entry, at the start", () => {
+    const round = vi.fn(() => 2);
+    const { stream } = withRound(round);
+    const e = entry({ from: "claude", kind: "message" });
+    stream.entryStarted(e);
+    stream.chunk(e.id, "text\n");
+    stream.entryCompleted(e.id, ok("continue"));
+    expect(round).toHaveBeenCalledTimes(1);
+    expect(round).toHaveBeenCalledWith(e);
+  });
+
+  it("shows no round for a human intervention and names its target", () => {
+    const { stream, plainRows } = withRound(() => 5);
+    stream.entry(entry({ from: "human", kind: "intervention", text: "stop", to: "both" }));
+    stream.entry(entry({ from: "human", kind: "intervention", text: "you", to: "claude" }));
+    const rows = plainRows();
+    expect(rows[0]).toMatch(/^◆ YOU → both {2,}\d\d:\d\d$/u);
+    expect(rows.find((r) => r.startsWith("◆ YOU → claude"))).toMatch(/^◆ YOU → claude {2,}\d\d:\d\d$/u);
+    expect(rows.join("\n")).not.toContain("Round");
+  });
+
+  it("puts the body directly under the header, behind the rail", () => {
+    const { stream, plainRows } = withRound(() => null);
+    const e = entry({ from: "claude", kind: "message" });
+    stream.entryStarted(e);
+    stream.chunk(e.id, "Hello.\n");
+    stream.flush();
+    expect(plainRows().slice(0, 2)).toEqual([expect.stringMatching(/^◆ CLAUDE/u), "│ Hello."]);
+  });
+
+  describe("verdicts", () => {
+    const verdictRows = (outcome: EntryOutcome) => {
+      const { stream, plainRows } = withRound(() => null);
+      const e = entry({ from: "codex", kind: "message" });
+      stream.entryStarted(e);
+      stream.chunk(e.id, "Body.\n");
+      stream.entryCompleted(e.id, outcome);
+      return plainRows();
+    };
+
+    it("follows the body with a blank rail line, the verdict and a blank line", () => {
+      expect(verdictRows(ok("continue")).slice(1, 6)).toEqual([
+        "│ Body.",
+        "│",
+        "│ → Continues · over to Claude",
+        "",
+        "",
+      ]);
+    });
+
+    it("closes the debate with the approved wording", () => {
+      expect(verdictRows(ok("consensus", { closesDebate: true }))).toContain(
+        "│ ✓ Consensus approved · the debate is closed",
+      );
+    });
+
+    it("shows the set-aside verdict for an uncounted signal", () => {
+      for (const signal of ["continue", "consensus", "wait-human", "no-topic"] as const) {
+        const rows = verdictRows(ok(signal, { counted: false }));
+        expect(rows).toContain("│ · Signal set aside: your message arrived during this turn");
+        expect(rows.join("\n")).not.toContain("Continues");
+      }
+    });
+
+    it("still reports a missing signal when it was not counted", () => {
+      expect(verdictRows(ok(null, { counted: false }))).toContain("│ ! No decision signalled");
+    });
+
+    it("colours the glyph with the author and dims the words", () => {
+      const { stream, output } = harness();
+      const e = entry({ from: "codex", kind: "message" });
+      stream.entryStarted(e);
+      stream.entryCompleted(e.id, ok("continue"));
+      expect(output()).toContain(`\u001b[38;5;159m→\u001b[39m`);
+      expect(output()).toContain(chalk.dim("Continues · over to Claude"));
+    });
+  });
+
+  describe("system lines", () => {
+    it("writes a notice as a dim dot line without a rail", () => {
+      const { stream, output, plain } = harness();
+      stream.entry(entry({ from: "system", kind: "system", text: "Switched model" }));
+      expect(plain().split("\n")[0]).toBe("· Switched model");
+      expect(output()).toContain(chalk.dim(chalk.hex("#8b949e")("· Switched model")));
+    });
+
+    it("writes an error entry with a bang in the error colour, not dimmed", () => {
+      const { stream, output, plain } = harness();
+      stream.entry(entry({ from: "system", kind: "error", text: "boom" }));
+      expect(plain().split("\n")[0]).toBe("! boom");
+      expect(output()).toContain(chalk.hex(ERROR_STYLE.color)("! boom"));
+    });
+  });
+
+  describe("continued header", () => {
+    it("writes a continued header when an intervention interrupts a running turn", () => {
+      const { stream, plain } = harness();
+      const e = entry({ from: "codex", kind: "message" });
+      stream.entryStarted(e);
+      stream.chunk(e.id, "First part.\n");
+      stream.entry(entry({ from: "human", kind: "intervention", text: "wait", to: "codex" }));
+      stream.chunk(e.id, "Second part.\n");
+      stream.entryCompleted(e.id, ok("continue"));
+
+      const rows = plain().split("\n");
+      const resumed = rows.indexOf("│ Second part.");
+      expect(rows[resumed - 1]).toBe("◆ CODEX (continued)");
+      expect(rows.filter((r) => r.includes("(continued)"))).toHaveLength(1);
+      expect(rows.indexOf("│ First part.")).toBeLessThan(rows.findIndex((r) => r.includes("YOU")));
+    });
+
+    it("writes it once per interruption, not per chunk", () => {
+      const { stream, plain } = harness();
+      const e = entry({ from: "claude", kind: "message" });
+      stream.entryStarted(e);
+      stream.entry(entry({ from: "claude", kind: "system", text: "Read a.ts" }));
+      stream.chunk(e.id, "one\n");
+      stream.chunk(e.id, "two\n");
+      stream.entry(entry({ from: "claude", kind: "system", text: "Read b.ts" }));
+      stream.chunk(e.id, "three\n");
+      stream.flush();
+      expect(plain().split("\n").filter((r) => r === "◆ CLAUDE (continued)")).toHaveLength(2);
+    });
+
+    it("writes it before the verdict when the turn ends right after an interruption", () => {
+      const { stream, plain } = harness();
+      const e = entry({ from: "claude", kind: "message" });
+      stream.entryStarted(e);
+      stream.entry(entry({ from: "claude", kind: "system", text: "Read a.ts" }));
+      stream.entryCompleted(e.id, ok("continue"));
+      const rows = plain().split("\n");
+      expect(rows[rows.indexOf("│ → Continues · over to Codex") - 2]).toBe("◆ CLAUDE (continued)");
+    });
+
+    it("does not write one when nothing interrupted the turn", () => {
+      const { stream, plain } = harness();
+      const e = entry({ from: "claude", kind: "message" });
+      stream.entryStarted(e);
+      stream.chunk(e.id, "one\n");
+      stream.entryCompleted(e.id, ok("continue"));
+      expect(plain()).not.toContain("(continued)");
+    });
+
+    it("writes it after a reset that replays interleaved lines, counting it as a normal line", () => {
+      const lines: string[] = [];
+      const stream = new TranscriptStream({
+        write: (written) => lines.push(...written.map((l) => l.styled)),
+        width: () => 60,
+        onTail: () => {},
+        intervalMs: 0,
+        length: () => lines.length,
+        rewind: (n) => {
+          lines.length = n;
+        },
+      });
+      const e = entry({ from: "claude", kind: "message" });
+      stream.entryStarted(e);
+      stream.chunk(e.id, "Note\n");
+      stream.entry(entry({ from: "human", kind: "message", text: "hurry" }));
+      stream.chunk(e.id, "more\n");
+      stream.reset(e.id, "");
+      stream.chunk(e.id, "Answer.\n");
+      stream.flush();
+
+      const rows = lines.map((l) => l.replace(/\u001b\[[0-9;]*m/g, ""));
+      expect(rows.filter((r) => r.includes("(continued)"))).toHaveLength(1);
+      expect(rows.indexOf("◆ CLAUDE (continued)")).toBe(rows.indexOf("│ Answer.") - 1);
+      expect(rows.join("\n")).not.toContain("Note");
+
+      // A second reset rewinds exactly to the body start: nothing is left over.
+      stream.reset(e.id, "");
+      const after = lines.map((l) => l.replace(/\u001b\[[0-9;]*m/g, ""));
+      expect(after.filter((r) => r.includes("(continued)"))).toHaveLength(0);
+      expect(after.filter((r) => r.includes("hurry"))).toHaveLength(1);
+    });
+  });
+
+  describe("consensus summary", () => {
+    it("frames the consensus summary with rules and keeps its markdown", () => {
+      const { stream, output, plain } = harness();
+      const e = entry({ from: "system", kind: "summary" });
+      stream.entryStarted(e);
+      stream.chunk(e.id, "## Decision\nUse **queues**.\n");
+      stream.entryCompleted(e.id, ok(null));
+
+      const rule = "━".repeat(60);
+      expect(plain().split("\n")).toEqual([rule, "CONSENSUS", "", "Decision", "Use queues.", rule, "", ""]);
+      expect(output()).toContain(chalk.hex("#57d68d")(rule));
+      expect(output()).toContain(chalk.hex("#57d68d").bold("CONSENSUS"));
+      expect(output()).toContain(chalk.bold("queues"));
+    });
+
+    it("frames a complete summary the same way", () => {
+      const { stream, plain } = harness(40);
+      stream.entry(entry({ from: "system", kind: "summary", text: "Done." }));
+      const rule = "━".repeat(40);
+      expect(plain().split("\n")).toEqual([rule, "CONSENSUS", "", "Done.", rule, "", ""]);
+    });
+
+    it("keeps a blank line inside the summary free of any rail", () => {
+      const { stream, plain } = harness();
+      stream.entry(entry({ from: "system", kind: "summary", text: "a\n\nb" }));
+      expect(plain().split("\n")).not.toContain("│");
+      expect(plain().split("\n").slice(3, 6)).toEqual(["a", "", "b"]);
+    });
   });
 });

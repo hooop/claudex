@@ -102,4 +102,30 @@ describe("MarkdownStreamer", () => {
     const s = new MarkdownStreamer();
     expect(plain(s.style(line("  - a point")))).toBe("  - a point");
   });
+
+  describe("accent", () => {
+    const accent = (text: string) => `<${text}>`;
+
+    it("accents a bold label opening a line", () => {
+      const s = new MarkdownStreamer({ accent });
+      expect(plain(s.style(line("**Risk.** the cache can go stale")))).toBe("<Risk.> the cache can go stale");
+      expect(plain(s.style(line("- **Proposal:** split it")))).toBe("- <Proposal:> split it");
+    });
+
+    it("does not accent a bold span mid-line", () => {
+      const s = new MarkdownStreamer({ accent });
+      expect(plain(s.style(line("the **cache** can go stale")))).toBe("the cache can go stale");
+    });
+
+    it("does not accent a bold span opening a wrapped continuation", () => {
+      const s = new MarkdownStreamer({ accent });
+      s.style(line("a long sentence"));
+      expect(plain(s.style(line("**bold** rest", true)))).toBe("bold rest");
+    });
+
+    it("accents a heading, replacing the brand colour", () => {
+      const s = new MarkdownStreamer({ accent });
+      expect(plain(s.style(line("## Title")))).toBe("<Title>");
+    });
+  });
 });

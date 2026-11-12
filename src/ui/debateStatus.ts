@@ -1,6 +1,6 @@
 import type { EntryOutcome, Signal } from "../orchestrator/types.js";
 import type { AgentId, Phase, TranscriptEntry } from "../types.js";
-import { AGENT_STYLE, CONSENSUS_COLOR, SYSTEM_STYLE } from "./theme.js";
+import { AGENT_STYLE, CONSENSUS_COLOR, GLYPH, SYSTEM_STYLE } from "./theme.js";
 
 export type AgentStance = "none" | "continues" | "ready" | "asks";
 export type Stage = "debate" | "consensus" | "implementation" | "ended";
@@ -78,17 +78,17 @@ export function roundForStart(status: DebateStatus, agent: AgentId): number | nu
 }
 
 const STANCE_TEXT: Record<AgentStance, string> = {
-  none: "·",
-  continues: "→ continues",
-  ready: "✓ ready",
-  asks: "? asks you",
+  none: GLYPH.dot,
+  continues: `${GLYPH.next} continues`,
+  ready: `${GLYPH.ok} ready`,
+  asks: `${GLYPH.ask} asks you`,
 };
 
 export function statusLine(status: DebateStatus): { text: string; color: string }[] {
-  if (status.consensus) return [{ text: "✓ Consensus", color: CONSENSUS_COLOR }];
+  if (status.consensus) return [{ text: `${GLYPH.ok} Consensus`, color: CONSENSUS_COLOR }];
   const segment = (agent: AgentId) => ({
     text: `${AGENT_STYLE[agent].badge} ${STANCE_TEXT[status.stance[agent]]}`,
     color: AGENT_STYLE[agent].color,
   });
-  return [segment("claude"), { text: " · ", color: SYSTEM_STYLE.color }, segment("codex")];
+  return [segment("claude"), { text: ` ${GLYPH.dot} `, color: SYSTEM_STYLE.color }, segment("codex")];
 }
