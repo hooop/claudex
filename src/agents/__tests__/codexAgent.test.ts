@@ -335,6 +335,38 @@ describe("CodexAgent notes and trace", () => {
     expect(notes).toEqual([["Reading memory.", true]]);
   });
 
+  it("reports a streamed note as the exact suffix streamed, blank line included", async () => {
+    const { result, deltas, notes } = await runScript(
+      [
+        delta("a1", "A"),
+        completed(message("a1", "A", "final_answer")),
+        delta("c1", "Checking."),
+        completed(message("c1", "Checking.", "commentary")),
+        delta("a2", "B"),
+        completed(message("a2", "B", "final_answer")),
+      ],
+      true,
+    );
+
+    expect(deltas).toEqual(["A", "\n\n", "Checking.", "\n\n", "B"]);
+    expect(notes).toEqual([["\n\nChecking.", true]]);
+    expect(result).toEqual({ kind: "success", text: "A\n\nB" });
+  });
+
+  it("keeps a streamed commentary item in partialText when the turn fails", async () => {
+    const { result } = await runScript(
+      [
+        delta("c1", "Working."),
+        note("turn/completed", {
+          turn: { id: "turn-1", status: "failed", error: { message: "boom" } },
+        }),
+      ],
+      true,
+    );
+
+    expect(result).toMatchObject({ kind: "error", partialText: "Working." });
+  });
+
   it("holds back deltas of an item started as commentary", async () => {
     const { result, deltas, notes } = await runScript(
       [

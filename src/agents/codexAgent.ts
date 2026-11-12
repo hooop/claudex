@@ -136,6 +136,9 @@ export class CodexAgent implements CodingAgent {
     if (options.signal?.aborted) return { kind: "cancelled" };
 
     this.cancelled = false;
+    // Assumes Codex streams agentMessage items one after another: interleaved deltas
+    // are not handled when a streamed note is removed. A held item that never
+    // completes stays in the answer, so no text is lost.
     const messages = new Map<string, MessageItem>();
     // Items whose commentary phase was known at item/started: their deltas are held back.
     const heldItems = new Set<string>();
@@ -305,7 +308,9 @@ export class CodexAgent implements CodingAgent {
             if (!streamed && item.text) message.text = item.text;
             if (options.onNote && (held || item.phase === "commentary")) {
               message.kind = "note";
-              if (message.text) options.onNote(message.text, streamed && !held);
+              // A streamed note is reported as the exact suffix that was shown, prefix included.
+              const shown = streamed && !held;
+              if (message.text) options.onNote(shown ? message.prefix + message.text : message.text, shown);
               return;
             }
             if (!streamed || held) {
