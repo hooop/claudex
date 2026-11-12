@@ -514,7 +514,7 @@ function describeClaudeResultError(
   if (result.subtype === "error_max_turns") {
     return `Maximum number of Claude turns reached${detail ? `: ${detail}` : "."}`;
   }
-  return detail || `Erreur Claude Code (${result.subtype ?? "inconnue"})`;
+  return detail || `Claude Code error (${result.subtype ?? "unknown"})`;
 }
 
 function describeClaudeThrownError(error: unknown): string {

@@ -706,6 +706,6 @@ function looksLikeUsageLimit(message: string): boolean {
 
 function connectionClosedError(info: CloseInfo, stderr: string): Error {
   if (info.error) return info.error;
-  const reason = info.signal ? `signal ${info.signal}` : `code ${info.code ?? "inconnu"}`;
+  const reason = info.signal ? `signal ${info.signal}` : `code ${info.code ?? "unknown"}`;
   return new Error(`Codex app-server stopped (${reason})${stderr ? `: ${stderr}` : ""}`);
 }

@@ -238,7 +238,7 @@ describe("CodexAgent app-server streaming", () => {
     spawnMock.mockReturnValueOnce(firstServer).mockReturnValueOnce(secondServer);
     const agent = new CodexAgent();
 
-    await agent.send("Premier", { cwd: "/tmp", writeAccess: false });
+    await agent.send("First", { cwd: "/tmp", writeAccess: false });
     await agent.send("Second", { cwd: "/tmp", writeAccess: false });
 
     expect(firstServer.requests.some((request) => request.method === "thread/start")).toBe(true);

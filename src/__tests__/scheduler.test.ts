@@ -640,7 +640,7 @@ describe("Scheduler", () => {
 
       await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
       const originalMessage = agents.claude.lastMessage;
-      agents.claude.fail("Limite Claude Code atteinte");
+      agents.claude.fail("Claude Code limit reached");
 
       await vi.waitFor(() => expect(scheduler.isPaused()).toBe(true));
       scheduler.resume();

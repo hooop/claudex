@@ -137,7 +137,7 @@ describe("transcript snapshots and project policy", () => {
     const relPath = await saveTranscript(
       cwd,
       "Topic",
-      [{ id: "1", from: "human", kind: "intervention", text: "Texte", timestamp: 1 }],
+      [{ id: "1", from: "human", kind: "intervention", text: "Text", timestamp: 1 }],
       { completeness: "partial" },
     );
     const content = await readFile(path.join(cwd, relPath), "utf8");
