@@ -556,6 +556,59 @@ describe("ClaudeAgent notes and trace", () => {
     expect(result).toMatchObject({ kind: "success", text: "It is safe." });
   });
 
+  const assistant = (content: unknown[]) => ({ type: "assistant", session_id: "session-1", message: { content } });
+  const toolUse = (id: string) => ({ type: "tool_use", id, name: "Read", input: { file_path: "a.ts" } });
+
+  it("closes non-streamed text as a note when a later message holds the tool use", async () => {
+    queryMock.mockReturnValue(
+      messages([
+        assistant([{ type: "text", text: "Let me check." }]),
+        assistant([toolUse("tool-1")]),
+        toolResult("file body"),
+        assistant([{ type: "text", text: "It is safe." }]),
+        successResult(),
+      ]) as never,
+    );
+    const notes: Array<[string, boolean]> = [];
+    const deltas: string[] = [];
+
+    const result = await new ClaudeAgent().send("Topic", {
+      ...sdkOptions,
+      onTextDelta: (d) => deltas.push(d),
+      onNote: (note, streamed) => notes.push([note, streamed]),
+    });
+
+    expect(deltas).toEqual(["Let me check.", "It is safe."]);
+    expect(notes).toEqual([["Let me check.", true]]);
+    expect(result).toMatchObject({ kind: "success", text: "It is safe." });
+  });
+
+  it("closes each non-streamed round before its tool use", async () => {
+    queryMock.mockReturnValue(
+      messages([
+        assistant([{ type: "text", text: "A" }]),
+        assistant([toolUse("tool-1")]),
+        toolResult("first"),
+        assistant([{ type: "text", text: "B" }]),
+        assistant([toolUse("tool-2")]),
+        assistant([{ type: "text", text: "C" }]),
+        successResult(),
+      ]) as never,
+    );
+    const notes: Array<[string, boolean]> = [];
+
+    const result = await new ClaudeAgent().send("Topic", {
+      ...sdkOptions,
+      onNote: (note, streamed) => notes.push([note, streamed]),
+    });
+
+    expect(notes).toEqual([
+      ["A", true],
+      ["B", true],
+    ]);
+    expect(result).toMatchObject({ kind: "success", text: "C" });
+  });
+
   it("leaves a turn without tools unchanged", async () => {
     queryMock.mockReturnValue(messages([textDelta("Hel"), textDelta("lo"), successResult()]) as never);
     const onNote = vi.fn();

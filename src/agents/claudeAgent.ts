@@ -276,6 +276,9 @@ export class ClaudeAgent implements CodingAgent {
         if (msg.type === "assistant") {
           latestAssistantContext = assistantContextOf(msg) ?? latestAssistantContext;
           const fullText = extractAssistantText(msg);
+          // Text from earlier non-streamed messages is a note once a tool use follows
+          // it; it already went through onTextDelta, hence streamed.
+          if (!streamedSinceAssistant && extractAssistantToolUses(msg).length > 0) closeSegmentAsNote(true);
           if (fullText && !streamedSinceAssistant) {
             text += fullText;
             const answer = options.onNote ? splitNonStreamedText(msg, (note) => {
