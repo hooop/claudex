@@ -113,6 +113,23 @@ class FakeAgent implements CodingAgent {
   emitActivity(activity: Parameters<NonNullable<AgentSendOptions["onActivity"]>>[0]): void {
     this.sendOptions?.onActivity?.(activity);
   }
+
+  /** The options of the latest send, to inspect them or call a callback late. */
+  lastOptions(): AgentSendOptions | null {
+    return this.sendOptions;
+  }
+
+  streamText(delta: string): void {
+    this.sendOptions?.onTextDelta?.(delta);
+  }
+
+  emitNote(note: string, streamed: boolean): void {
+    this.sendOptions?.onNote?.(note, streamed);
+  }
+
+  emitTrace(event: Parameters<NonNullable<AgentSendOptions["onTrace"]>>[0]): void {
+    this.sendOptions?.onTrace?.(event);
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -133,6 +150,7 @@ function createMockCallbacks(): SchedulerCallbacks & { entries: TranscriptEntry[
     onEntry: vi.fn((entry: TranscriptEntry) => entries.push(entry)),
     onEntryStarted: vi.fn((entry: TranscriptEntry) => entries.push(entry)),
     onOutputChunk: vi.fn(),
+    onOutputReset: vi.fn(),
     onEntryCompleted: vi.fn(),
     onEntryUpdate: vi.fn(),
     onTurnStart: vi.fn(),
@@ -1189,5 +1207,272 @@ describe("debate rules", () => {
     expect(claudeSide).toContain(
       "Everything else you write (code, code comments, commit messages, and the content of any file, including during the implementation phase) is in English, whatever the language of the conversation.",
     );
+  });
+});
+
+describe("working notes and trace", () => {
+  let agents: Record<AgentId, FakeAgent>;
+  let callbacks: ReturnType<typeof createMockCallbacks>;
+
+  function startDebate(starter: AgentId): Scheduler {
+    const scheduler = new Scheduler(
+      agents,
+      { cwd: "/tmp", starter, autonomyBudget: { kind: "unbounded" } },
+      callbacks,
+    );
+    void scheduler.start("Test topic");
+    return scheduler;
+  }
+
+  function messageEntryOf(agent: AgentId, index = 0): TranscriptEntry {
+    const entry = callbacks.entries.filter((e) => e.from === agent && e.kind === "message")[index];
+    if (!entry) throw new Error(`No message entry ${index} from ${agent}`);
+    return entry;
+  }
+
+  beforeEach(() => {
+    agents = createFakeAgents();
+    callbacks = createMockCallbacks();
+  });
+
+  for (const [starter, other] of [
+    ["claude", "codex"],
+    ["codex", "claude"],
+  ] as const) {
+    it(`delivers and shows only the answer (${starter} starts)`, async () => {
+      startDebate(starter);
+      await vi.waitFor(() => expect(agents[starter].isPending()).toBe(true));
+
+      agents[starter].streamText("Looking.");
+      agents[starter].emitNote("Looking.", true);
+      agents[starter].streamText("Answer.");
+      agents[starter].complete("Answer.\n\n<<CONTINUE>>");
+
+      await vi.waitFor(() => expect(agents[other].isPending()).toBe(true));
+      expect(messageEntryOf(starter).text).toBe("Answer.");
+      expect(agents[other].lastMessage).toContain("Answer.");
+      expect(agents[other].lastMessage).not.toContain("Looking.");
+    });
+
+    it(`delivered text equals entry text (${starter} starts)`, async () => {
+      startDebate(starter);
+      await vi.waitFor(() => expect(agents[starter].isPending()).toBe(true));
+      agents[starter].streamText("Reading the code.");
+      agents[starter].emitNote("Reading the code.", true);
+      agents[starter].complete("First answer.\n\n<<CONTINUE>>");
+
+      await vi.waitFor(() => expect(agents[other].isPending()).toBe(true));
+      agents[other].streamText("Checking.");
+      agents[other].emitNote("Checking.", true);
+      agents[other].complete("Second answer.\n\n<<CONTINUE>>");
+
+      await vi.waitFor(() => expect(agents[starter].getSendCount()).toBe(2));
+      const first = messageEntryOf(starter).text;
+      const second = messageEntryOf(other).text;
+      expect(first).toBe("First answer.");
+      expect(second).toBe("Second answer.");
+      expect(agents[other].lastMessage).toContain(`\n${first}`);
+      expect(agents[starter].lastMessage).toContain(`\n${second}`);
+      expect(agents[other].lastMessage).not.toContain("Reading the code.");
+      expect(agents[starter].lastMessage).not.toContain("Checking.");
+    });
+  }
+
+  it("resets the live output when a note is removed", async () => {
+    startDebate("claude");
+    await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
+    const entry = messageEntryOf("claude");
+
+    agents.claude.streamText("Looking.");
+    agents.claude.emitNote("Looking.", true);
+
+    expect(callbacks.onOutputReset).toHaveBeenCalledTimes(1);
+    expect(callbacks.onOutputReset).toHaveBeenCalledWith(entry.id, "");
+    expect(entry.text).toBe("");
+    expect(callbacks.onEntryUpdate).toHaveBeenLastCalledWith(entry);
+  });
+
+  it("keeps the text before a note that starts with a paragraph break", async () => {
+    startDebate("codex");
+    await vi.waitFor(() => expect(agents.codex.isPending()).toBe(true));
+    const entry = messageEntryOf("codex");
+
+    agents.codex.streamText("Part one.");
+    agents.codex.streamText("\n\nLooking.");
+    agents.codex.emitNote("\n\nLooking.", true);
+
+    expect(callbacks.onOutputReset).toHaveBeenCalledWith(entry.id, "Part one.");
+    expect(entry.text).toBe("Part one.");
+  });
+
+  it("ignores an unstreamed note when trimming the live text", async () => {
+    startDebate("claude");
+    await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
+    const entry = messageEntryOf("claude");
+
+    agents.claude.streamText("Answer");
+    agents.claude.emitNote("x", false);
+
+    expect(callbacks.onOutputReset).not.toHaveBeenCalled();
+    expect(entry.text).toBe("Answer");
+  });
+
+  it("ignores a streamed note that is not the end of the live text", async () => {
+    startDebate("claude");
+    await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
+    const entry = messageEntryOf("claude");
+
+    agents.claude.streamText("Answer");
+    agents.claude.emitNote("Elsewhere", true);
+
+    expect(callbacks.onOutputReset).not.toHaveBeenCalled();
+    expect(entry.text).toBe("Answer");
+  });
+
+  it("emits the note as activity", async () => {
+    startDebate("codex");
+    await vi.waitFor(() => expect(agents.codex.isPending()).toBe(true));
+
+    agents.codex.streamText("\n\nI will read the scheduler.");
+    agents.codex.emitNote("\n\nI will read the scheduler.", true);
+
+    expect(callbacks.onActivity).toHaveBeenLastCalledWith("codex", {
+      kind: "note",
+      status: "running",
+      label: "I will read the scheduler.",
+    });
+  });
+
+  it("keeps the signal after notes", async () => {
+    const scheduler = startDebate("claude");
+    await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
+    agents.claude.streamText("Checking the claim.");
+    agents.claude.emitNote("Checking the claim.", true);
+    agents.claude.streamText("Agreed.\n\n<<CONSENSUS>>");
+    agents.claude.complete("Agreed.\n\n<<CONSENSUS>>");
+
+    await vi.waitFor(() => expect(agents.codex.isPending()).toBe(true));
+    agents.codex.streamText("Verifying.");
+    agents.codex.emitNote("Verifying.", true);
+    agents.codex.streamText("Agreed too.\n\n<<CONSENSUS>>");
+    agents.codex.complete("Agreed too.\n\n<<CONSENSUS>>");
+
+    await vi.waitFor(() => expect(callbacks.onConsensusReached).toHaveBeenCalled());
+    expect(scheduler.isConsensusReached()).toBe(true);
+    expect(messageEntryOf("claude").text).toBe("Agreed.");
+    expect(messageEntryOf("codex").text).toBe("Agreed too.");
+  });
+
+  it("passes onNote only to debate turns, and onTrace to every turn", async () => {
+    const scheduler = startDebate("claude");
+    await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
+    expect(agents.claude.lastOptions()?.onNote).toBeTypeOf("function");
+    expect(agents.claude.lastOptions()?.onTrace).toBeTypeOf("function");
+    agents.claude.complete("Claude agrees\n\n<<CONSENSUS>>");
+    await vi.waitFor(() => expect(agents.codex.isPending()).toBe(true));
+    expect(agents.codex.lastOptions()?.onNote).toBeTypeOf("function");
+    agents.codex.complete("Codex agrees\n\n<<CONSENSUS>>");
+
+    // Codex confirmed last, so it writes the synthesis.
+    await vi.waitFor(() => expect(agents.codex.getSendCount()).toBe(2));
+    expect(agents.codex.lastOptions()?.onNote).toBeUndefined();
+    expect(agents.codex.lastOptions()?.onTrace).toBeTypeOf("function");
+    agents.codex.complete("Summary of decisions");
+    await vi.waitFor(() => expect(scheduler.isPaused()).toBe(true));
+
+    scheduler.beginImplementation();
+    scheduler.intervene("Implement feature X", "claude");
+    await vi.waitFor(() => expect(agents.claude.getSendCount()).toBe(2));
+    expect(agents.claude.lastOptions()?.writeAccess).toBe(true);
+    expect(agents.claude.lastOptions()?.onNote).toBeUndefined();
+    expect(agents.claude.lastOptions()?.onTrace).toBeTypeOf("function");
+  });
+
+  it("does not reset the output when the result matches the stream", async () => {
+    startDebate("claude");
+    await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
+    agents.claude.streamText("Answer.\n\n<<CONTINUE>>");
+    agents.claude.complete("Answer.\n\n<<CONTINUE>>");
+
+    await vi.waitFor(() => expect(agents.codex.isPending()).toBe(true));
+    expect(callbacks.onOutputReset).not.toHaveBeenCalled();
+  });
+
+  it("resets to the result text when it differs from the stream", async () => {
+    startDebate("claude");
+    await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
+    const entry = messageEntryOf("claude");
+
+    // The answer held only the marker, so the adapter falls back to every segment.
+    agents.claude.streamText("Looking.");
+    agents.claude.emitNote("Looking.", true);
+    agents.claude.streamText("<<CONTINUE>>");
+    agents.claude.complete("Looking.\n\n<<CONTINUE>>");
+
+    await vi.waitFor(() => expect(agents.codex.isPending()).toBe(true));
+    expect(callbacks.onOutputReset).toHaveBeenLastCalledWith(entry.id, "Looking.\n\n<<CONTINUE>>");
+    expect(entry.text).toBe("Looking.");
+    expect(agents.codex.lastMessage).toContain("Looking.");
+  });
+
+  it("records notes and tools in the trace", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(1_000);
+    try {
+      const scheduler = startDebate("claude");
+      await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
+
+      agents.claude.streamText("\n\nLooking.");
+      agents.claude.emitNote("\n\nLooking.", true);
+      agents.claude.emitTrace({
+        kind: "tool",
+        label: "Read src/a.ts",
+        status: "success",
+        output: "x".repeat(70 * 1024),
+      });
+      agents.claude.complete("Answer.\n\n<<CONTINUE>>");
+
+      await vi.waitFor(() => expect(agents.codex.isPending()).toBe(true));
+      agents.codex.emitTrace({ kind: "tool", label: "npm test", status: "failure", exitCode: 1 });
+
+      const trace = scheduler.trace();
+      expect(Object.isFrozen(trace)).toBe(true);
+      expect(trace).toEqual([
+        { agent: "claude", timestamp: 1_000, event: { kind: "note", text: "Looking." } },
+        {
+          agent: "claude",
+          timestamp: 1_000,
+          event: {
+            kind: "tool",
+            label: "Read src/a.ts",
+            status: "success",
+            output: "x".repeat(64 * 1024) + `\n[... ${6 * 1024} bytes omitted]`,
+          },
+        },
+        {
+          agent: "codex",
+          timestamp: 1_000,
+          event: { kind: "tool", label: "npm test", status: "failure", exitCode: 1 },
+        },
+      ]);
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
+  it("ignores notes and traces from a turn that is over", async () => {
+    const scheduler = startDebate("claude");
+    await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
+    const staleOptions = agents.claude.lastOptions();
+    const entry = messageEntryOf("claude");
+    agents.claude.streamText("Answer.\n\n<<CONTINUE>>");
+    agents.claude.complete("Answer.\n\n<<CONTINUE>>");
+    await vi.waitFor(() => expect(agents.codex.isPending()).toBe(true));
+
+    staleOptions?.onNote?.("Answer.\n\n<<CONTINUE>>", true);
+    staleOptions?.onTrace?.({ kind: "tool", label: "late", status: "success" });
+
+    expect(scheduler.trace()).toEqual([]);
+    expect(callbacks.onOutputReset).not.toHaveBeenCalled();
+    expect(entry.text).toBe("Answer.");
   });
 });

@@ -22,6 +22,8 @@ import type {
   Phase,
   SessionLifecycle,
   SuspensionReason,
+  TraceEvent,
+  TraceRecord,
   TranscriptEntry,
 } from "../types.js";
 import {
@@ -31,6 +33,7 @@ import {
   WAIT_HUMAN_MARKER,
 } from "../types.js";
 import { extractSignal } from "./markers.js";
+import { capTraceOutput } from "./trace.js";
 import type {
   AgentResult,
   DeliveryBlock,
@@ -62,6 +65,8 @@ export interface SchedulerCallbacks {
   onEntryStarted: (entry: TranscriptEntry) => void;
   /** The delta itself — what the agent just produced, not the text so far. */
   onOutputChunk: (entryId: string, delta: string) => void;
+  /** The entry's live body was rewritten (a note removed, or the result differs from the stream). */
+  onOutputReset: (entryId: string, text: string) => void;
   onEntryCompleted: (entryId: string, outcome: EntryOutcome) => void;
   onEntryUpdate: (entry: TranscriptEntry) => void;
   onTurnStart: (agent: AgentId) => void;
@@ -87,6 +92,8 @@ export class Scheduler {
   // ─────────────────────────────────────────────────────────────────────────
   readonly transcript: TranscriptEntry[] = [];
   phase: Phase = "debate";
+  // Diagnostic log kept next to the transcript, never delivered to an agent.
+  private readonly traceRecords: TraceRecord[] = [];
 
   // ─────────────────────────────────────────────────────────────────────────
   // Consensus and synthesis
@@ -431,6 +438,13 @@ export class Scheduler {
   /** Immutable point-in-time copy; valid for /save even while a turn runs. */
   snapshot(): readonly TranscriptEntry[] {
     return freezeTranscript(this.transcript);
+  }
+
+  /** Immutable point-in-time copy of the session trace. */
+  trace(): readonly TraceRecord[] {
+    return Object.freeze(
+      this.traceRecords.map((record) => Object.freeze({ ...record, event: Object.freeze({ ...record.event }) })),
+    );
   }
 
   /**
@@ -844,6 +858,25 @@ export class Scheduler {
       this.callbacks.onActivity(agent, activity);
     };
 
+    // Notes are separated from the answer only in debate turns; implementation
+    // turns keep them in the message, as before (spec D5).
+    const onNote =
+      this.phase === "debate"
+        ? (note: string, streamed: boolean) => {
+            if (!this.isRunLive(runToken)) return;
+            const text = note.trim();
+            this.recordTrace(agent, { kind: "note", text });
+            // The raw note, paragraph break included, is what was streamed.
+            if (streamed && liveText.endsWith(note)) {
+              liveText = liveText.slice(0, liveText.length - note.length);
+              entry.text = liveText;
+              this.callbacks.onOutputReset(entry.id, liveText);
+              this.callbacks.onEntryUpdate(entry);
+            }
+            emitActivity({ kind: "note", status: "running", label: text });
+          }
+        : undefined;
+
     try {
       const result = await this.agents[agent].send(message, {
         cwd: this.options.cwd,
@@ -858,6 +891,10 @@ export class Scheduler {
           this.callbacks.onEntryUpdate(entry);
         },
         onActivity: emitActivity,
+        ...(onNote ? { onNote } : {}),
+        onTrace: (event) => {
+          if (this.isRunLive(runToken)) this.recordTrace(agent, event);
+        },
         onContextUsage: (usage) => {
           if (this.isRunLive(runToken)) this.callbacks.onContextUsage(agent, usage);
         },
@@ -868,7 +905,7 @@ export class Scheduler {
       });
 
       if (!this.isRunLive(runToken)) return "stop";
-      return this.handleJobResult(job, entry, result);
+      return this.handleJobResult(job, entry, result, liveText);
     } catch (err) {
       if (!this.isRunLive(runToken)) return "stop";
       // Unexpected exception (shouldn't happen with new contract)
@@ -892,7 +929,12 @@ export class Scheduler {
     }
   }
 
-  private handleJobResult(job: DeliveryJob, entry: TranscriptEntry, result: AgentResult): JobOutcome {
+  private handleJobResult(
+    job: DeliveryJob,
+    entry: TranscriptEntry,
+    result: AgentResult,
+    liveText: string,
+  ): JobOutcome {
     const agent = job.agent;
     const jobEpoch = job.epoch;
 
@@ -901,6 +943,10 @@ export class Scheduler {
         // Only an answered turn proves the agent read the rules it carried. A
         // failed one may be replaced by a new delivery, which must bring them.
         this.instructed[agent] = true;
+
+        // The adapter's fallback (every segment, when the answer is empty) was
+        // not what the live view last showed, so the view starts over from it.
+        if (result.text !== liveText) this.callbacks.onOutputReset(entry.id, result.text);
 
         // Parse the single shared protocol grammar before changing any causal
         // state. The visible body never includes a recognised marker.
@@ -1377,6 +1423,9 @@ export class Scheduler {
           this.callbacks.onEntryUpdate(entry);
         },
         onActivity: emitActivity,
+        onTrace: (event) => {
+          if (this.isRunLive(runToken)) this.recordTrace(agent, event);
+        },
         onContextUsage: (usage) => {
           if (this.isRunLive(runToken)) this.callbacks.onContextUsage(agent, usage);
         },
@@ -1495,6 +1544,14 @@ export class Scheduler {
     this.paused = reason !== null;
     this.callbacks.onSuspensionChange(reason);
     if (wasPaused !== this.paused) this.callbacks.onPausedChange(this.paused);
+  }
+
+  private recordTrace(agent: AgentId, event: TraceEvent): void {
+    const recorded =
+      event.kind === "tool" && event.output !== undefined
+        ? { ...event, output: capTraceOutput(event.output) }
+        : event;
+    this.traceRecords.push({ agent, timestamp: Date.now(), event: recorded });
   }
 
   private isRunLive(token: symbol): boolean {
