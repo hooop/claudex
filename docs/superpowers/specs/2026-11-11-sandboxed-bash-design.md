@@ -153,7 +153,7 @@ Without this, `env` in the sandbox prints `ANTHROPIC_API_KEY`, `GITHUB_TOKEN` an
 on SDK 0.3.310 (2026-11-11): `sandbox.credentials.envVars: [{ name, mode: "deny" }]` hides the
 variable from the command (`$FAKE_API_KEY` empty, other variables untouched). The adapter denies
 every variable of its own environment whose name matches `/KEY|SECRET|TOKEN|PASSWORD|CREDENTIAL|AUTH(?!OR)|DSN|DATABASE_URL/i` (not `PWD`, which would hide
-the shell's `$PWD`, nor `PAT`, which matches `PATH`; `AUTH(?!OR)` keeps `GIT_AUTHOR_NAME`)
+the shell's `$PWD`, nor `PAT`, which matches `PATH`; `AUTH(?!OR(?!IZ))` keeps `GIT_AUTHOR_NAME` but hides `HTTP_AUTHORIZATION`)
 (sorted), and omits the `credentials` key when none matches. Reason: parity with Codex, whose
 default shell environment policy drops variables whose name contains KEY, SECRET or TOKEN.
 
