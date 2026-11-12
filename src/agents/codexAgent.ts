@@ -3,6 +3,7 @@ import * as readline from "node:readline";
 import type { AgentResult } from "../orchestrator/types.js";
 import type { AgentActivity } from "../types.js";
 import { AUTO_MODEL_LABEL, type AgentSendOptions, type CodingAgent } from "./types.js";
+import { composeTurnText, type TurnSegment } from "./turnText.js";
 
 type RpcId = number | string;
 
@@ -23,6 +24,7 @@ interface CodexItem {
   cwd?: string;
   status?: string;
   exitCode?: number | null;
+  aggregatedOutput?: string | null;
   durationMs?: number | null;
   changes?: Array<{ path: string; kind: string }>;
   server?: string;
@@ -54,6 +56,13 @@ export class CodexProtocolError extends Error {
     super(`Invalid Codex protocol: ${message}`);
     this.name = "CodexProtocolError";
   }
+}
+
+interface MessageItem {
+  kind: TurnSegment["kind"];
+  // Text of the item itself, without the paragraph break that precedes an answer item.
+  text: string;
+  prefix: string;
 }
 
 interface RunningCommand {
@@ -127,7 +136,28 @@ export class CodexAgent implements CodingAgent {
     if (options.signal?.aborted) return { kind: "cancelled" };
 
     this.cancelled = false;
-    let text = "";
+    const messages = new Map<string, MessageItem>();
+    // Items whose commentary phase was known at item/started: their deltas are held back.
+    const heldItems = new Set<string>();
+    // Without onNote there is no separation: every item stays part of the answer.
+    const currentText = () => {
+      const segments: TurnSegment[] = [...messages.values()].map((message) => ({
+        kind: message.kind,
+        text: message.kind === "answer" ? message.prefix + message.text : message.text,
+      }));
+      return options.onNote ? composeTurnText(segments) : segments.map((segment) => segment.text).join("");
+    };
+    const messageOf = (itemId: string): MessageItem => {
+      let message = messages.get(itemId);
+      if (!message) {
+        const answerSoFar = [...messages.values()].some(
+          (other) => other.kind === "answer" && other.text !== "",
+        );
+        message = { kind: "answer", text: "", prefix: answerSoFar ? "\n\n" : "" };
+        messages.set(itemId, message);
+      }
+      return message;
+    };
     let terminalError: CodexTurnError | null = null;
     const streamedItems = new Set<string>();
     const activeCommands = new Map<string, RunningCommand>();
@@ -228,7 +258,13 @@ export class CodexAgent implements CodingAgent {
           const itemId = stringOf(params.itemId);
           if (!delta) return;
           if (itemId) streamedItems.add(itemId);
-          text += delta;
+          const message = messageOf(itemId);
+          if (heldItems.has(itemId)) {
+            message.text += delta;
+            return;
+          }
+          if (message.text === "" && message.prefix) options.onTextDelta?.(message.prefix);
+          message.text += delta;
           options.onTextDelta?.(delta);
           return;
         }
@@ -236,6 +272,11 @@ export class CodexAgent implements CodingAgent {
         case "item/started": {
           const item = itemOf(params.item);
           if (!item) return;
+
+          if (item.type === "agentMessage") {
+            if (item.phase === "commentary" && options.onNote) heldItems.add(item.id);
+            return;
+          }
 
           if (item.type === "commandExecution") {
             activeCommands.delete(item.id);
@@ -256,9 +297,22 @@ export class CodexAgent implements CodingAgent {
           const item = itemOf(params.item);
           if (!item) return;
 
-          if (item.type === "agentMessage" && item.text && !streamedItems.has(item.id)) {
-            text += item.text;
-            options.onTextDelta?.(item.text);
+          if (item.type === "agentMessage") {
+            const held = heldItems.delete(item.id);
+            const streamed = streamedItems.has(item.id);
+            if (!item.text && !messages.has(item.id)) return;
+            const message = messageOf(item.id);
+            if (!streamed && item.text) message.text = item.text;
+            if (options.onNote && (held || item.phase === "commentary")) {
+              message.kind = "note";
+              if (message.text) options.onNote(message.text, streamed && !held);
+              return;
+            }
+            if (!streamed || held) {
+              // Not shown yet: the text arrived whole, or was held back as a probable note.
+              if (message.prefix && message.text) options.onTextDelta?.(message.prefix);
+              if (message.text) options.onTextDelta?.(message.text);
+            }
             return;
           }
 
@@ -266,6 +320,13 @@ export class CodexAgent implements CodingAgent {
             const running = activeCommands.get(item.id);
             activeCommands.delete(item.id);
             const failed = item.status === "failed" || item.status === "declined" || (item.exitCode ?? 0) !== 0;
+            options.onTrace?.({
+              kind: "tool",
+              label: item.command || running?.label || "command",
+              status: failed ? "failure" : "success",
+              exitCode: item.exitCode,
+              output: item.aggregatedOutput ?? undefined,
+            });
             const durationMs =
               item.durationMs ?? (running ? Math.max(0, Date.now() - running.startedAt) : undefined);
             restoreCommandOrEmit({
@@ -280,7 +341,10 @@ export class CodexAgent implements CodingAgent {
 
           const failed = item.status === "failed" || item.status === "declined";
           const activity = activityForCodexItem(item, failed ? "failure" : "success");
-          if (activity) restoreCommandOrEmit(activity);
+          if (activity) {
+            options.onTrace?.({ kind: "tool", label: activity.label, status: failed ? "failure" : "success" });
+            restoreCommandOrEmit(activity);
+          }
           return;
         }
 
@@ -360,7 +424,7 @@ export class CodexAgent implements CodingAgent {
       ]);
 
       if (this.cancelled || options.signal?.aborted || completion.turn.status === "interrupted") {
-        return { kind: "cancelled", partialText: text || undefined };
+        return { kind: "cancelled", partialText: currentText() || undefined };
       }
 
       const turnError = completion.turn.error ?? terminalError;
@@ -368,19 +432,19 @@ export class CodexAgent implements CodingAgent {
         return {
           kind: "error",
           message: describeCodexError(turnError ?? { message: "Codex turn failed." }),
-          partialText: text || undefined,
+          partialText: currentText() || undefined,
         };
       }
 
-      return { kind: "success", text };
+      return { kind: "success", text: currentText() };
     } catch (error) {
       if (this.cancelled || options.signal?.aborted) {
-        return { kind: "cancelled", partialText: text || undefined };
+        return { kind: "cancelled", partialText: currentText() || undefined };
       }
       return {
         kind: "error",
         message: describeCodexThrownError(error),
-        partialText: text || undefined,
+        partialText: currentText() || undefined,
       };
     } finally {
       options.signal?.removeEventListener("abort", abortHandler);
@@ -620,6 +684,7 @@ function itemOf(value: unknown): CodexItem | null {
     cwd: optionalString(item.cwd),
     status: optionalString(item.status),
     exitCode: item.exitCode === null ? null : numberOf(item.exitCode),
+    aggregatedOutput: item.aggregatedOutput === null ? null : optionalString(item.aggregatedOutput),
     durationMs: item.durationMs === null ? null : numberOf(item.durationMs),
     changes,
     server: optionalString(item.server),
