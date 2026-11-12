@@ -176,7 +176,7 @@ Any other result (for example Lp writes it in a way a nearest-`.git` walk does n
 
 **Files:**
 - Modify: `README.md` (lines 23 and 55: replace the known-gap sentences with the consent behaviour, what was measured in Task 2, and the mid-`/implement` gap from D3, stated plainly)
-- Modify: `.claudex/memory/limits.md` (new dated entry 2026-11-11 with Task 2's tables, like the file; update the "Trou restant" paragraph and the SDK-upgrade instruction to include Lp, Ll, M)
+- Modify: `.claudex/memory/limits.md` (new dated entry 2026-11-11 with Task 2's tables, like the file; update the "Remaining gap" paragraph and the SDK-upgrade instruction to include Lp, Ll, M)
 - Modify: `.claudex/memory/decisions.md` (new dated entry: D1–D5, consent never persisted, `y` key, alternatives rejected)
 - Modify: `AGENTS.md` (Constraints: replace "The analysed project's `apiKeyHelper` still runs..." with the consent gate; SDK-upgrade checklist: re-read `COMMAND_SETTING_KEYS` against `sdk.d.ts`)
 
