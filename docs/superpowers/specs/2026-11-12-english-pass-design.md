@@ -175,3 +175,24 @@ rule-by-rule review.
 1. Agents answer in the language of the question; English when they cannot,
    and English for every other text (item 2).
 2. Existing tests may be modified for translation, under the rule in item 7.
+
+## Decisions taken during implementation (by Claude, delegated)
+
+- The WAIT_HUMAN clause reads "truly essential" ("réellement indispensable"),
+  not the plan's "truly needed", to keep the original strength.
+- Number formats follow the en-US date choice: decimal point (`8.2 s`) and
+  comma thousands separator (`30,000 characters`).
+- The badge `TOI` became `YOU`; the slug fallback for an empty topic became
+  `topic`.
+- Memory labels: Finding, How to apply, Nature, Decisions, Alternatives
+  rejected, Files involved; sections "Remaining gap" and "Pre-existing
+  gaps". The memory agent's verdicts: SETTLED, REJECTED, DEBATED WITHOUT
+  DECISION, NOTHING FOUND.
+- The memory keeps its own dates where older plans quote a different one.
+- In the memory and old plans, placeholders inside code spans and quoted
+  former UI headings were translated and marked; commands, numbers and tool
+  output are unchanged. Real local file names containing French words are
+  kept.
+- Two near-empty test guards were made meaningful again while translating:
+  the attribution header must appear exactly once in a turn, and the emoji
+  rule assertion keeps its negation.
