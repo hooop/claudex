@@ -42,7 +42,7 @@ Sleep 600ms
 Show
 Sleep 2500ms
 Sleep 500ms
-Type "Comment refondre l'auth sans couper les utilisateurs connectés ?"
+Type "How do we rework auth without logging out signed-in users?"
 Sleep 500ms
 Enter
 Sleep 4400ms

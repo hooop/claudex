@@ -51,7 +51,7 @@ interface TurnCompletion {
 
 export class CodexProtocolError extends Error {
   constructor(message: string) {
-    super(`Protocole Codex invalide : ${message}`);
+    super(`Invalid Codex protocol: ${message}`);
     this.name = "CodexProtocolError";
   }
 }
@@ -106,14 +106,14 @@ export class CodexAgent implements CodingAgent {
   }
 
   resetSession(): void {
-    if (this.activeSend) throw new Error("Impossible de réinitialiser Codex pendant un tour actif.");
+    if (this.activeSend) throw new Error("Cannot reset Codex during an active turn.");
     this.threadId = undefined;
     this.resolvedModel = undefined;
   }
 
   send(message: string, options: AgentSendOptions): Promise<AgentResult> {
     if (this.activeSend) {
-      return Promise.resolve({ kind: "error", message: "Un tour Codex est déjà actif." });
+      return Promise.resolve({ kind: "error", message: "A Codex turn is already active." });
     }
     const operation = this.performSend(message, options);
     const tracked = operation.finally(() => {
@@ -158,13 +158,13 @@ export class CodexAgent implements CodingAgent {
       }
       if (parsed.threadId !== expectedThreadId) {
         rejectProtocol(
-          `turn/completed associé au thread ${parsed.threadId}, attendu ${expectedThreadId ?? "inconnu"}`,
+          `turn/completed tied to thread ${parsed.threadId}, expected ${expectedThreadId ?? "unknown"}`,
         );
         return;
       }
       if (parsed.turn.id !== expectedTurnId) {
         rejectProtocol(
-          `turn/completed associé au tour ${parsed.turn.id}, attendu ${expectedTurnId ?? "inconnu"}`,
+          `turn/completed tied to turn ${parsed.turn.id}, expected ${expectedTurnId ?? "unknown"}`,
         );
         return;
       }
@@ -240,7 +240,7 @@ export class CodexAgent implements CodingAgent {
           if (item.type === "commandExecution") {
             activeCommands.delete(item.id);
             activeCommands.set(item.id, {
-              label: item.command || "commande",
+              label: item.command || "command",
               startedAt: numberOf(params.startedAtMs) ?? Date.now(),
             });
             emitLatestCommand();
@@ -271,7 +271,7 @@ export class CodexAgent implements CodingAgent {
             restoreCommandOrEmit({
               kind: "command",
               status: failed ? "failure" : "success",
-              label: item.command || running?.label || "commande",
+              label: item.command || running?.label || "command",
               durationMs: durationMs ?? undefined,
               exitCode: item.exitCode,
             });
@@ -292,7 +292,7 @@ export class CodexAgent implements CodingAgent {
 
         case "turn/completed": {
           if (!expectedTurnId) {
-            if (earlyCompletion) rejectProtocol("plusieurs notifications turn/completed précoces");
+            if (earlyCompletion) rejectProtocol("several early turn/completed notifications");
             else earlyCompletion = notification;
             return;
           }
@@ -333,7 +333,7 @@ export class CodexAgent implements CodingAgent {
       );
       const thread = asRecord(threadResponse.thread);
       const nextThreadId = stringOf(thread.id);
-      if (!nextThreadId) throw new Error("Codex app-server n'a pas renvoyé d'identifiant de thread.");
+      if (!nextThreadId) throw new Error("Codex app-server did not return a thread id.");
       this.threadId = nextThreadId;
       expectedThreadId = nextThreadId;
       const resolvedModel = stringOf(threadResponse.model) || undefined;
@@ -367,7 +367,7 @@ export class CodexAgent implements CodingAgent {
       if (completion.turn.status === "failed" || turnError) {
         return {
           kind: "error",
-          message: describeCodexError(turnError ?? { message: "Tour Codex échoué." }),
+          message: describeCodexError(turnError ?? { message: "Codex turn failed." }),
           partialText: text || undefined,
         };
       }
@@ -466,7 +466,7 @@ class CodexAppServerConnection {
 
   private send(message: RpcMessage): void {
     if (this.child.stdin.destroyed || !this.child.stdin.writable) {
-      throw new Error("La connexion stdio de Codex app-server est fermée.");
+      throw new Error("The Codex app-server stdio connection is closed.");
     }
     this.child.stdin.write(`${JSON.stringify(message)}\n`);
   }
@@ -493,7 +493,7 @@ class CodexAppServerConnection {
       if (message.error) {
         pending.reject(
           new Error(
-            `Codex app-server (${pending.method}) : ${message.error.message ?? `erreur ${message.error.code ?? "inconnue"}`}`,
+            `Codex app-server (${pending.method}): ${message.error.message ?? `error ${message.error.code ?? "unknown"}`}`,
           ),
         );
       } else {
@@ -518,7 +518,7 @@ class CodexAppServerConnection {
       default:
         this.send({
           id: message.id,
-          error: { code: -32601, message: `Requête app-server non prise en charge par Claudex : ${message.method}` },
+          error: { code: -32601, message: `app-server request not supported by Claudex: ${message.method}` },
         });
     }
   }
@@ -556,31 +556,31 @@ function activityForCodexItem(
   switch (item.type) {
     case "fileChange": {
       const paths = item.changes?.map((change) => change.path).filter(Boolean) ?? [];
-      const label = paths.length === 1 ? `modifie ${paths[0]}` : `modifie ${paths.length || "des"} fichiers`;
+      const label = paths.length === 1 ? `edits ${paths[0]}` : `edits ${paths.length || "some"} files`;
       return { kind: "tool", status, label, durationMs };
     }
     case "mcpToolCall":
       return {
         kind: "tool",
         status,
-        label: `utilise ${[item.server, item.tool].filter(Boolean).join("/") || "un outil MCP"}`,
+        label: `uses ${[item.server, item.tool].filter(Boolean).join("/") || "an MCP tool"}`,
         durationMs,
       };
     case "dynamicToolCall":
       return {
         kind: "tool",
         status,
-        label: `utilise ${[item.namespace, item.tool].filter(Boolean).join("/") || "un outil"}`,
+        label: `uses ${[item.namespace, item.tool].filter(Boolean).join("/") || "a tool"}`,
         durationMs,
       };
     case "webSearch":
-      return { kind: "tool", status, label: `recherche sur le web : ${item.query || "requête"}`, durationMs };
+      return { kind: "tool", status, label: `searches the web: ${item.query || "query"}`, durationMs };
     case "imageView":
-      return { kind: "tool", status, label: `inspecte ${item.path || "une image"}`, durationMs };
+      return { kind: "tool", status, label: `inspects ${item.path || "an image"}`, durationMs };
     case "plan":
-      return { kind: "tool", status, label: "prépare son plan", durationMs };
+      return { kind: "tool", status, label: "drafts its plan", durationMs };
     case "contextCompaction":
-      return { kind: "tool", status, label: "compacte le contexte", durationMs };
+      return { kind: "tool", status, label: "compacts the context", durationMs };
     default:
       return null;
   }
@@ -634,9 +634,9 @@ function startedTurnOf(value: unknown): Pick<CodexTurn, "id" | "status"> | Error
   const turn = asRecord(value);
   const id = stringOf(turn.id);
   const status = stringOf(turn.status);
-  if (!id) return new Error("turn/start sans identifiant de tour");
+  if (!id) return new Error("turn/start without a turn id");
   if (status !== "inProgress") {
-    return new Error(`turn/start avec statut ${status || "absent"}, attendu inProgress`);
+    return new Error(`turn/start with status ${status || "missing"}, expected inProgress`);
   }
   return { id, status };
 }
@@ -644,14 +644,14 @@ function startedTurnOf(value: unknown): Pick<CodexTurn, "id" | "status"> | Error
 function terminalTurnCompletionOf(value: unknown): TurnCompletion | Error {
   const params = asRecord(value);
   const threadId = stringOf(params.threadId);
-  if (!threadId) return new Error("turn/completed sans threadId");
+  if (!threadId) return new Error("turn/completed without threadId");
 
   const rawTurn = asRecord(params.turn);
   const id = stringOf(rawTurn.id);
-  if (!id) return new Error("turn/completed sans turn.id");
+  if (!id) return new Error("turn/completed without turn.id");
   const status = stringOf(rawTurn.status);
   if (status !== "completed" && status !== "failed" && status !== "interrupted") {
-    return new Error(`turn/completed avec statut terminal invalide : ${status || "absent"}`);
+    return new Error(`turn/completed with invalid terminal status: ${status || "missing"}`);
   }
 
   let error: CodexTurnError | null | undefined;
@@ -659,7 +659,7 @@ function terminalTurnCompletionOf(value: unknown): TurnCompletion | Error {
     error = rawTurn.error === null ? null : undefined;
   } else {
     error = turnErrorOf(rawTurn.error);
-    if (!error) return new Error("turn/completed contient une erreur mal formée");
+    if (!error) return new Error("turn/completed contains a malformed error");
   }
   return { threadId, turn: { id, status, error } };
 }
@@ -683,7 +683,7 @@ function optionalString(value: unknown): string | undefined {
 function describeCodexError(error: CodexTurnError): string {
   const detail = error.additionalDetails ? `${error.message} — ${error.additionalDetails}` : error.message;
   if (isCodexLimit(error.codexErrorInfo) || looksLikeUsageLimit(detail)) {
-    return `Limite Codex atteinte — reprends avec /resume après la réinitialisation (${detail}).`;
+    return `Codex limit reached — resume with /resume after the reset (${detail}).`;
   }
   return detail;
 }
@@ -691,7 +691,7 @@ function describeCodexError(error: CodexTurnError): string {
 function describeCodexThrownError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   if (looksLikeUsageLimit(message)) {
-    return `Limite Codex atteinte — reprends avec /resume après la réinitialisation (${message}).`;
+    return `Codex limit reached — resume with /resume after the reset (${message}).`;
   }
   return message;
 }
@@ -706,6 +706,6 @@ function looksLikeUsageLimit(message: string): boolean {
 
 function connectionClosedError(info: CloseInfo, stderr: string): Error {
   if (info.error) return info.error;
-  const reason = info.signal ? `signal ${info.signal}` : `code ${info.code ?? "inconnu"}`;
-  return new Error(`Codex app-server s'est arrêté (${reason})${stderr ? ` : ${stderr}` : ""}`);
+  const reason = info.signal ? `signal ${info.signal}` : `code ${info.code ?? "unknown"}`;
+  return new Error(`Codex app-server stopped (${reason})${stderr ? `: ${stderr}` : ""}`);
 }

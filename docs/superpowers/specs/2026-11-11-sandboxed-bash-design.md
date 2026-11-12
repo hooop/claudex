@@ -1,8 +1,8 @@
 # A read-only Bash for Claude during the debate, enforced by the SDK sandbox — design
 
 Date: 2026-11-11. Branch: `feat/sandboxed-bash`. SDK: 0.3.310 (Claude Code 2.1.310), macOS.
-The maintainer delegated every technical choice ("prends toutes les décisions professionnelles qui
-s'imposent pour avoir un produit qu'on peut diffuser sur une marketplace", 2026-11-11). The feature
+The maintainer delegated every technical choice ("make every professional decision needed to
+have a product that can be distributed on a marketplace", 2026-11-11, translated from French). The feature
 itself and its place on the roadmap were decided by the maintainer on 2026-10-28; everything below
 is Claude's call unless stated otherwise.
 
@@ -168,7 +168,7 @@ module keeps no runtime SDK import (D2 of the debate isolation design).
 `ClaudeAgent` takes the resolver as an optional constructor argument whose default always returns
 `null` (no Bash); only `src/ui/Root.tsx` passes the real one. A forgotten wiring therefore yields a
 debate without Bash, never a Bash without sandbox, and the existing adapter tests (which use
-non-existent `cwd` values such as `/projet`) keep running unchanged.
+non-existent `cwd` values such as `/project`) keep running unchanged.
 
 `DEBATE_TOOLS` stays the read-only list; a new `SANDBOXED_DEBATE_TOOLS` adds `Bash`. The
 verification verdict accepts `Bash` as a debate tool only for cases that pass the sandbox.
@@ -295,4 +295,4 @@ attempt, before D9, had stopped on `.claude/.cc-writes` left in the project.)
 ## Left to the builder
 
 Module layout inside `src/agents/`, the exact wording of README sentences, how the verify runner
-creates the fake home and the sibling folder, and test names (French, matching the surrounding file).
+creates the fake home and the sibling folder, and test names (French at the time, matching the surrounding file; translated in the English pass).

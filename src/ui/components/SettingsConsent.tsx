@@ -12,10 +12,10 @@ export const CONSENT_RENDER_OPTIONS = { ...RENDER_OPTIONS, alternateScreen: fals
 const INPUT_DELAY_MS = 250;
 
 const TITLE =
-  "Les réglages Claude Code de ce projet demandent à Claude Code d'exécuter ces commandes ou d'appliquer ces réglages pendant les sessions Claude. Claudex ne peut pas les désactiver.";
+  "This project's Claude Code settings ask Claude Code to run these commands or apply these settings during Claude sessions. Claudex cannot disable them.";
 
 const FIX_UNREADABLE =
-  "Claudex ne peut pas lire ce qu'il faudrait approuver : corrigez .claude/settings.json pour que Claudex puisse le lire, puis relancez Claudex.";
+  "Claudex cannot read what would need approving: fix .claude/settings.json so Claudex can read it, then restart Claudex.";
 
 function hasUnreadable(findings: readonly SettingsFinding[]): boolean {
   return findings.some((finding) => finding.kind === "unreadable");
@@ -30,11 +30,11 @@ function summaryLine(findings: readonly SettingsFinding[]): string {
   const readable = findings.flatMap((f) => (f.kind === "entries" ? [f] : []));
   if (readable.length > 0) {
     const entries = readable.reduce((sum, f) => sum + f.entries.length, 0);
-    parts.push(`${plural(entries, "réglage")} dans ${plural(readable.length, "fichier")}`);
+    parts.push(`${plural(entries, "setting")} in ${plural(readable.length, "file")}`);
   }
   const unreadable = findings.length - readable.length;
-  if (unreadable > 0) parts.push(`${plural(unreadable, "fichier")} illisible${unreadable > 1 ? "s" : ""}`);
-  return `${parts.join(", ")} — remontez pour tout relire si besoin.`;
+  if (unreadable > 0) parts.push(plural(unreadable, "unreadable file"));
+  return `${parts.join(", ")} — scroll up to reread everything if needed.`;
 }
 
 /**
@@ -50,7 +50,7 @@ export function formatConsentText(findings: readonly SettingsFinding[]): string 
     if (finding.kind === "entries") {
       for (const entry of finding.entries) lines.push(`  ${entry.key} = ${formatSettingValue(entry.value)}`);
     } else {
-      lines.push(`  illisible : ${finding.reason}`);
+      lines.push(`  unreadable: ${finding.reason}`);
     }
   }
   if (hasUnreadable(findings)) lines.push("", FIX_UNREADABLE);
@@ -90,10 +90,10 @@ export function SettingsConsent(props: {
       <Text wrap="wrap">
         {canAccept ? (
           <>
-            <Text color="greenBright">[y]</Text> continuer avec ces réglages ·{" "}
+            <Text color="greenBright">[y]</Text> continue with these settings ·{" "}
           </>
         ) : null}
-        <Text color="redBright">[n]</Text> quitter
+        <Text color="redBright">[n]</Text> quit
       </Text>
     </Box>
   );

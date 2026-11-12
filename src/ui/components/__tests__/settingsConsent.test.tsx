@@ -85,16 +85,16 @@ const MANY: SettingsFinding[] = [
 ];
 
 describe("formatConsentText", () => {
-  it("dit que les réglages s'appliquent pendant les sessions, pas seulement au démarrage", () => {
+  it("says the settings apply during sessions, not only at startup", () => {
     const text = formatConsentText([
       { file: ".claude/settings.json", kind: "entries", entries: [{ key: "env.FOO", value: "1" }] },
     ]);
     expect(text.split("\n")[0]).toBe(
-      "Les réglages Claude Code de ce projet demandent à Claude Code d'exécuter ces commandes ou d'appliquer ces réglages pendant les sessions Claude. Claudex ne peut pas les désactiver.",
+      "This project's Claude Code settings ask Claude Code to run these commands or apply these settings during Claude sessions. Claudex cannot disable them.",
     );
   });
 
-  it("montre le fichier, la clé et la valeur entière d'une longue commande, d'un seul tenant", () => {
+  it("shows the file, the key and the whole value of a long command, in one piece", () => {
     const longCommand = `echo-${"x".repeat(295)}`;
     const text = formatConsentText([
       { file: ".claude/settings.json", kind: "entries", entries: [{ key: "apiKeyHelper", value: longCommand }] },
@@ -103,7 +103,7 @@ describe("formatConsentText", () => {
     expect(text).toContain(`  apiKeyHelper = "${longCommand}"`);
   });
 
-  it("affiche les caractères de contrôle échappés, jamais bruts", () => {
+  it("shows control characters escaped, never raw", () => {
     const text = formatConsentText([
       { file: ".claude/settings.json", kind: "entries", entries: [{ key: "env.FOO", value: "a\u001b[2Jb" }] },
     ]);
@@ -111,37 +111,37 @@ describe("formatConsentText", () => {
     expect(text).not.toContain("\u001b");
   });
 
-  it("montre la raison d'un fichier illisible et demande de le corriger", () => {
+  it("shows the reason for an unreadable file and asks to fix it", () => {
     const text = formatConsentText(UNREADABLE);
     expect(text).toContain(".claude/settings.json");
     expect(text).toContain("invalid JSON");
-    expect(text).toContain("corrigez .claude/settings.json");
+    expect(text).toContain("fix .claude/settings.json");
   });
 
-  it("contient chacune des 200 entrées en entier et un résumé chiffré", () => {
+  it("contains each of the 200 entries in full and a numeric summary", () => {
     const text = formatConsentText(MANY);
     for (let i = 0; i < 200; i++) expect(text).toContain(`  env.VAR_${i} = "value-${i}"`);
-    expect(text).toContain("200 réglages dans 1 fichier — remontez pour tout relire si besoin.");
+    expect(text).toContain("200 settings in 1 file — scroll up to reread everything if needed.");
   });
 });
 
 describe("SettingsConsent", () => {
-  it("s'affiche hors de l'écran alternatif, pour que le texte reste dans l'historique", () => {
+  it("renders outside the alternate screen, so the text stays in the scrollback", () => {
     expect(CONSENT_RENDER_OPTIONS.alternateScreen).toBe(false);
     expect(CONSENT_RENDER_OPTIONS.exitOnCtrlC).toBe(false);
   });
 
-  it("reste court quelle que soit la taille de la liste", async () => {
+  it("stays short whatever the size of the list", async () => {
     const terminal = mount(MANY);
     await ready(terminal);
     const lines = terminal.frame().trimEnd().split("\n");
     expect(lines.length).toBeLessThan(6);
-    expect(terminal.frame()).toContain("200 réglages dans 1 fichier");
-    expect(terminal.frame()).toContain("[y] continuer avec ces réglages · [n] quitter");
+    expect(terminal.frame()).toContain("200 settings in 1 file");
+    expect(terminal.frame()).toContain("[y] continue with these settings · [n] quit");
     terminal.app.unmount();
   });
 
-  it("continue avec y", async () => {
+  it("continues with y", async () => {
     const terminal = mount(HELPER);
     await ready(terminal);
     await press(terminal, "y");
@@ -150,7 +150,7 @@ describe("SettingsConsent", () => {
     terminal.app.unmount();
   });
 
-  it("continue aussi avec Y", async () => {
+  it("also continues with Y", async () => {
     const terminal = mount(HELPER);
     await ready(terminal);
     await press(terminal, "Y");
@@ -161,10 +161,10 @@ describe("SettingsConsent", () => {
   it.each([
     ["n", "n"],
     ["q", "q"],
-    ["Entrée", "\r"],
-    ["Échap", "\u001b"],
+    ["Enter", "\r"],
+    ["Escape", "\u001b"],
     ["Ctrl+C", "\u0003"],
-  ])("quitte avec %s", async (_name, input) => {
+  ])("quits with %s", async (_name, input) => {
     const terminal = mount(HELPER);
     await ready(terminal);
     await press(terminal, input);
@@ -173,7 +173,7 @@ describe("SettingsConsent", () => {
     terminal.app.unmount();
   });
 
-  it("ignore les autres touches", async () => {
+  it("ignores other keys", async () => {
     const terminal = mount(HELPER);
     await ready(terminal);
     await press(terminal, "x");
@@ -181,7 +181,7 @@ describe("SettingsConsent", () => {
     terminal.app.unmount();
   });
 
-  it("ignore y avec Alt (Échap puis y)", async () => {
+  it("ignores y with Alt (Escape then y)", async () => {
     const terminal = mount(HELPER);
     await ready(terminal);
     await press(terminal, "\u001by");
@@ -189,7 +189,7 @@ describe("SettingsConsent", () => {
     terminal.app.unmount();
   });
 
-  it("ignore un y collé", async () => {
+  it("ignores a pasted y", async () => {
     const terminal = mount(HELPER);
     await ready(terminal);
     await press(terminal, "\u001b[200~y\u001b[201~");
@@ -197,7 +197,7 @@ describe("SettingsConsent", () => {
     terminal.app.unmount();
   });
 
-  it("ignore une frappe arrivée avant 250 ms, accepte celle d'après", async () => {
+  it("ignores a keystroke that arrived before 250 ms, accepts the one after", async () => {
     const terminal = mount(HELPER);
     await ready(terminal, 249);
     await press(terminal, "y");
@@ -208,20 +208,20 @@ describe("SettingsConsent", () => {
     terminal.app.unmount();
   });
 
-  describe("quand un fichier est illisible", () => {
-    it("ne propose pas de continuer", async () => {
+  describe("when a file is unreadable", () => {
+    it("does not offer to continue", async () => {
       const terminal = mount(UNREADABLE);
       await ready(terminal);
       // Normalised because the explanation wraps at the terminal's width.
       const frame = terminal.frame().replace(/\s+/g, " ");
       expect(frame).not.toContain("[y]");
-      expect(frame).toContain("[n] quitter");
-      expect(frame).toContain("corrigez .claude/settings.json");
-      expect(frame).toContain("1 fichier illisible");
+      expect(frame).toContain("[n] quit");
+      expect(frame).toContain("fix .claude/settings.json");
+      expect(frame).toContain("1 unreadable file");
       terminal.app.unmount();
     });
 
-    it("ignore y", async () => {
+    it("ignores y", async () => {
       const terminal = mount(UNREADABLE);
       await ready(terminal);
       await press(terminal, "y");
@@ -229,7 +229,7 @@ describe("SettingsConsent", () => {
       terminal.app.unmount();
     });
 
-    it("quitte avec n", async () => {
+    it("quits with n", async () => {
       const terminal = mount(UNREADABLE);
       await ready(terminal);
       await press(terminal, "n");

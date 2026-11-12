@@ -20,21 +20,21 @@ interface ModelOption extends SelectionPaletteItem {
 
 const OPTIONS: Record<AgentId, ModelOption[]> = {
   claude: [
-    { key: "opus", label: "Opus 5", description: "le plus puissant, plus lent", value: "opus" },
+    { key: "opus", label: "Opus 5", description: "most capable, slower", value: "opus" },
     {
       key: "sonnet",
       label: "Sonnet 5",
-      description: "équilibré (recommandé)",
+      description: "balanced (recommended)",
       value: "sonnet",
     },
-    { key: "haiku", label: "Haiku 4.5", description: "rapide et léger", value: "haiku" },
+    { key: "haiku", label: "Haiku 4.5", description: "fast and light", value: "haiku" },
     { key: "fable", label: "Fable 5", value: "fable" },
   ],
   codex: [
     {
       key: "gpt-5.6-sol",
       label: "gpt-5.6-sol, effort max",
-      description: "défaut configuré",
+      description: "configured default",
       value: "gpt-5.6-sol",
     },
     { key: "gpt-5.5", label: "gpt-5.5", value: "gpt-5.5" },
@@ -69,9 +69,9 @@ export function ModelPicker(props: {
       setSelectedIndex((current) => (current + delta + options.length) % options.length);
       return;
     }
-    // Entrée autant que Tab : la barre de saisie est inactive tant que le
-    // sélecteur est ouvert, donc Entrée ne servirait à rien d'autre, et c'est
-    // le réflexe universel après avoir surligné un choix aux flèches.
+    // Enter as much as Tab: the input bar is inactive while the picker is
+    // open, so Enter would do nothing else, and it is the universal reflex
+    // after highlighting a choice with the arrows.
     if (key.tab || key.return) {
       const option = options[safeSelectedIndex];
       if (option) onSelect(option.value);
@@ -83,8 +83,8 @@ export function ModelPicker(props: {
       items={options}
       selectedIndex={safeSelectedIndex}
       width={width}
-      actionLabel="Tab ou Entrée choisir"
-      emptyLabel="Aucun modèle disponible"
+      actionLabel="Tab or Enter to choose"
+      emptyLabel="No model available"
     />
   );
 }

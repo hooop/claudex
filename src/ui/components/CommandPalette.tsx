@@ -16,76 +16,76 @@ export const COMMAND_PALETTE_ROWS = SELECTION_PALETTE_ROWS;
 export const WELCOME_COMMANDS: readonly CommandSuggestion[] = [
   {
     completion: "/model claude ",
-    usage: "/model claude <nom>",
-    description: "choisir le modèle Claude",
+    usage: "/model claude <name>",
+    description: "choose the Claude model",
   },
   {
     completion: "/model codex ",
-    usage: "/model codex <nom>",
-    description: "choisir le modèle Codex",
+    usage: "/model codex <name>",
+    description: "choose the Codex model",
   },
-  { completion: "/decisions", usage: "/decisions", description: "consulter les décisions actées" },
-  { completion: "/help", usage: "/help", description: "afficher toutes les commandes" },
-  { completion: "/quit", usage: "/quit", description: "quitter Claudex" },
+  { completion: "/decisions", usage: "/decisions", description: "read the settled decisions" },
+  { completion: "/help", usage: "/help", description: "show all commands" },
+  { completion: "/quit", usage: "/quit", description: "quit Claudex" },
 ] as const;
 
 export const DEBATE_COMMANDS: readonly CommandSuggestion[] = [
-  { completion: "/sujet", usage: "/sujet", description: "afficher le sujet complet" },
-  { completion: "/decisions", usage: "/decisions", description: "consulter les décisions actées" },
+  { completion: "/topic", usage: "/topic", description: "show the full topic" },
+  { completion: "/decisions", usage: "/decisions", description: "read the settled decisions" },
   {
     completion: "/claude ",
-    usage: "/claude <texte>",
-    description: "écrire seulement à Claude",
+    usage: "/claude <text>",
+    description: "write to Claude only",
   },
-  { completion: "/codex ", usage: "/codex <texte>", description: "écrire seulement à Codex" },
-  { completion: "/pause", usage: "/pause", description: "arrêter après le tour en cours" },
-  { completion: "/resume", usage: "/resume", description: "reprendre le débat automatique" },
-  { completion: "/cancel", usage: "/cancel", description: "annuler le tour actif, sans perdre la session" },
+  { completion: "/codex ", usage: "/codex <text>", description: "write to Codex only" },
+  { completion: "/pause", usage: "/pause", description: "stop after the current turn" },
+  { completion: "/resume", usage: "/resume", description: "resume the automatic debate" },
+  { completion: "/cancel", usage: "/cancel", description: "cancel the active turn, without losing the session" },
   {
     completion: "/autonomy ",
     usage: "/autonomy unbounded|starts N|time 5m [--remember]",
-    description: "définir explicitement la fenêtre automatique",
+    description: "set the automatic window explicitly",
   },
   {
     completion: "/accept-topic",
     usage: "/accept-topic",
-    description: "valider manuellement un sujet après erreur de protocole",
+    description: "manually accept a topic after a protocol error",
   },
   {
     completion: "/model claude ",
-    usage: "/model claude <nom>",
-    description: "changer le modèle Claude",
+    usage: "/model claude <name>",
+    description: "change the Claude model",
   },
   {
     completion: "/model codex ",
-    usage: "/model codex <nom>",
-    description: "changer le modèle Codex",
+    usage: "/model codex <name>",
+    description: "change the Codex model",
   },
   {
     completion: "/handoff",
     usage: "/handoff",
-    description: "générer le prompt d’implémentation",
+    description: "generate the implementation prompt",
   },
   {
     completion: "/implement ",
-    usage: "/implement [agent] [précision]",
-    description: "passer à l’implémentation",
+    usage: "/implement [agent] [details]",
+    description: "move on to implementation",
   },
   {
     completion: "/decide ",
-    usage: "/decide <sujet> | <approche>",
-    description: "mémoriser une décision",
+    usage: "/decide <subject> | <approach>",
+    description: "remember a decision",
   },
-  { completion: "/limit ", usage: "/limit <texte>", description: "mémoriser une limite" },
-  { completion: "/save", usage: "/save", description: "enregistrer la trace" },
-  { completion: "/new", usage: "/new", description: "ouvrir un nouveau sujet" },
-  { completion: "/retry", usage: "/retry", description: "retenter un arrêt ou un archivage échoué" },
-  { completion: "/help", usage: "/help", description: "afficher toutes les commandes" },
-  { completion: "/quit", usage: "/quit", description: "sauvegarder et quitter" },
+  { completion: "/limit ", usage: "/limit <text>", description: "remember a limit" },
+  { completion: "/save", usage: "/save", description: "save the transcript" },
+  { completion: "/new", usage: "/new", description: "open a new topic" },
+  { completion: "/retry", usage: "/retry", description: "retry a failed shutdown or archive" },
+  { completion: "/help", usage: "/help", description: "show all commands" },
+  { completion: "/quit", usage: "/quit", description: "save and quit" },
   {
     completion: "/emergency-exit",
     usage: "/emergency-exit",
-    description: "quitter sans garantie d'archive",
+    description: "quit without an archive guarantee",
   },
 ] as const;
 
@@ -120,8 +120,8 @@ export function CommandPalette(props: {
       }))}
       selectedIndex={props.selectedIndex}
       width={props.width}
-      actionLabel="Tab compléter"
-      emptyLabel="Aucune commande correspondante"
+      actionLabel="Tab complete"
+      emptyLabel="No matching command"
     />
   );
 }

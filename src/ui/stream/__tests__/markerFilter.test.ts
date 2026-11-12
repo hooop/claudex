@@ -12,60 +12,60 @@ function run(chunks: string[], signalConfirmed?: boolean): string {
 }
 
 describe("MarkerFilter", () => {
-  it("supprime un marqueur terminal", () => {
-    expect(run(["D'accord.\n\n", "<<CONSENSUS>>"])).toBe("D'accord.\n\n");
+  it("removes a terminal marker", () => {
+    expect(run(["Agreed.\n\n", "<<CONSENSUS>>"])).toBe("Agreed.\n\n");
   });
 
-  it("supprime un marqueur terminal suivi d'une fin de ligne", () => {
-    expect(run(["D'accord.\n\n<<CONSENSUS>>\n"])).toBe("D'accord.\n\n");
+  it("removes a terminal marker followed by a line end", () => {
+    expect(run(["Agreed.\n\n<<CONSENSUS>>\n"])).toBe("Agreed.\n\n");
   });
 
-  it("supprime les blancs retenus derrière le marqueur", () => {
-    expect(run(["Texte\n<<CONSENSUS>>\n", "\n", "\n"])).toBe("Texte\n");
+  it("removes the whitespace held behind the marker", () => {
+    expect(run(["Text\n<<CONSENSUS>>\n", "\n", "\n"])).toBe("Text\n");
   });
 
-  it("réunit un marqueur découpé entre plusieurs chunks", () => {
-    expect(run(["Texte\n", "<<CON", "SEN", "SUS>>"])).toBe("Texte\n");
+  it("reassembles a marker split across several chunks", () => {
+    expect(run(["Text\n", "<<CON", "SEN", "SUS>>"])).toBe("Text\n");
   });
 
-  it("relâche le marqueur quand du contenu arrive derrière", () => {
-    expect(run(["Texte\n", "<<CONSENSUS>>\n", "\n", "en fait non\n"])).toBe(
-      "Texte\n<<CONSENSUS>>\n\nen fait non\n",
+  it("releases the marker when content arrives behind it", () => {
+    expect(run(["Text\n", "<<CONSENSUS>>\n", "\n", "actually no\n"])).toBe(
+      "Text\n<<CONSENSUS>>\n\nactually no\n",
     );
   });
 
-  it("ne retient pas une chaîne seulement ressemblante", () => {
-    expect(run(["Texte\n", "<<CONSENSUSX>>\n"])).toBe("Texte\n<<CONSENSUSX>>\n");
-    expect(run(["on vise le <<CONSENSUS>> ici\n"])).toBe("on vise le <<CONSENSUS>> ici\n");
+  it("does not hold a merely similar string", () => {
+    expect(run(["Text\n", "<<CONSENSUSX>>\n"])).toBe("Text\n<<CONSENSUSX>>\n");
+    expect(run(["we aim for the <<CONSENSUS>> here\n"])).toBe("we aim for the <<CONSENSUS>> here\n");
   });
 
-  it("relâche le marqueur si le signal n'est pas confirmé", () => {
-    expect(run(["Texte\n<<CONSENSUS>>"], false)).toBe("Texte\n<<CONSENSUS>>\n");
+  it("releases the marker if the signal is not confirmed", () => {
+    expect(run(["Text\n<<CONSENSUS>>"], false)).toBe("Text\n<<CONSENSUS>>\n");
   });
 
-  it("ne laisse jamais fuiter un marqueur avant la décision", () => {
+  it("never leaks a marker before the decision", () => {
     const filter = new MarkerFilter();
-    let out = filter.push("Texte\n");
+    let out = filter.push("Text\n");
     out += filter.push("<<CONSENSUS>>");
-    expect(out).toBe("Texte\n");
+    expect(out).toBe("Text\n");
     expect(filter.isHolding).toBe(true);
   });
 
-  it("reste en parité avec extractSignal, quel que soit le découpage", () => {
+  it("stays in parity with extractSignal, whatever the splitting", () => {
     const turns = [
-      "D'accord.\n\n<<CONSENSUS>>",
+      "Agreed.\n\n<<CONSENSUS>>",
       "Objection.\n<<CONTINUE>>\n",
-      "Texte\n<<CONSENSUS>>\nen fait non",
-      "Aucun marqueur ici.",
+      "Text\n<<CONSENSUS>>\nactually no",
+      "No marker here.",
       "**<<CONSENSUS>>**",
       "<<CONTINUE>>",
       "Question.\n<<WAIT_HUMAN>>",
-      "Pas de sujet.\n<<NO_TOPIC>>",
+      "No topic.\n<<NO_TOPIC>>",
     ];
 
     for (const turn of turns) {
       const { cleanText, signal } = extractSignal(turn);
-      // Un caractère à la fois : le pire découpage possible.
+      // One character at a time: the worst possible splitting.
       const streamed = run([...turn], signal !== null);
       expect(streamed.replace(/\s+$/u, "")).toBe(cleanText);
     }

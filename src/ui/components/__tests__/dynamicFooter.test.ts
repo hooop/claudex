@@ -31,7 +31,7 @@ function allCombinations(): FooterSurfaces[] {
     for (const banner of [false, true]) {
       for (const notice of [false, true]) {
         for (const modal of [null, "permission"] as const) {
-          // Un modal masque bannière et notice — c'est la règle appliquée par la vue.
+          // A modal hides the banner and the notice — this is the rule the view applies.
           if (modal !== null && (banner || notice)) continue;
           out.push({ tail, banner, notice, modal, selectionPalette: false });
         }
@@ -42,7 +42,7 @@ function allCombinations(): FooterSurfaces[] {
 }
 
 describe("footerRows", () => {
-  it("ne dépasse jamais le plafond de la zone dynamique", () => {
+  it("never exceeds the dynamic area ceiling", () => {
     for (const combo of allCombinations()) {
       expect(footerRows(combo)).toBeLessThanOrEqual(MAX_STANDARD_DYNAMIC_ROWS);
       expect(footerRows({ ...combo, inputRows: INPUT_BAR_MAX_ROWS })).toBeLessThanOrEqual(
@@ -51,12 +51,12 @@ describe("footerRows", () => {
     }
   });
 
-  it("compte le statut, la saisie et le footer des modèles sans modal", () => {
+  it("counts the status, the input and the model footer without a modal", () => {
     expect(footerRows(surfaces())).toBe(5);
     expect(footerRows(surfaces({ tail: true, banner: true, notice: true }))).toBe(7);
   });
 
-  it("laisse le champ grandir sans dépasser le plafond dynamique", () => {
+  it("lets the field grow without exceeding the dynamic ceiling", () => {
     expect(inputBarMaxRows(surfaces())).toBe(INPUT_BAR_MAX_ROWS - MODEL_FOOTER_ROWS);
     expect(footerRows(surfaces({ inputRows: INPUT_BAR_MAX_ROWS }))).toBe(
       MAX_STANDARD_DYNAMIC_ROWS,
@@ -69,7 +69,7 @@ describe("footerRows", () => {
     );
   });
 
-  it("réserve la zone dynamique à la palette et au prompt lorsqu'elle est ouverte", () => {
+  it("reserves the dynamic area for the palette and the prompt when it is open", () => {
     const palette = surfaces({
       tail: true,
       banner: true,
@@ -83,33 +83,33 @@ describe("footerRows", () => {
     expect(footerRows(palette)).toBe(MAX_DYNAMIC_ROWS);
   });
 
-  it("laisse la permission remplacer le statut et la saisie tout en gardant les modèles dessous", () => {
+  it("lets the permission replace the status and the input while keeping the models below", () => {
     expect(footerRows(surfaces({ modal: "permission" }))).toBe(2 + MODEL_FOOTER_ROWS);
   });
 });
 
 describe("footerMode", () => {
-  it("dessine une boîte de la hauteur demandée sur un terminal normal", () => {
+  it("draws a box of the requested height on a normal terminal", () => {
     expect(footerMode(100, 40, 5)).toEqual({ kind: "box", height: 5 });
   });
 
-  it("plafonne la hauteur même si l'appelant demande plus", () => {
+  it("caps the height even if the caller asks for more", () => {
     expect(footerMode(100, 40, 99)).toEqual({ kind: "box", height: MAX_DYNAMIC_ROWS });
   });
 
-  it("reste strictement sous la hauteur du terminal", () => {
+  it("stays strictly below the terminal height", () => {
     for (let terminalRows = MIN_ROWS; terminalRows < 60; terminalRows++) {
       const mode = footerMode(100, terminalRows, MAX_DYNAMIC_ROWS);
       if (mode.kind === "box") expect(mode.height).toBeLessThan(terminalRows);
     }
   });
 
-  it("replie sur un message d'une ligne quand le terminal est trop petit", () => {
+  it("falls back to a one-line message when the terminal is too small", () => {
     expect(footerMode(100, MIN_ROWS - 1, 3).kind).toBe("too-small");
     expect(footerMode(MIN_COLS - 1, 40, 3).kind).toBe("too-small");
   });
 
-  it("autorise un espace initial sans jamais atteindre la hauteur du terminal", () => {
+  it("allows an initial space without ever reaching the terminal height", () => {
     expect(footerMode(100, 30, 2, 29)).toEqual({ kind: "box", height: 29 });
     expect(footerMode(100, 30, 2, 99)).toEqual({ kind: "box", height: 29 });
   });

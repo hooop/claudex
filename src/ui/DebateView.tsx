@@ -184,7 +184,7 @@ export function DebateView(props: {
       if (awaitingImplementFor.current === agent) {
         awaitingImplementFor.current = null;
         const label = agent === "claude" ? "Claude" : "Codex";
-        flash(`[ok] ${label} a terminé ce tour — vérifie les fichiers modifiés (git status / git diff).`);
+        flash(`[ok] ${label} finished this turn — check the modified files (git status / git diff).`);
       }
     };
     const onTurnError = () => {
@@ -232,7 +232,7 @@ export function DebateView(props: {
     session.on("synthesis-ready", onSynthesisReady);
 
     void session.start(topic).catch((error: unknown) => {
-      flash(`Impossible de démarrer la session : ${error instanceof Error ? error.message : String(error)}`);
+      flash(`Cannot start the session: ${error instanceof Error ? error.message : String(error)}`);
     });
 
     return () => {
@@ -298,7 +298,7 @@ export function DebateView(props: {
     if (key.escape && !commandPaletteOpen && modelPickerAgent === null) {
       if (session.lifecycle !== "open") return;
       session.pause();
-      flash("Pause demandée (Échap) — le débat s'arrêtera après le tour en cours.");
+      flash("Pause requested (Esc) — the debate will stop after the current turn.");
     }
   });
 
@@ -318,7 +318,7 @@ export function DebateView(props: {
       cmd.kind !== "topic" &&
       cmd.kind !== "decisions"
     ) {
-      flash("Session fermée ou opération de cycle de vie en cours : aucune nouvelle tâche n'est acceptée.");
+      flash("Session closed or lifecycle operation in progress: no new task is accepted.");
       return;
     }
     switch (cmd.kind) {
@@ -327,8 +327,8 @@ export function DebateView(props: {
         if (!session.intervene(cmd.text, cmd.target)) {
           flash(
             session.lifecycle !== "open"
-              ? "Session en cours de fermeture : aucun nouveau message n'est accepté."
-              : "Pendant la validation du sujet, les précisions doivent être adressées aux deux agents.",
+              ? "Session is closing: no new message is accepted."
+              : "While the topic is being accepted, clarifications must be addressed to both agents.",
           );
         }
         return;
@@ -346,8 +346,8 @@ export function DebateView(props: {
         if (!alreadyImplementing) session.beginImplementation();
         if (cmd.agent) {
           const base = implementationSummary
-            ? `Implémente ce qui a été décidé :\n\n${implementationSummary}\n\nSi un détail précis te manque ou te semble ambigu, relis l'échange précédent dans cette conversation avant de coder — ne suppose rien.`
-            : "Implémente ce qui vient d'être décidé dans le débat ci-dessus. Relis l'échange précédent si un détail te manque.";
+            ? `Implement what was decided:\n\n${implementationSummary}\n\nIf a specific detail is missing or seems ambiguous, reread the previous exchange in this conversation before coding — do not assume anything.`
+            : "Implement what was just decided in the debate above. Reread the previous exchange if a detail is missing.";
           const instruction = cmd.extra ? `${base}\n\n${cmd.extra}` : base;
           awaitingImplementFor.current = cmd.agent;
           session.intervene(instruction, cmd.agent);
@@ -357,34 +357,34 @@ export function DebateView(props: {
       case "handoff": {
         const summary = implementationSummary?.trim();
         if (!summary) {
-          flash("Aucun consensus atteint — /handoff nécessite que les deux agents aient signalé <<CONSENSUS>>.");
+          flash("No consensus reached — /handoff requires both agents to have signalled <<CONSENSUS>>.");
           return;
         }
         try {
           const savedTo = await saveHandoff(cwd, topic, summary);
           session.recordHandoffGenerated(savedTo);
-          flash(`Handoff généré : ${savedTo} — à transmettre à une session claude/codex native.`);
+          flash(`Handoff generated: ${savedTo} — to pass to a native claude/codex session.`);
         } catch (err) {
-          flash(`Échec de la génération du handoff : ${err instanceof Error ? err.message : String(err)}`);
+          flash(`Handoff generation failed: ${err instanceof Error ? err.message : String(err)}`);
         }
         return;
       }
       case "topic":
-        streamRef.current?.raw(documentLines("Sujet complet", topic, contentWidthFor(columns), false));
+        streamRef.current?.raw(documentLines("Full topic", topic, contentWidthFor(columns), false));
         return;
       case "decisions": {
         try {
           const decisions = await readDecisions(cwd);
           if (!decisions) {
-            flash("Aucune mémoire de décisions n'est disponible pour ce projet.");
+            flash("No decision memory is available for this project.");
             return;
           }
           streamRef.current?.raw(
-            documentLines("Décisions actées", decisions, contentWidthFor(columns), true),
+            documentLines("Settled decisions", decisions, contentWidthFor(columns), true),
           );
         } catch (error) {
           flash(
-            `Impossible de lire les décisions : ${error instanceof Error ? error.message : String(error)}`,
+            `Cannot read the decisions: ${error instanceof Error ? error.message : String(error)}`,
           );
         }
         return;
@@ -395,43 +395,43 @@ export function DebateView(props: {
           if (!result.ok) {
             const message =
               result.reason === "waiting-human"
-                ? "Une réponse humaine est attendue : tape simplement ta précision."
+                ? "A human answer is awaited: just type your clarification."
                 : result.reason === "cancelling"
-                  ? "L'annulation est encore en cours ; attends sa stabilisation avant /resume."
+                  ? "The cancellation is still in progress; wait for it to settle before /resume."
                   : result.reason === "session-closed"
-                    ? "La session n'est plus ouverte."
-                    : "Le débat est déjà actif.";
+                    ? "The session is no longer open."
+                    : "The debate is already active.";
             flash(message);
           }
         }
         return;
       case "pause":
         session.pause();
-        flash("Le débat s'arrêtera après le tour en cours.");
+        flash("The debate will stop after the current turn.");
         return;
       case "cancel":
         flash(
           session.cancel()
-            ? "Annulation demandée ; le texte partiel sera conservé et /resume permettra de retenter."
-            : "Aucun tour actif à annuler.",
+            ? "Cancellation requested; the partial text will be kept and /resume will allow retrying."
+            : "No active turn to cancel.",
         );
         return;
       case "accept-topic":
         flash(
           session.acceptTopic()
-            ? "Sujet validé manuellement."
-            : "Aucune réponse de qualification invalide ne peut être acceptée actuellement.",
+            ? "Topic accepted manually."
+            : "No invalid qualification answer can currently be accepted.",
         );
         return;
       case "autonomy":
         if (!cmd.budget || cmd.error) {
-          flash(cmd.error ?? "Politique d'autonomie invalide.");
+          flash(cmd.error ?? "Invalid autonomy policy.");
           return;
         }
         session.setAutonomyBudget(cmd.budget);
         await onAutonomySelected(cmd.budget, cmd.remember);
         flash(
-          `Politique d'autonomie appliquée${cmd.remember ? " et mémorisée pour ce projet" : " pour cette session"}.`,
+          `Autonomy policy applied${cmd.remember ? " and remembered for this project" : " for this session"}.`,
         );
         return;
       case "decide": {
@@ -441,13 +441,13 @@ export function DebateView(props: {
           return;
         }
         await appendDecision(cwd, { topic: cmd.topic, chosenApproach: cmd.approach, agreements: [] });
-        flash("Décision enregistrée dans .claudex/memory/decisions.md");
+        flash("Decision saved to .claudex/memory/decisions.md");
         return;
       }
       case "limit":
         if (!cmd.text) return;
         await appendLimit(cwd, cmd.text);
-        flash("Limite enregistrée dans .claudex/memory/limits.md");
+        flash("Limit saved to .claudex/memory/limits.md");
         return;
       case "save": {
         const response = await onLifecycleRequest({ kind: "save" });
@@ -607,14 +607,14 @@ export function DebateView(props: {
               commands={DEBATE_COMMANDS}
               placeholder={
                 busy
-                  ? "message en attente (traité après le tour en cours)"
-                  : "message (→ les deux), /claude, /codex, /model, /handoff, /implement, /save, /new, /help"
+                  ? "message queued (handled after the current turn)"
+                  : "message (→ both), /claude, /codex, /model, /handoff, /implement, /save, /new, /help"
               }
               onCommandPaletteChange={setCommandPaletteOpen}
               onRowsChange={setInputRows}
               onSubmit={handleSubmit}
               onSubmitError={(error) =>
-                flash(`Commande échouée : ${error instanceof Error ? error.message : String(error)}`)
+                flash(`Command failed: ${error instanceof Error ? error.message : String(error)}`)
               }
             />
           </>
@@ -657,14 +657,14 @@ function bannerFor(
   if (consensusReached && phase === "debate") {
     return summary
       ? {
-          text: "[ok] Consensus — /handoff pour générer un prompt d'implémentation (recommandé), ou /implement pour rester dans Claudex",
+          text: "[ok] Consensus — /handoff to generate an implementation prompt (recommended), or /implement to stay in Claudex",
           color: "greenBright",
         }
-      : { text: "[ok] Consensus — synthèse de ce qui sera implémenté en cours…", color: "greenBright" };
+      : { text: "[ok] Consensus — summarizing what will be implemented…", color: "greenBright" };
   }
   if (phase === "implementation" && !busy) {
     return {
-      text: "[edit] Implémentation : désigne qui code avec /claude <instruction> ou /codex <instruction> · /new pour repartir",
+      text: "[edit] Implementation: pick who codes with /claude <instruction> or /codex <instruction> · /new to start over",
       color: BRAND_COLOR,
     };
   }
@@ -713,19 +713,19 @@ function AnimatedHeaderLine(props: {
 }
 
 function isTopicEntry(entry: TranscriptEntry): boolean {
-  return entry.from === "system" && entry.kind === "system" && entry.text.startsWith("Sujet :");
+  return entry.from === "system" && entry.kind === "system" && entry.text.startsWith("Topic:");
 }
 
 const TOPIC_HEADER_MAX_LINES = 3;
-const TOPIC_HEADER_MORE = "… /sujet pour le voir en entier";
+const TOPIC_HEADER_MORE = "… /topic to see it in full";
 
 /**
  * The topic as the fixed header shows it. The header never scrolls, so a pasted
- * topic shown whole would push the transcript off the screen; `/sujet` prints it
+ * topic shown whole would push the transcript off the screen; `/topic` prints it
  * in full instead.
  */
 export function topicHeaderLines(topic: string, width: number): string[] {
-  const lines = wrapAll(`Sujet : ${topic.trim().replace(/\s+/gu, " ")}`, width);
+  const lines = wrapAll(`Topic: ${topic.trim().replace(/\s+/gu, " ")}`, width);
   if (lines.length <= TOPIC_HEADER_MAX_LINES) return lines;
   const kept = lines.slice(0, TOPIC_HEADER_MAX_LINES - 1);
   const overflow = lines.slice(TOPIC_HEADER_MAX_LINES - 1).join(" ");
@@ -783,36 +783,36 @@ function helpLines(): string[] {
   const pad = "  ";
   return [
     "",
-    chalk.bold("Commandes"),
-    `${pad}${key("↑/↓")} — parcourir le transcript · ${key("PgUp/PgDn")} — une page · ${key("Home/End")} — début/fin`,
-    `${pad}${key("Échap")} — pause d'urgence, marche même pendant un tour`,
-    `${pad}${key("Ctrl+C")} — demande un arrêt quiescent puis archive ; ne force jamais l'abandon`,
-    `${pad}${key("texte libre")} — message envoyé aux deux agents`,
-    `${pad}${key("/sujet")} — réaffiche le sujet complet dans le transcript`,
-    `${pad}${key("/decisions")} — affiche les décisions actées de la mémoire du projet`,
-    `${pad}${key("/claude")} ou ${key("/codex")} texte — message ciblé`,
-    `${pad}${key("/model claude|codex nom")} — change le modèle en cours de session`,
-    `${pad}${key("/handoff")} — après consensus, génère un fichier markdown autoportant (contexte projet +`,
-    `${pad}  spécification) à transmettre à une session claude/codex native — chemin recommandé`,
-    `${pad}${key("/implement")} — accorde l'accès en écriture, passe en phase d'implémentation (reste dans Claudex)`,
-    `${pad}${key("/implement claude|codex [précision]")} — implémentation ET lance l'agent choisi sur ce qui vient`,
-    `${pad}  d'être décidé (pas besoin de réécrire le plan)`,
-    `${pad}${key("/autonomy starts N")} — borne le débat à N tours automatiques par fenêtre`,
-    `${pad}${key("/autonomy time 5m")} — borne les nouveaux départs dans le temps (ms, s, m ou h)`,
-    `${pad}${key("/autonomy unbounded")} — retire une borne posée ; c'est aussi le comportement par défaut`,
-    `${pad}  le débat s'enchaîne seul tant qu'aucune borne n'est posée · ${key("--remember")} la mémorise ici`,
-    `${pad}${key("/resume")} — retente un échec ou ouvre une nouvelle fenêtre avec la même politique`,
-    `${pad}${key("/pause")} — arrête l'enchaînement automatique après le tour en cours`,
-    `${pad}${key("/cancel")} — annule le tour actif, conserve le partiel et rend /resume possible`,
-    `${pad}${key("/accept-topic")} — valide manuellement un sujet après une réponse sans marqueur`,
-    `${pad}${key("/decide sujet | approche")} — enregistre une décision dans la mémoire du projet`,
-    `${pad}${key("/limit texte")} — enregistre une contrainte/limite connue`,
-    `${pad}${key("/save")} — capture un instantané partiel immuable, sans fermer la session`,
-    `${pad}${key("/new")} — archive ce débat, réinitialise les deux agents, retour à l'accueil`,
-    `${pad}${key("/retry")} — retente un arrêt ou archivage échoué`,
-    `${pad}${key("/new --discard")} / ${key("/quit --discard")} — après échec d'archive seulement`,
-    `${pad}${key("/emergency-exit")} — quitte explicitement sans garantie d'archive`,
-    `${pad}${key("/help")} — réaffiche cette aide · ${key("/quit")} — arrête, archive et quitte`,
+    chalk.bold("Commands"),
+    `${pad}${key("↑/↓")} — scroll the transcript · ${key("PgUp/PgDn")} — one page · ${key("Home/End")} — start/end`,
+    `${pad}${key("Esc")} — emergency pause, works even during a turn`,
+    `${pad}${key("Ctrl+C")} — requests a quiescent shutdown then archives; never forces abandonment`,
+    `${pad}${key("free text")} — message sent to both agents`,
+    `${pad}${key("/topic")} — shows the full topic again in the transcript`,
+    `${pad}${key("/decisions")} — shows the settled decisions from the project memory`,
+    `${pad}${key("/claude")} or ${key("/codex")} text — targeted message`,
+    `${pad}${key("/model claude|codex name")} — changes the model during the session`,
+    `${pad}${key("/handoff")} — after consensus, generates a self-contained markdown file (project context +`,
+    `${pad}  specification) to pass to a native claude/codex session — recommended path`,
+    `${pad}${key("/implement")} — grants write access, moves to the implementation phase (stays in Claudex)`,
+    `${pad}${key("/implement claude|codex [details]")} — implementation AND launches the chosen agent on what was`,
+    `${pad}  just decided (no need to rewrite the plan)`,
+    `${pad}${key("/autonomy starts N")} — limits the debate to N automatic turns per window`,
+    `${pad}${key("/autonomy time 5m")} — limits new starts over time (ms, s, m or h)`,
+    `${pad}${key("/autonomy unbounded")} — removes a set limit; this is also the default behavior`,
+    `${pad}  the debate chains on its own while no limit is set · ${key("--remember")} remembers it here`,
+    `${pad}${key("/resume")} — retries a failure or opens a new window with the same policy`,
+    `${pad}${key("/pause")} — stops the automatic chaining after the current turn`,
+    `${pad}${key("/cancel")} — cancels the active turn, keeps the partial text and makes /resume possible`,
+    `${pad}${key("/accept-topic")} — manually accepts a topic after an answer without a marker`,
+    `${pad}${key("/decide subject | approach")} — saves a decision in the project memory`,
+    `${pad}${key("/limit text")} — saves a known constraint/limit`,
+    `${pad}${key("/save")} — captures an immutable partial snapshot, without closing the session`,
+    `${pad}${key("/new")} — archives this debate, resets both agents, back to the welcome screen`,
+    `${pad}${key("/retry")} — retries a failed shutdown or archive`,
+    `${pad}${key("/new --discard")} / ${key("/quit --discard")} — only after an archive failure`,
+    `${pad}${key("/emergency-exit")} — quits explicitly without an archive guarantee`,
+    `${pad}${key("/help")} — shows this help again · ${key("/quit")} — stops, archives and quits`,
     "",
   ];
 }

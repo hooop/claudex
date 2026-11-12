@@ -15,7 +15,7 @@
 - Work in `/Users/antoine/Documents/claudex/.claude/worktrees/fix+debate-isolation`, branch `fix/debate-isolation`.
 - Subagents NEVER run `npm run verify:readonly`, `claude`, `codex`, or anything that reaches the engine or the network. Tests mock the SDK and never call it. Tasks 4, 7 and 8 belong to the main session and the maintainer.
 - No new dependency. No change to Codex, the scheduler, the UI or the implementation-phase options.
-- Code, comments and commit messages in English. Test names: match the language of the surrounding `describe` (French in `claudeAgent.test.ts`, English in `scripts/`). `limits.md` and `decisions.md` entries in French.
+- Code, comments and commit messages in English. Test names: match the language of the surrounding `describe` (French in `claudeAgent.test.ts` at the time, English in `scripts/`; all English since the English pass). `limits.md` and `decisions.md` entries follow the language of those files (French at the time).
 - Comments explain why, not what. Match the surrounding comment density.
 - Conventional Commits, ending with:
   ```
@@ -42,7 +42,7 @@
 - Create: `src/agents/debateOptions.ts`
 - Create: `src/agents/__tests__/debateOptions.test.ts`
 - Modify: `src/agents/claudeAgent.ts` (lines 6–12 `DEBATE_TOOLS`, lines 128–148 the phase options)
-- Modify: `src/agents/__tests__/claudeAgent.test.ts` (add one test in "ClaudeAgent — réglages par phase")
+- Modify: `src/agents/__tests__/claudeAgent.test.ts` (add one test in "ClaudeAgent — settings per phase")
 - Modify: `scripts/readonly-verification/cases.ts` (import, `debateOptions()` removed)
 - Modify: `scripts/readonly-verification/verdict.ts` (import only)
 - Modify: `scripts/readonly-verification/__tests__/cases.test.ts` (import only, and the "exact options" test)
@@ -85,13 +85,15 @@ it("returns a fresh object on every call", () => {
 });
 ```
 
-In `claudeAgent.test.ts`, describe "ClaudeAgent — réglages par phase", add
-`it("relaie chaque demande d'outil à l'humain et applique sa réponse", ...)`:
+In `claudeAgent.test.ts`, describe "ClaudeAgent — settings per phase", add
+`it("relays every tool request to the human and applies the answer", ...)`:
 - `queryMock` implementation captures `options.canUseTool` and yields `successResult()`.
-- `onPermissionRequest` is a `vi.fn()` resolving first `{ behavior: "allow" }`, then `{ behavior: "deny", message: "non" }`, then `{ behavior: "deny" }`.
+- `onPermissionRequest` is a `vi.fn()` resolving first `{ behavior: "allow" }`, then `{ behavior: "deny", message: "no" }`, then `{ behavior: "deny" }`.
 - `onActivity` is a `vi.fn()`.
-- After `send("Sujet", { cwd: "/tmp", writeAccess: false, onPermissionRequest, onActivity })`, call the captured `canUseTool("Read", { file_path: "/tmp/a" }, { toolUseID: "tu-1" })` three times (IDs `tu-1`, `tu-2`, `tu-3`).
-- Assert: `onPermissionRequest` first call equals `{ id: "tu-1", agent: "claude", toolName: "Read", input: { file_path: "/tmp/a" } }`; results equal `{ behavior: "allow", updatedInput: { file_path: "/tmp/a" } }`, `{ behavior: "deny", message: "non" }`, `{ behavior: "deny", message: "Refused by user" }`; `onActivity` was called with an object containing `{ kind: "tool", label: "lit /tmp/a", status: "running" }`.
+- After `send("Topic", { cwd: "/tmp", writeAccess: false, onPermissionRequest, onActivity })`, call the captured `canUseTool("Read", { file_path: "/tmp/a" }, { toolUseID: "tu-1" })` three times (IDs `tu-1`, `tu-2`, `tu-3`).
+- Assert: `onPermissionRequest` first call equals `{ id: "tu-1", agent: "claude", toolName: "Read", input: { file_path: "/tmp/a" } }`; results equal `{ behavior: "allow", updatedInput: { file_path: "/tmp/a" } }`, `{ behavior: "deny", message: "no" }`, `{ behavior: "deny", message: "Refused by user" }`; `onActivity` was called with an object containing `{ kind: "tool", label: "reads /tmp/a", status: "running" }`.
+
+(The code samples in this plan were translated from French.)
 
 - [ ] **Step 2: Run them and confirm they fail for the right reason**
 
@@ -100,7 +102,7 @@ Expected: `debateOptions.test.ts` fails on the missing module. The new `claudeAg
 
 - [ ] **Step 3: Create `debateOptions.ts`; make `claudeAgent.ts` spread `debateQueryOptions()` on debate turns**
 
-The options sent to `query()` must stay byte-for-byte what they are today in both phases: the existing tests "charge les réglages utilisateur seulement pendant l'implémentation" and "restreint le débat à Read, Grep et Glob" must pass unchanged. Keep the existing comments on `settingSources` and `permissionMode` next to the values they explain (move them into `debateOptions.ts` if the values move there). In `cases.ts`, delete `debateOptions()` and `DEBATE_PERMISSION_MODE`'s duplication of the options: cases E–K use `debateQueryOptions()`; `debateExpectations` keeps expecting `"default"`. In the cases test "gives cases E to K the exact options Claudex ships for a debate turn", replace the literal object by `debateQueryOptions()`.
+The options sent to `query()` must stay byte-for-byte what they are today in both phases: the existing tests "loads user settings only during implementation" and "restricts the debate to Read, Grep and Glob" must pass unchanged. Keep the existing comments on `settingSources` and `permissionMode` next to the values they explain (move them into `debateOptions.ts` if the values move there). In `cases.ts`, delete `debateOptions()` and `DEBATE_PERMISSION_MODE`'s duplication of the options: cases E–K use `debateQueryOptions()`; `debateExpectations` keeps expecting `"default"`. In the cases test "gives cases E to K the exact options Claudex ships for a debate turn", replace the literal object by `debateQueryOptions()`.
 
 - [ ] **Step 4: Run the full check**
 
@@ -282,8 +284,8 @@ git commit -m "chore: measure the read-only verification in an already trusted f
 - [ ] **Step 1: Write the failing tests**
 
 - `debateOptions.test.ts`: the first test's expected object gains `strictMcpConfig: true` and `settings: { disableAllHooks: true, disableClaudeAiConnectors: true, disableSkillShellExecution: true }`; it also asserts `debateQueryOptions()` has no `mcpServers` key. The fresh-object test also mutates `settings`.
-- `claudeAgent.test.ts`, "restreint le débat à Read, Grep et Glob, sous arbitrage humain": add `expect(options.strictMcpConfig).toBe(true)` and `expect(options.settings).toEqual({ disableAllHooks: true, disableClaudeAiConnectors: true, disableSkillShellExecution: true })` and `expect(options).not.toHaveProperty("mcpServers")`.
-- "charge les réglages utilisateur seulement pendant l'implémentation": add `expect(options).not.toHaveProperty("strictMcpConfig")` and `expect(options).not.toHaveProperty("settings")`.
+- `claudeAgent.test.ts`, "restricts the debate to Read, Grep and Glob, under human arbitration": add `expect(options.strictMcpConfig).toBe(true)` and `expect(options.settings).toEqual({ disableAllHooks: true, disableClaudeAiConnectors: true, disableSkillShellExecution: true })` and `expect(options).not.toHaveProperty("mcpServers")`.
+- "loads user settings only during implementation": add `expect(options).not.toHaveProperty("strictMcpConfig")` and `expect(options).not.toHaveProperty("settings")`.
 
 - [ ] **Step 2: Run them and confirm they fail on the missing options**
 
@@ -367,8 +369,8 @@ git commit -m "chore: add positive controls for hooks, project MCP servers and c
 
 **Files:** `.claudex/memory/limits.md`, `.claudex/memory/decisions.md`, `README.md`, `AGENTS.md`
 
-- [ ] **Step 1:** `limits.md`: new entry dated the measurement day (French), at the top: protocol, both folders, both tables (before/after), controls, L, trust-state changes, scope (macOS, this machine and account, two repeats, sandboxed Claude Code shell). Mark J and H closed for the debate only if their cases and controls passed in both folders. Add one line to the 2026-10-27 entry's "Trous préexistants" pointing at the new entry.
-- [ ] **Step 2:** `decisions.md`: one entry (French) with D1 (the four settings, flag tier, rejected `managedSettings`) and D4 (implementation keeps hooks, MCP and connectors, with the reason), labelled as a decision delegated by the maintainer.
+- [ ] **Step 1:** `limits.md`: new entry dated the measurement day, at the top: protocol, both folders, both tables (before/after), controls, L, trust-state changes, scope (macOS, this machine and account, two repeats, sandboxed Claude Code shell). Mark J and H closed for the debate only if their cases and controls passed in both folders. Add one line to the 2026-10-27 entry's "Pre-existing gaps" pointing at the new entry.
+- [ ] **Step 2:** `decisions.md`: one entry with D1 (the four settings, flag tier, rejected `managedSettings`) and D4 (implementation keeps hooks, MCP and connectors, with the reason), labelled as a decision delegated by the maintainer.
 - [ ] **Step 3:** `README.md`: rewrite the "How it works" sentence (line 23) and the "What leaves the machine" paragraphs on the repository's configuration from the measured result; add the implementation-phase sentence (hooks and stdio MCP servers of the repository run there as in Claude Code, without its trust dialog). Claim only what was measured.
 - [ ] **Step 4:** `AGENTS.md` "Constraints": the paragraph on what enforces read-only names `debateOptions.ts`, the isolation, and drops "The analysed project's own hooks and MCP servers are a known gap" if closed.
 - [ ] **Step 5:** `npm run check`, then commit `docs: record the debate isolation measurements and decisions`.

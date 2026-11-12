@@ -6,7 +6,7 @@ export type LaunchDecision =
   | { kind: "refused" };
 
 export const SETTINGS_REFUSED_MESSAGE =
-  "Claudex n'a pas démarré : les réglages Claude Code du projet (.claude/settings.json) n'ont pas été acceptés.";
+  "Claudex did not start: the project's Claude Code settings (.claude/settings.json) were not accepted.";
 
 /**
  * Runs before anything else touches the project: a refused project must be

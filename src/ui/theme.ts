@@ -45,7 +45,7 @@ export function contentWidthFor(columns: number): number {
   return Math.max(24, Math.min(columns - 2, MAX_CONTENT_WIDTH));
 }
 
-export const HUMAN_STYLE = { color: "#f5c542", badge: "TOI" };
+export const HUMAN_STYLE = { color: "#f5c542", badge: "YOU" };
 export const SYSTEM_STYLE = { color: "#8b949e", badge: "::" };
 export const ERROR_STYLE = { color: "#ff5c5c", badge: "!" };
-export const SUMMARY_STYLE = { color: "#57d68d", badge: "[ok] RÉSUMÉ DU DÉBAT (non attribué)" };
+export const SUMMARY_STYLE = { color: "#57d68d", badge: "[ok] DEBATE SUMMARY (unattributed)" };

@@ -4,7 +4,7 @@
 
 - A paste arrives in one piece, line breaks included (Ink 7 `usePaste`, already installed).
 - A paste longer than 500 characters, or containing a line break, shows in the input as
-  `[Texte collé · 12 430 caractères]` instead of its text. Shorter single-line pastes are
+  `[Pasted text · 12,430 characters]` (now; the string at the time was French, translated in the English pass) instead of its text. Shorter single-line pastes are
   inserted as typed text.
 - The label behaves as one character: text can be typed before or after it, Backspace removes
   it whole. Several labels in the draft are numbered (`#1`, `#2`).
@@ -12,7 +12,7 @@
 - Terminals without bracketed paste: chunks arriving in the same burst must no longer be lost.
 - The transcript shows the submitted message in full (unchanged behaviour).
 - The fixed debate header shows at most 3 lines of the topic, the last one ending with
-  `… /topic pour le voir en entier`.
+  `… /topic to see it in full` (now; French at the time, translated in the English pass).
 
 **Global constraints:** no new dependency; `npm run check` green; tests written first.
 
@@ -29,7 +29,7 @@ event delivered before React re-renders overwrites the first.
 ## Task 2: Bracketed paste with labels
 
 - Tests (inputBar.test.tsx), bracketed paste pushed as `\u001b[200~…\u001b[201~`:
-  - 30 000-character paste: input shows `[Texte collé · 30 000 caractères]`, submit sends all 30 000.
+  - 30 000-character paste: input shows `[Pasted text · 30,000 characters]` (now; French at the time), submit sends all 30 000.
   - multi-line paste (`a\r\nb\rc`): label shown, submit sends `a\nb\nc`.
   - 500 characters single line: inserted as text; 501: label.
   - typing before and after a label, then submit: text around the expanded paste is kept.
@@ -44,7 +44,7 @@ event delivered before React re-renders overwrites the first.
 ## Task 3: Bounded topic in the debate header
 
 - Test (debateView.test.tsx): `topicHeaderLines` of a topic wider than 3 lines returns 3 lines,
-  the last ending with `… /topic pour le voir en entier`, none wider than the width; a topic
+  the last ending with `… /topic to see it in full` (now; French at the time), none wider than the width; a topic
   with line breaks is shown on one logical line; a short topic is unchanged.
 - Implementation: `topicHeaderLines(topic, width)` used by both `IntroPanel` and the row budget
   in `DebateView`.

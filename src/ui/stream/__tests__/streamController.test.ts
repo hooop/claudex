@@ -10,25 +10,25 @@ describe("StreamController", () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
-  it("n'écrit rien avant la cadence de rendu", () => {
+  it("writes nothing before the render cadence", () => {
     const { writes, write } = collector();
     const c = new StreamController({ write });
-    c.push(["une"]);
+    c.push(["one"]);
     expect(writes).toEqual([]);
     vi.advanceTimersByTime(32);
-    expect(writes).toEqual(["une\n"]);
+    expect(writes).toEqual(["one\n"]);
   });
 
-  it("regroupe une rafale de lignes en une seule écriture", () => {
+  it("groups a burst of lines into a single write", () => {
     const { writes, write } = collector();
     const c = new StreamController({ write });
-    for (let i = 0; i < 40; i++) c.push([`ligne ${i}`]);
+    for (let i = 0; i < 40; i++) c.push([`line ${i}`]);
     vi.advanceTimersByTime(32);
     expect(writes).toHaveLength(1);
     expect(writes[0]!.split("\n")).toHaveLength(41);
   });
 
-  it("termine toujours le bloc par une fin de ligne", () => {
+  it("always ends the block with a line end", () => {
     const { writes, write } = collector();
     const c = new StreamController({ write });
     c.push(["a", "b"]);
@@ -36,18 +36,18 @@ describe("StreamController", () => {
     expect(writes[0]).toBe("a\nb\n");
   });
 
-  it("préserve l'ordre entre écritures immédiates et différées", () => {
+  it("preserves the order between immediate and deferred writes", () => {
     const { writes, write } = collector();
     const c = new StreamController({ write });
     c.push(["streaming"]);
     c.push(["intervention"]);
     c.flush();
-    c.push(["suite"]);
+    c.push(["next"]);
     c.flush();
-    expect(writes).toEqual(["streaming\nintervention\n", "suite\n"]);
+    expect(writes).toEqual(["streaming\nintervention\n", "next\n"]);
   });
 
-  it("n'écrit jamais un bloc vide", () => {
+  it("never writes an empty block", () => {
     const { writes, write } = collector();
     const c = new StreamController({ write });
     c.flush();
@@ -56,15 +56,15 @@ describe("StreamController", () => {
     expect(writes).toEqual([]);
   });
 
-  it("n'émet aucune séquence d'effacement", () => {
+  it("emits no clearing sequence", () => {
     const { writes, write } = collector();
     const c = new StreamController({ write });
-    c.push(["du texte"]);
+    c.push(["some text"]);
     c.flush();
     expect(writes.join("")).not.toMatch(/\u001b\[[0-9]*[JH]/);
   });
 
-  it("signale chaque flush pour rafraîchir le pied de page", () => {
+  it("reports every flush to refresh the footer", () => {
     const onFlush = vi.fn();
     const c = new StreamController({ write: () => {}, onFlush });
     c.schedule();
@@ -72,14 +72,14 @@ describe("StreamController", () => {
     expect(onFlush).toHaveBeenCalledTimes(1);
   });
 
-  it("vide ce qui reste à la fermeture, puis n'écrit plus rien", () => {
+  it("flushes what remains on dispose, then writes nothing more", () => {
     const { writes, write } = collector();
     const c = new StreamController({ write });
-    c.push(["dernier"]);
+    c.push(["last"]);
     c.dispose();
-    expect(writes).toEqual(["dernier\n"]);
-    c.push(["après"]);
+    expect(writes).toEqual(["last\n"]);
+    c.push(["after"]);
     vi.advanceTimersByTime(100);
-    expect(writes).toEqual(["dernier\n"]);
+    expect(writes).toEqual(["last\n"]);
   });
 });

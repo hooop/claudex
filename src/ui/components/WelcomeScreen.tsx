@@ -23,14 +23,14 @@ export const WELCOME_TAGLINE = "Argue first, ship better!";
 export const WELCOME_TAGLINE_COLOR = "ansi256(138)";
 export const WELCOME_MEMORY_COLOR = "ansi256(102)";
 
-const FRENCH_SESSION_FORMATTER = new Intl.DateTimeFormat("fr-FR", {
+const SESSION_FORMATTER = new Intl.DateTimeFormat("en-US", {
   dateStyle: "long",
   timeStyle: "short",
 });
 
 export function formatLastSession(timestamp: string): string {
   const date = new Date(timestamp);
-  return Number.isNaN(date.getTime()) ? timestamp : FRENCH_SESSION_FORMATTER.format(date);
+  return Number.isNaN(date.getTime()) ? timestamp : SESSION_FORMATTER.format(date);
 }
 
 export function welcomeDivider(width: number): string {
@@ -47,11 +47,10 @@ export function welcomeMemoryLine(
     Math.min(Number.isFinite(width) ? Math.floor(width) : 80, HEADER_MAX_WIDTH),
   );
   const decisions =
-    `Mémoire : ${status.decisionsCount} décision${status.decisionsCount === 1 ? "" : "s"} actée` +
-    (status.decisionsCount === 1 ? "" : "s");
+    `Memory: ${status.decisionsCount} settled decision${status.decisionsCount === 1 ? "" : "s"}`;
   const lastSession = status.lastSession
-    ? `dernière session : ${formatLastSession(status.lastSession)}`
-    : "aucune session précédente";
+    ? `last session: ${formatLastSession(status.lastSession)}`
+    : "no previous session";
   const lastSessionWidth = displayWidth(lastSession);
 
   if (lastSessionWidth >= columns) return truncateEnd(lastSession, columns);
@@ -62,14 +61,14 @@ export function welcomeMemoryLine(
 }
 
 const WELCOME_HELP_LINES = [
-  "Accueil : texte libre — démarre un débat · /model claude|codex <nom>",
-  "Pendant un débat : texte libre · /claude <texte> · /codex <texte>",
+  "Home: free text — starts a debate · /model claude|codex <name>",
+  "During a debate: free text · /claude <text> · /codex <text>",
   "/pause · /resume · /cancel · /save · /new",
   "/autonomy unbounded|starts N|time 5m [--remember]",
-  "/decide <sujet> | <approche> · /limit <texte>",
-  "/decisions — consulter les décisions actées",
-  "/handoff · /implement [claude|codex] [précision]",
-  "/retry · /help · /quit · Échap — pause · Ctrl+C — arrêt quiescent et archive",
+  "/decide <subject> | <approach> · /limit <text>",
+  "/decisions — read the settled decisions",
+  "/handoff · /implement [claude|codex] [details]",
+  "/retry · /help · /quit · Esc — pause · Ctrl+C — quiescent shutdown and archive",
 ] as const;
 
 export function WelcomeScreen(props: {
@@ -129,7 +128,7 @@ export function WelcomeScreen(props: {
     if (cmd.kind === "decisions") {
       setShowHelp(false);
       if (!status.decisionsText) {
-        setNotice("Aucune mémoire de décisions n'est disponible pour ce projet.");
+        setNotice("No decision memory is available for this project.");
         return;
       }
       setNotice(null);
@@ -139,7 +138,7 @@ export function WelcomeScreen(props: {
 
     if (value.trim().startsWith("/")) {
       setShowHelp(false);
-      setNotice("Pas de débat en cours. Tape un sujet, /model claude|codex <nom>, /help ou /quit.");
+      setNotice("No debate in progress. Type a topic, /model claude|codex <name>, /help or /quit.");
       return;
     }
 
@@ -181,7 +180,7 @@ export function WelcomeScreen(props: {
             {!selectionPaletteOpen && showHelp && (
               <Box flexDirection="column" marginTop={1}>
                 <Text bold color={BRAND_COLOR}>
-                  Commandes
+                  Commands
                 </Text>
                 {WELCOME_HELP_LINES.map((line) => (
                   <Text key={line} dimColor wrap="truncate-end">
@@ -211,7 +210,7 @@ export function WelcomeScreen(props: {
       <InputBar
         disabled={false}
         inputActive={modelPickerAgent === null && !decisionViewerOpen}
-        placeholder="Décrivez la problématique technique"
+        placeholder="Describe the technical problem"
         commands={WELCOME_COMMANDS}
         onCommandPaletteChange={setCommandPaletteOpen}
         onSubmit={handleSubmit}

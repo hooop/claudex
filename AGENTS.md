@@ -42,9 +42,7 @@ anyone changing Claudex itself, human or agent. User documentation is in README.
   `src/__tests__/`.
 
 ## Conventions
-- Code, comments, commit messages and docs are in English. The UI, agent prompts,
-  most test names and some comments are still in French and will be translated
-  in one pass; until then, match the language of the surrounding strings.
+- Everything is in English: code, comments, UI, agent prompts, tests, commit messages and docs.
 - Comments explain why, not what.
 - Conventional Commits for commits and pull request titles (CI checks the title).
 - One branch per change (`feat/`, `fix/`, `docs/`, `chore/`, `refactor/`), merged
@@ -103,6 +101,6 @@ anyone changing Claudex itself, human or agent. User documentation is in README.
 
 ## Project memory
 `.claudex/memory/decisions.md` and `limits.md` record settled decisions and
-verified limits (in French for now). Read them before proposing an architectural
+verified limits. Read them before proposing an architectural
 change, and do not reopen a decision without saying so and giving a new reason.
 The rest of `.claudex/memory/` (transcripts, handoffs, devlog) is local and not versioned.

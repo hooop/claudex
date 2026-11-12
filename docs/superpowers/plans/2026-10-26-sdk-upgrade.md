@@ -18,7 +18,7 @@
 - `package.json` dependencies stay untouched until Task 4's gate has passed.
 - Tests never call a real CLI or the network (AGENTS.md). Only Task 4 runs real calls.
 - No policy in the verification tool ever allows an MCP tool: they are always denied.
-- Test names and comments in `src/` match the surrounding language (French in `claudeAgent.test.ts`); new files under `scripts/` are in English. New entries in `.claudex/memory/*.md` are in French, matching those files.
+- Test names and comments in `src/` match the surrounding language (at the time, French in `claudeAgent.test.ts`; everything is English since the English pass); new files under `scripts/` are in English. New entries in `.claudex/memory/*.md` follow the language of those files (French at the time, English since the English pass).
 - `npm run check` passes at the end of every task; `npm audit` reports 0 vulnerabilities at the end of Task 6.
 - Commits: Conventional Commits, ending with the session's attribution lines.
 
@@ -37,19 +37,19 @@
 Characterization test on the current SDK: today only `settingSources` is pinned for the debate.
 
 **Files:**
-- Test: `src/agents/__tests__/claudeAgent.test.ts` (inside `describe("ClaudeAgent — réglages par phase")`)
+- Test: `src/agents/__tests__/claudeAgent.test.ts` (inside `describe("ClaudeAgent — settings per phase")`)
 
 **Interfaces:**
 - Produces: nothing new.
 
-- [ ] **Step 1: Add the test** `it("restreint le débat à Read, Grep et Glob, sous arbitrage humain", …)`: send with `{ cwd: "/tmp", writeAccess: false, onPermissionRequest: async () => ({ behavior: "deny" }) }`, then assert on `queryMock.mock.calls[0]?.[0]?.options`:
+- [ ] **Step 1: Add the test** `it("restricts the debate to Read, Grep and Glob, under human arbitration", …)`: send with `{ cwd: "/tmp", writeAccess: false, onPermissionRequest: async () => ({ behavior: "deny" }) }`, then assert on `queryMock.mock.calls[0]?.[0]?.options`:
   - `tools` toEqual `["Read", "Grep", "Glob"]`
   - `permissionMode` toBe `"default"`
   - `allowedTools` toEqual `[]`
   - `settingSources` toEqual `["project"]`
   - `typeof canUseTool` toBe `"function"`
 
-  Above it, a short French comment saying why (limits.md 2026-08-29: only `tools` and `canUseTool` enforce read-only).
+  Above it, a short comment saying why (limits.md 2026-08-29: only `tools` and `canUseTool` enforce read-only).
 - [ ] **Step 2: Run it.** `npx vitest run src/agents/__tests__/claudeAgent.test.ts` — expected PASS (it pins existing behaviour; if it fails, stop: the code does not do what limits.md says).
 - [ ] **Step 3: `npm run check`** — expected PASS.
 - [ ] **Step 4: Commit** `test: pin the read-only options of a Claude debate turn`.
@@ -254,8 +254,8 @@ Verdict rules, in this order (each failing rule adds a reason):
 ### Task 7: Record the measurements and decisions
 
 **Files:**
-- Modify: `.claudex/memory/limits.md` — new entry `## 2026-10-26 — Lecture seule de Claude re-mesurée sur le SDK 0.3.310`, in the file's format (`**Constat :**`, table(s), `**Comment appliquer :**`): both tables from Task 4, what changed between versions, the MCP and project-config findings, and the rule "rerun `npm run verify:readonly` on every SDK upgrade, on the old and new versions". Add one line at the end of the 2026-08-07 and 2026-08-29 entries pointing to the new one (the `cli.js` grep method no longer applies).
-- Modify: `.claudex/memory/decisions.md` — new entry `## 2026-10-26 — Claudex garde le moteur Claude Code fourni par le SDK, à version exacte` in the file's format (`**Nature :**` arbitrage délégué par le mainteneur, `**Constat :**`, `**Décisions :**` D1 and D2, `**Alternatives écartées :**` the user's own `claude` via `pathToClaudeCodeExecutable` and a caret range, with the spec's reasons, `**Fichiers concernés :**`).
+- Modify: `.claudex/memory/limits.md` — new entry `## 2026-10-26 — Claude's read-only mode re-measured on SDK 0.3.310`, in the file's format (`**Finding:**`, table(s), `**How to apply:**`): both tables from Task 4, what changed between versions, the MCP and project-config findings, and the rule "rerun `npm run verify:readonly` on every SDK upgrade, on the old and new versions". Add one line at the end of the 2026-08-07 and 2026-08-29 entries pointing to the new one (the `cli.js` grep method no longer applies).
+- Modify: `.claudex/memory/decisions.md` — new entry `## 2026-10-26 — Claudex keeps the Claude Code engine bundled with the SDK, at an exact version` in the file's format (`**Nature:**` arbitration delegated by the maintainer, `**Finding:**`, `**Decisions:**` D1 and D2, `**Alternatives rejected:**` the user's own `claude` via `pathToClaudeCodeExecutable` and a caret range, with the spec's reasons, `**Files involved:**`).
 - Modify: `AGENTS.md` — the Constraints bullet about read-only ("re-check after every SDK upgrade") names `npm run verify:readonly`.
 - Modify: `README.md` — Installation step that runs `npm install`: one sentence that it downloads the Claude Code engine bundled with the Claude Agent SDK (about 270 MB, measured from the installed package), while signing in still goes through the user's Claude Code.
 

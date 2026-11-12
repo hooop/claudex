@@ -202,7 +202,7 @@ describe("Scheduler", () => {
     /**
      * An agent that cannot tell who wrote what it is reading eventually answers
      * as if it were its counterpart — observed in a real session, where Claude
-     * replied "ma réponse à Claude" and claimed a command-execution ability only
+     * replied "my reply to Claude" and claimed a command-execution ability only
      * Codex has. The debate rules are sent once, on the first turn, so nothing
      * else keeps either party oriented over a long conversation.
      */
@@ -210,12 +210,12 @@ describe("Scheduler", () => {
       scheduler.start("Test topic");
 
       await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
-      expect(agents.claude.lastMessage).toContain("tu es Claude");
-      agents.claude.complete("Ma question\n\n<<CONTINUE>>");
+      expect(agents.claude.lastMessage).toContain("you are Claude");
+      agents.claude.complete("My question\n\n<<CONTINUE>>");
 
       await vi.waitFor(() => expect(agents.codex.isPending()).toBe(true));
-      expect(agents.codex.lastMessage).toContain("tu es Codex");
-      expect(agents.codex.lastMessage).toContain("[Claude → Codex]\nMa question");
+      expect(agents.codex.lastMessage).toContain("you are Codex");
+      expect(agents.codex.lastMessage).toContain("[Claude → Codex]\nMy question");
     });
 
     it("should attribute each block separately when a turn folds several", async () => {
@@ -226,15 +226,15 @@ describe("Scheduler", () => {
       await vi.waitFor(() => expect(agents.codex.isPending()).toBe(true));
 
       // Codex's reply and the human's note reach Claude in the same turn.
-      scheduler.intervene("Mon avis", "claude");
-      agents.codex.complete("Question de Codex\n\n<<CONTINUE>>");
+      scheduler.intervene("My opinion", "claude");
+      agents.codex.complete("Question from Codex\n\n<<CONTINUE>>");
 
       await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
       const message = agents.claude.lastMessage ?? "";
-      expect(message).toContain("[Codex → Claude]\nQuestion de Codex");
-      expect(message).toContain("[Utilisateur → Claude]\nMon avis");
+      expect(message).toContain("[Codex → Claude]\nQuestion from Codex");
+      expect(message).toContain("[User → Claude]\nMy opinion");
       // Attribution is rendered, never baked into the stored text.
-      expect(message).not.toContain("[Message de l'utilisateur]");
+      expect(message.split("[User → Claude]")).toHaveLength(2);
     });
   });
 
@@ -473,18 +473,18 @@ describe("Scheduler", () => {
       await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
       agents.claude.complete("Qualification\n\n<<CONTINUE>>");
       await vi.waitFor(() => expect(agents.codex.isPending()).toBe(true));
-      agents.codex.complete("Codex répond\n\n<<CONTINUE>>");
+      agents.codex.complete("Codex answers\n\n<<CONTINUE>>");
       await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
 
       scheduler.intervene("consensus ?", "both");
-      agents.claude.complete("Je vérifie\n\n<<CONTINUE>>");
+      agents.claude.complete("I am checking\n\n<<CONTINUE>>");
 
       // The batch runs the expected speaker first, so Codex agrees, then Claude
       // confirms — and Claude is therefore the one handed the synthesis.
       await vi.waitFor(() => expect(agents.codex.isPending()).toBe(true));
-      agents.codex.complete("D'accord\n\n<<CONSENSUS>>");
+      agents.codex.complete("Agreed\n\n<<CONSENSUS>>");
       await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
-      agents.claude.complete("D'accord aussi\n\n<<CONSENSUS>>");
+      agents.claude.complete("Agreed too\n\n<<CONSENSUS>>");
 
       await vi.waitFor(() => expect(callbacks.onConsensusReached).toHaveBeenCalled());
     }
@@ -500,7 +500,7 @@ describe("Scheduler", () => {
       // The synthesis goes to whoever confirmed last, and the debate pauses
       // once it lands.
       await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
-      agents.claude.complete("Spécification finale");
+      agents.claude.complete("Final specification");
       await vi.waitFor(() => expect(callbacks.onSynthesisReady).toHaveBeenCalled());
 
       const claudeSends = agents.claude.getSendCount();
@@ -603,6 +603,22 @@ describe("Scheduler", () => {
       // onConsensusInvalidated should be called
       expect(callbacks.onConsensusInvalidated).toHaveBeenCalled();
     });
+
+    it("asks for the summary in the human's language, English as fallback", async () => {
+      scheduler.start("Test topic");
+
+      await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
+      agents.claude.complete("Claude agrees\n\n<<CONSENSUS>>");
+
+      await vi.waitFor(() => expect(agents.codex.isPending()).toBe(true));
+      agents.codex.complete("Codex agrees\n\n<<CONSENSUS>>");
+
+      // Codex confirmed last, so it is handed the synthesis request.
+      await vi.waitFor(() => expect(agents.codex.getSendCount()).toBe(2));
+      expect(agents.codex.lastMessage).toContain(
+        "Write this summary in the language of the human's messages; if you cannot determine or use that language, write it in English.",
+      );
+    });
   });
 
   describe("Failure handling", () => {
@@ -624,7 +640,7 @@ describe("Scheduler", () => {
 
       await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
       const originalMessage = agents.claude.lastMessage;
-      agents.claude.fail("Limite Claude Code atteinte");
+      agents.claude.fail("Claude Code limit reached");
 
       await vi.waitFor(() => expect(scheduler.isPaused()).toBe(true));
       scheduler.resume();
@@ -649,7 +665,7 @@ describe("Scheduler", () => {
 
       await vi.waitFor(() => expect(agents.claude.getSendCount()).toBe(2));
       expect(agents.claude.lastMessage).toContain("Precision");
-      expect(agents.claude.lastMessage).toContain("tu es Claude");
+      expect(agents.claude.lastMessage).toContain("you are Claude");
     });
 
     it("should send the debate rules with an intervention that follows a failed first turn", async () => {
@@ -665,7 +681,7 @@ describe("Scheduler", () => {
 
       await vi.waitFor(() => expect(agents.codex.getSendCount()).toBe(2));
       expect(agents.codex.lastMessage).toContain("Use the default model");
-      expect(agents.codex.lastMessage).toContain("tu es Codex");
+      expect(agents.codex.lastMessage).toContain("you are Codex");
     });
 
     it("should not repeat the debate rules when a failed turn is retried after a delivered one", async () => {
@@ -684,7 +700,7 @@ describe("Scheduler", () => {
       // The failed turn is retried next; the rules already arrived with the intervention.
       await vi.waitFor(() => expect(agents.codex.getSendCount()).toBe(3));
       expect(agents.codex.lastMessage).toContain("[Claude → Codex]\nQualification");
-      expect(agents.codex.lastMessage).not.toContain("tu es Codex");
+      expect(agents.codex.lastMessage).not.toContain("you are Codex");
     });
 
     it("should not repeat the debate rules when retrying an answer that lacked a marker", async () => {
@@ -699,7 +715,7 @@ describe("Scheduler", () => {
 
       await vi.waitFor(() => expect(agents.claude.getSendCount()).toBe(2));
       expect(agents.claude.lastMessage).toContain("Test topic");
-      expect(agents.claude.lastMessage).not.toContain("tu es Claude");
+      expect(agents.claude.lastMessage).not.toContain("you are Claude");
     });
 
     it("should send the debate rules only once to an agent whose turn succeeded", async () => {
@@ -711,7 +727,7 @@ describe("Scheduler", () => {
       agents.codex.complete("Reply\n\n<<CONTINUE>>");
 
       await vi.waitFor(() => expect(agents.claude.getSendCount()).toBe(2));
-      expect(agents.claude.lastMessage).not.toContain("tu es Claude");
+      expect(agents.claude.lastMessage).not.toContain("you are Claude");
     });
 
     it("should not retry a failed intervention from an already-consumed wake-up", async () => {
@@ -927,10 +943,10 @@ describe("Scheduler", () => {
      * actually accepted.
      */
     it("keeps the session open on a genuine non-topic and waits for the human", async () => {
-      scheduler.start("bonjour");
+      scheduler.start("hello");
       await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
 
-      agents.claude.complete("Bonjour ! Donne-moi un sujet technique à examiner.\n\n<<NO_TOPIC>>");
+      agents.claude.complete("Hello! Give me a technical topic to examine.\n\n<<NO_TOPIC>>");
 
       await vi.waitFor(() => expect(scheduler.suspension()).toBe("waiting-human"));
       expect(scheduler.topicStatus()).toBe("provisional");
@@ -940,62 +956,62 @@ describe("Scheduler", () => {
     });
 
     it("lets the next message replace the subject instead of clarifying it", async () => {
-      scheduler.start("bonjour");
+      scheduler.start("hello");
       await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
-      agents.claude.complete("Pas de sujet ici.\n\n<<NO_TOPIC>>");
+      agents.claude.complete("No topic here.\n\n<<NO_TOPIC>>");
       await vi.waitFor(() => expect(scheduler.suspension()).toBe("waiting-human"));
 
-      scheduler.intervene("Quelle architecture pour la file d'attente ?", "both");
+      scheduler.intervene("What architecture for the queue?", "both");
 
-      // The real subject qualifies on its own; "bonjour" must not survive as
+      // The real subject qualifies on its own; "hello" must not survive as
       // the topic with the real one appended underneath as a clarification.
       await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
       const message = agents.claude.lastMessage ?? "";
-      expect(message).toContain("Quelle architecture pour la file d'attente ?");
-      expect(message).not.toContain("Sujet proposé :\nbonjour");
+      expect(message).toContain("What architecture for the queue?");
+      expect(message).not.toContain("Proposed topic:\nhello");
 
-      agents.claude.complete("Analysons.\n\n<<CONTINUE>>");
+      agents.claude.complete("Let us analyse.\n\n<<CONTINUE>>");
       await vi.waitFor(() => expect(callbacks.onTopicAccepted).toHaveBeenCalledOnce());
     });
 
     it("distinguishes a real topic needing clarification and waits for the human", async () => {
-      scheduler.start("Choix d'architecture");
+      scheduler.start("Architecture choice");
       await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
 
-      agents.claude.complete("Quel volume de trafic faut-il soutenir ?\n\n<<WAIT_HUMAN>>");
+      agents.claude.complete("What traffic volume must be sustained?\n\n<<WAIT_HUMAN>>");
 
       await vi.waitFor(() => expect(scheduler.suspension()).toBe("waiting-human"));
       expect(callbacks.onTopicAccepted).toHaveBeenCalledOnce();
       expect(agents.codex.getSendCount()).toBe(0);
 
-      scheduler.intervene("10 000 requêtes par seconde", "both");
+      scheduler.intervene("10,000 requests per second", "both");
       await vi.waitFor(() => expect(agents.codex.isPending()).toBe(true));
-      expect(agents.codex.lastMessage).toContain("Quel volume de trafic");
-      expect(agents.codex.lastMessage).toContain("10 000 requêtes par seconde");
+      expect(agents.codex.lastMessage).toContain("What traffic volume");
+      expect(agents.codex.lastMessage).toContain("10,000 requests per second");
     });
 
     it("coalesces rapid clarifications and ignores the obsolete validation result", async () => {
-      scheduler.start("Une architecture");
+      scheduler.start("An architecture");
       await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
 
-      expect(scheduler.intervene("pour un service local", "both")).toBe(true);
-      expect(scheduler.intervene("sans dépendance réseau", "both")).toBe(true);
-      agents.claude.complete("Réponse à l'ancienne version\n\n<<CONTINUE>>");
+      expect(scheduler.intervene("for a local service", "both")).toBe(true);
+      expect(scheduler.intervene("without a network dependency", "both")).toBe(true);
+      agents.claude.complete("Answer to the old version\n\n<<CONTINUE>>");
 
       await vi.waitFor(() => expect(agents.claude.getSendCount()).toBe(2));
-      expect(agents.claude.lastMessage).toContain("pour un service local");
-      expect(agents.claude.lastMessage).toContain("sans dépendance réseau");
+      expect(agents.claude.lastMessage).toContain("for a local service");
+      expect(agents.claude.lastMessage).toContain("without a network dependency");
       expect(agents.codex.getSendCount()).toBe(0);
 
-      agents.claude.complete("Version courante qualifiée\n\n<<CONTINUE>>");
+      agents.claude.complete("Current version qualified\n\n<<CONTINUE>>");
       await vi.waitFor(() => expect(agents.codex.isPending()).toBe(true));
       expect(callbacks.onTopicAccepted).toHaveBeenCalledOnce();
     });
 
     it("requires an explicit retry or manual acceptance after a missing marker", async () => {
-      scheduler.start("Sujet valide");
+      scheduler.start("Valid topic");
       await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
-      agents.claude.complete("Analyse utile mais sans marqueur");
+      agents.claude.complete("Useful analysis but no marker");
 
       await vi.waitFor(() => expect(scheduler.suspension()).toBe("protocol-error"));
       expect(callbacks.onTopicAccepted).not.toHaveBeenCalled();
@@ -1003,37 +1019,37 @@ describe("Scheduler", () => {
 
       expect(scheduler.acceptTopic()).toBe(true);
       await vi.waitFor(() => expect(agents.codex.isPending()).toBe(true));
-      expect(agents.codex.lastMessage).toContain("Analyse utile mais sans marqueur");
+      expect(agents.codex.lastMessage).toContain("Useful analysis but no marker");
     });
   });
 
   describe("WAIT_HUMAN inside immutable batches", () => {
     it("lets the second captured job finish, then suspends without losing either reply", async () => {
-      scheduler.start("Sujet");
+      scheduler.start("Topic");
       await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
       agents.claude.complete("Qualification\n\n<<CONTINUE>>");
       await vi.waitFor(() => expect(agents.codex.isPending()).toBe(true));
       scheduler.pause();
-      agents.codex.complete("Contexte Codex\n\n<<CONTINUE>>");
+      agents.codex.complete("Codex context\n\n<<CONTINUE>>");
       await vi.waitFor(() => expect(scheduler.suspension()).toBe("manual"));
 
-      scheduler.intervene("Précision initiale", "both");
+      scheduler.intervene("Initial clarification", "both");
       await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
-      agents.claude.complete("Question humaine de Claude\n\n<<WAIT_HUMAN>>");
+      agents.claude.complete("Human question from Claude\n\n<<WAIT_HUMAN>>");
 
       // The second job was captured before Claude answered and still runs.
       await vi.waitFor(() => expect(agents.codex.isPending()).toBe(true));
-      expect(agents.codex.lastMessage).not.toContain("Question humaine de Claude");
-      agents.codex.complete("Réponse parallèle de Codex\n\n<<CONTINUE>>");
+      expect(agents.codex.lastMessage).not.toContain("Human question from Claude");
+      agents.codex.complete("Parallel answer from Codex\n\n<<CONTINUE>>");
 
       await vi.waitFor(() => expect(scheduler.suspension()).toBe("waiting-human"));
       expect(agents.claude.isPending()).toBe(false);
       expect(agents.codex.isPending()).toBe(false);
 
-      scheduler.intervene("Réponse de l'utilisateur", "both");
+      scheduler.intervene("User answer", "both");
       await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
-      expect(agents.claude.lastMessage).toContain("Réponse parallèle de Codex");
-      expect(agents.claude.lastMessage).toContain("Réponse de l'utilisateur");
+      expect(agents.claude.lastMessage).toContain("Parallel answer from Codex");
+      expect(agents.claude.lastMessage).toContain("User answer");
     });
   });
 
@@ -1045,7 +1061,7 @@ describe("Scheduler", () => {
       // it on one keypress. Demanding a policy first protected nothing and
       // disabled the one behaviour the tool exists for.
       const noPolicy = new Scheduler(agents, { cwd: "/tmp", starter: "claude" }, callbacks);
-      noPolicy.start("Sujet");
+      noPolicy.start("Topic");
       await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
       agents.claude.complete("Qualification\n\n<<CONTINUE>>");
 
@@ -1060,11 +1076,11 @@ describe("Scheduler", () => {
         { cwd: "/tmp", starter: "claude", autonomyBudget: { kind: "automatic-starts", maximum: 1 } },
         callbacks,
       );
-      bounded.start("Sujet");
+      bounded.start("Topic");
       await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
       agents.claude.complete("Qualification\n\n<<CONTINUE>>");
       await vi.waitFor(() => expect(agents.codex.isPending()).toBe(true));
-      agents.codex.complete("Premier départ automatique\n\n<<CONTINUE>>");
+      agents.codex.complete("First automatic start\n\n<<CONTINUE>>");
 
       await vi.waitFor(() => expect(bounded.suspension()).toBe("autonomy-exhausted"));
       expect(agents.claude.getSendCount()).toBe(1);
@@ -1118,17 +1134,17 @@ describe("Scheduler", () => {
   });
 });
 
-describe("règles du débat", () => {
+describe("debate rules", () => {
   const claudeSide = CONSENSUS_INSTRUCTIONS("Claude", "Codex");
   const codexSide = CONSENSUS_INSTRUCTIONS("Codex", "Claude");
 
   /**
-   * La règle de preuve nommait Claude et Codex : elle disait à l'un que sa
-   * lecture ne produit pas de faits, et à l'autre que son contradicteur ne peut
-   * rien vérifier. Les deux agents doivent recevoir exactement les mêmes règles,
-   * aux deux identités près.
+   * The evidence rule used to name Claude and Codex: it told one that its
+   * reading produces no facts, and the other that its counterpart cannot
+   * verify anything. Both agents must receive exactly the same rules, apart
+   * from the two identities.
    */
-  it("donne les mêmes règles aux deux agents, aux identités près", () => {
+  it("gives both agents the same rules, apart from the identities", () => {
     const swapped = claudeSide
       .replace(/Claude/gu, "__OTHER__")
       .replace(/Codex/gu, "Claude")
@@ -1136,30 +1152,42 @@ describe("règles du débat", () => {
     expect(swapped).toBe(codexSide);
   });
 
-  it("exige la commande et la sortie plutôt que la confiance", () => {
-    expect(claudeSide).toContain("la commande exacte et sa sortie brute");
-    expect(claudeSide).toContain("Exiger la preuve fait partie de ton rôle");
+  it("demands the command and the output rather than trust", () => {
+    expect(claudeSide).toContain("the exact command and its raw output");
+    expect(claudeSide).toContain("Demanding the evidence is as much part of your role");
   });
 
-  // Sinon la sortie valide la moins chère, dans le doute, est l'accord.
-  it("fait payer le consensus au moins autant que la poursuite", () => {
-    expect(claudeSide).toContain("examiné au moins une alternative sérieuse");
+  // Otherwise the cheapest valid exit, when in doubt, is agreement.
+  it("makes consensus cost at least as much as continuing", () => {
+    expect(claudeSide).toContain("examined at least one serious alternative");
   });
 
-  // Claudex n'écrit plus dans CLAUDE.md ni AGENTS.md : ces règles sont le seul
-  // chemin par lequel les deux agents apprennent que la mémoire existe. Elle est
-  // nommée, pas recopiée, pour ne pas la refacturer à chaque appel.
-  it("nomme la mémoire versionnée du projet sans l'importer", () => {
+  // Claudex no longer writes to CLAUDE.md or AGENTS.md: these rules are the only
+  // way both agents learn that the memory exists. It is named, not copied in, so
+  // that it is not billed again on every call.
+  it("names the project's versioned memory without importing it", () => {
     expect(claudeSide).toContain(".claudex/memory/decisions.md");
     expect(claudeSide).toContain(".claudex/memory/limits.md");
     expect(claudeSide).not.toContain("@.claudex");
     expect(claudeSide).not.toContain("devlog.md");
   });
 
-  // Contrainte d'affichage appliquée par le renderer : l'imposer au modèle
-  // dégrade les handoffs, qui sont des documents Markdown autoportants.
-  it("n'impose aucune contrainte Markdown aux agents", () => {
+  // A display constraint the renderer applies: imposing it on the model
+  // degrades the handoffs, which are standalone Markdown documents.
+  it("imposes no Markdown constraint on the agents", () => {
     expect(claudeSide).not.toContain("Markdown");
-    expect(claudeSide).toContain("aucun emoji");
+    expect(claudeSide).toContain("Do not use any emoji");
+  });
+
+  it("tells agents to answer in the human's language, English as fallback", () => {
+    expect(claudeSide).toContain(
+      "Write your debate messages in the language of the human's messages; if you cannot determine or use that language, write in English.",
+    );
+  });
+
+  it("keeps every other text in English whatever the conversation language", () => {
+    expect(claudeSide).toContain(
+      "Everything else you write (code, code comments, commit messages, and the content of any file, including during the implementation phase) is in English, whatever the language of the conversation.",
+    );
   });
 });

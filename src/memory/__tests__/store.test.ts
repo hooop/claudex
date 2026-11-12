@@ -24,25 +24,25 @@ describe("saveHandoff", () => {
   });
 
   it("rejects an empty or whitespace-only summary", async () => {
-    await expect(saveHandoff(cwd, "Sujet", "")).rejects.toThrow();
-    await expect(saveHandoff(cwd, "Sujet", "   \n  ")).rejects.toThrow();
+    await expect(saveHandoff(cwd, "Topic", "")).rejects.toThrow();
+    await expect(saveHandoff(cwd, "Topic", "   \n  ")).rejects.toThrow();
   });
 
   it("writes a self-contained file with the required sections", async () => {
-    const relPath = await saveHandoff(cwd, "Sujet de test", "- règle A\n- règle B");
+    const relPath = await saveHandoff(cwd, "Test topic", "- rule A\n- rule B");
     expect(relPath).toMatch(/^\.claudex[/\\]memory[/\\]handoffs[/\\].+\.md$/);
 
     const content = await readFile(path.join(cwd, relPath), "utf8");
-    expect(content).toContain("# Sujet de test");
-    expect(content).toContain("## Mémoire projet");
-    expect(content).toContain("## Spécification consensuelle");
-    expect(content).toContain("## Consigne d'exécution");
-    expect(content).toContain("- règle A");
-    expect(content).toContain("- règle B");
+    expect(content).toContain("# Test topic");
+    expect(content).toContain("## Project memory");
+    expect(content).toContain("## Agreed specification");
+    expect(content).toContain("## Execution instructions");
+    expect(content).toContain("- rule A");
+    expect(content).toContain("- rule B");
   });
 
   it("logs the generated path in devlog.md", async () => {
-    const relPath = await saveHandoff(cwd, "Sujet", "- règle");
+    const relPath = await saveHandoff(cwd, "Topic", "- rule");
     const devlog = await readFile(path.join(cwd, ".claudex/memory/devlog.md"), "utf8");
     expect(devlog).toContain(relPath);
   });
@@ -51,16 +51,16 @@ describe("saveHandoff", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-06T12:00:00.000Z"));
 
-    const first = await saveHandoff(cwd, "Sujet", "- règle 1");
-    const second = await saveHandoff(cwd, "Sujet", "- règle 2");
+    const first = await saveHandoff(cwd, "Topic", "- rule 1");
+    const second = await saveHandoff(cwd, "Topic", "- rule 2");
 
     expect(first).not.toBe(second);
     expect(second).toMatch(/-2\.md$/);
 
     const firstContent = await readFile(path.join(cwd, first), "utf8");
     const secondContent = await readFile(path.join(cwd, second), "utf8");
-    expect(firstContent).toContain("- règle 1");
-    expect(secondContent).toContain("- règle 2");
+    expect(firstContent).toContain("- rule 1");
+    expect(secondContent).toContain("- rule 2");
   });
 });
 
@@ -136,14 +136,14 @@ describe("transcript snapshots and project policy", () => {
   it("labels /save output as a partial point-in-time snapshot", async () => {
     const relPath = await saveTranscript(
       cwd,
-      "Sujet",
-      [{ id: "1", from: "human", kind: "intervention", text: "Texte", timestamp: 1 }],
+      "Topic",
+      [{ id: "1", from: "human", kind: "intervention", text: "Text", timestamp: 1 }],
       { completeness: "partial" },
     );
     const content = await readFile(path.join(cwd, relPath), "utf8");
 
-    expect(content).toContain("Instantané partiel capturé");
-    expect(content).toContain("n'est pas une clôture de session");
+    expect(content).toContain("Partial snapshot captured");
+    expect(content).toContain("is not a session close");
   });
 
   it("does not overwrite transcript files on a same-millisecond collision", async () => {
@@ -151,8 +151,8 @@ describe("transcript snapshots and project policy", () => {
     vi.setSystemTime(new Date("2026-08-10T20:00:00.000Z"));
     const entries = [{ id: "1", from: "system" as const, kind: "system" as const, text: "A", timestamp: 1 }];
 
-    const first = await saveTranscript(cwd, "Sujet", entries);
-    const second = await saveTranscript(cwd, "Sujet", entries);
+    const first = await saveTranscript(cwd, "Topic", entries);
+    const second = await saveTranscript(cwd, "Topic", entries);
 
     expect(second).not.toBe(first);
     expect(second).toMatch(/-2\.md$/);
@@ -175,27 +175,27 @@ describe("transcript snapshots and project policy", () => {
 });
 
 describe("sessionTitle", () => {
-  it("laisse un sujet court intact", () => {
-    expect(sessionTitle("  Revue du scheduler  ")).toBe("Revue du scheduler");
+  it("leaves a short topic intact", () => {
+    expect(sessionTitle("  Scheduler review  ")).toBe("Scheduler review");
   });
 
-  it("réduit un prompt à une ligne", () => {
-    expect(sessionTitle("Premier axe\n\n  puis le second")).toBe("Premier axe puis le second");
+  it("collapses a prompt to one line", () => {
+    expect(sessionTitle("First angle\n\n  then the second")).toBe("First angle then the second");
   });
 
-  // Le devlog est un index des sessions : y recopier un prompt d'audit de
-  // plusieurs milliers de mots le faisait grossir sans borne.
-  it("tronque un long prompt et signale la coupe", () => {
-    const title = sessionTitle("mot ".repeat(200));
+  // The devlog is an index of sessions: copying an audit prompt of several
+  // thousand words into it made it grow without bound.
+  it("truncates a long prompt and flags the cut", () => {
+    const title = sessionTitle("word ".repeat(200));
     expect(title.length).toBeLessThanOrEqual(61);
     expect(title.endsWith("…")).toBe(true);
   });
 });
 
-// CLAUDE.md et AGENTS.md appartiennent à l'utilisateur : tout ce que Claudex y
-// écrit est relu par chaque session Claude Code ou Codex ouverte ensuite dans
-// le dépôt, débat ou pas. La mémoire passe par les règles du débat.
-describe("fichiers d'instructions de l'utilisateur", () => {
+// CLAUDE.md and AGENTS.md belong to the user: anything Claudex wrote there
+// would be read by every Claude Code or Codex session opened in the repository
+// afterwards, debate or not. Memory goes through the debate rules.
+describe("the user's instruction files", () => {
   let cwd: string;
 
   beforeEach(async () => {
@@ -206,7 +206,7 @@ describe("fichiers d'instructions de l'utilisateur", () => {
     await rm(cwd, { recursive: true, force: true });
   });
 
-  it("n'en crée aucun au premier lancement", async () => {
+  it("creates none on first launch", async () => {
     const { created } = await initMemoryScaffold(cwd);
 
     expect(existsSync(path.join(cwd, "CLAUDE.md"))).toBe(false);
@@ -214,8 +214,8 @@ describe("fichiers d'instructions de l'utilisateur", () => {
     expect(created.filter((file) => /CLAUDE\.md|AGENTS\.md/u.test(file))).toEqual([]);
   });
 
-  it("laisse intacts ceux qui existent déjà, lancement après lancement", async () => {
-    const claudeMd = "# Mes règles\n\nPas de mémoire ici.\n";
+  it("leaves existing ones untouched, launch after launch", async () => {
+    const claudeMd = "# My rules\n\nNo memory here.\n";
     const agentsMd = "# Agents\n";
     await writeFile(path.join(cwd, "CLAUDE.md"), claudeMd, "utf8");
     await writeFile(path.join(cwd, "AGENTS.md"), agentsMd, "utf8");

@@ -5,13 +5,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
   let autoComplete = true;
-  let autoResponse = "Sujet qualifié\n\n<<CONTINUE>>";
-  // Mutable : la mémoire du projet change sous les pieds de Claudex dès qu'une
-  // session écrit une décision, et l'accueil doit refléter le disque, pas
-  // l'état du lancement.
+  let autoResponse = "Qualified topic\n\n<<CONTINUE>>";
+  // Mutable: the project memory changes under Claudex's feet as soon as a
+  // session writes a decision, and the welcome screen must reflect the disk,
+  // not the launch state.
   const projectStatus = {
     decisionsCount: 0,
-    decisionsText: "# Décisions\n\nAucune décision actée.",
+    decisionsText: "# Decisions\n\nNo settled decision.",
     lastSession: null as string | null,
     claudeDefaultModel: null as string | null,
     codexDefaultModel: null as string | null,
@@ -65,7 +65,7 @@ const mocks = vi.hoisted(() => {
       void props;
       return null;
     }),
-    saveTranscript: vi.fn(async () => "trace.md"),
+    saveTranscript: vi.fn(async () => "transcript.md"),
     setAutoComplete(value: boolean) {
       autoComplete = value;
     },
@@ -97,7 +97,7 @@ vi.mock("../../memory/store.js", () => ({
   appendDecision: vi.fn(async () => {}),
   appendDevlog: mocks.appendDevlog,
   appendLimit: vi.fn(async () => {}),
-  readDecisions: vi.fn(async () => "# Décisions\n\nAucune décision actée."),
+  readDecisions: vi.fn(async () => "# Decisions\n\nNo settled decision."),
   rememberAutonomyBudget: vi.fn(async () => {}),
   saveHandoff: vi.fn(async () => "handoff.md"),
   saveTranscript: mocks.saveTranscript,
@@ -162,24 +162,24 @@ function fakeTerminal() {
 async function press(terminal: ReturnType<typeof fakeTerminal>, input: string): Promise<void> {
   await act(async () => {
     terminal.pushInput(input);
-    // Ink 7 régule ses rendus : une frappe n'est plus reflétée dans le même
-    // tour de boucle.
+    // Ink 7 throttles its renders: a keystroke is no longer reflected in the
+    // same event-loop turn.
     await new Promise((resolve) => setTimeout(resolve, 60));
   });
 }
 
-describe("Root — cycle de vie du header", () => {
+describe("Root — header lifecycle", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.setAutoComplete(true);
-    mocks.setAutoResponse("Sujet qualifié\n\n<<CONTINUE>>");
+    mocks.setAutoResponse("Qualified topic\n\n<<CONTINUE>>");
     mocks.projectStatus.decisionsCount = 0;
-    mocks.saveTranscript.mockResolvedValue("trace.md");
+    mocks.saveTranscript.mockResolvedValue("transcript.md");
   });
 
-  it("place les modèles sous le prompt et ouvre l'aide depuis l'accueil", async () => {
+  it("puts the models under the prompt and opens the help from the welcome screen", async () => {
     const terminal = fakeTerminal();
-    const app = render(<Root cwd="/projet-test" />, {
+    const app = render(<Root cwd="/test-project" />, {
       stdout: terminal.stdout as never,
       stdin: terminal.stdin as never,
       stderr: terminal.stderr as never,
@@ -193,22 +193,22 @@ describe("Root — cycle de vie du header", () => {
 
     const initialFrame = terminal.chunks.join("").replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "");
     const lines = initialFrame.split("\n");
-    const memoryLine = lines.findIndex((line) => line.includes("Mémoire :"));
+    const memoryLine = lines.findIndex((line) => line.includes("Memory:"));
     const taglineLine = lines.findIndex((line) => line.includes(WELCOME_TAGLINE));
-    const promptLine = lines.findIndex((line) => line.includes("Décrivez la problématique technique"));
+    const promptLine = lines.findIndex((line) => line.includes("Describe the technical problem"));
     const modelsLine = lines.findIndex((line) => line.includes("fake-model + fake-model"));
     expect(memoryLine).toBeGreaterThan(-1);
     expect(taglineLine).toBeGreaterThan(memoryLine);
     expect(modelsLine).toBeGreaterThan(promptLine);
-    expect(lines[modelsLine]).not.toContain("Claude :");
-    expect(lines[modelsLine]).not.toContain("Codex :");
+    expect(lines[modelsLine]).not.toContain("Claude:");
+    expect(lines[modelsLine]).not.toContain("Codex:");
     expect(lines[modelsLine]).toContain("/help");
     expect(WELCOME_MODELS_COLOR).toBe("ansi256(66)");
     expect(WELCOME_TAGLINE_COLOR).toBe("ansi256(138)");
     expect(WELCOME_MEMORY_COLOR).toBe("ansi256(102)");
     const formattedSession = formatLastSession("2026-08-10T11:42:17.288Z");
-    expect(formattedSession).toContain("10 août 2026");
-    expect(formattedSession).toMatch(/\d{2}:\d{2}$/);
+    expect(formattedSession).toContain("August 10, 2026");
+    expect(formattedSession).toMatch(/\d{1,2}:\d{2}\s[AP]M$/);
     expect(formattedSession).not.toContain("T11:42:17.288Z");
     expect(welcomeDivider(80)).toBe("-".repeat(80));
     expect(welcomeDivider(200)).toBe("-".repeat(96));
@@ -217,9 +217,9 @@ describe("Root — cycle de vie du header", () => {
       80,
     );
     expect(displayWidth(memory)).toBe(80);
-    expect(memory).toMatch(/^Mémoire : 3 décisions actées/);
-    expect(memory).toMatch(/dernière session : .*10 août 2026.*\d{2}:\d{2}$/);
-    expect(initialFrame).not.toContain("Plasma psychédélique");
+    expect(memory).toMatch(/^Memory: 3 settled decisions/);
+    expect(memory).toMatch(/last session: .*August 10, 2026.*\d{1,2}:\d{2}\s[AP]M$/);
+    expect(initialFrame).not.toContain("Psychedelic plasma");
     expect(initialFrame).toContain(WELCOME_TAGLINE);
     expect(initialFrame).not.toContain("▲ Claudex");
 
@@ -228,7 +228,7 @@ describe("Root — cycle de vie du header", () => {
     await press(terminal, "\r");
     await vi.waitFor(() => {
       const output = terminal.chunks.join("");
-      expect(output).toContain("Commandes");
+      expect(output).toContain("Commands");
       expect(output).toContain("/handoff");
       expect(output).toContain("/decide");
     });
@@ -236,9 +236,9 @@ describe("Root — cycle de vie du header", () => {
     app.unmount();
   });
 
-  it("ouvre les décisions actées depuis l'accueil et les rend sans marqueurs Markdown", async () => {
+  it("opens the settled decisions from the welcome screen and renders them without Markdown markers", async () => {
     const terminal = fakeTerminal();
-    const app = render(<Root cwd="/projet-test" />, {
+    const app = render(<Root cwd="/test-project" />, {
       stdout: terminal.stdout as never,
       stdin: terminal.stdin as never,
       stderr: terminal.stderr as never,
@@ -254,19 +254,19 @@ describe("Root — cycle de vie du header", () => {
 
     await vi.waitFor(() => {
       const output = terminal.chunks.join("").replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "");
-      expect(output).toContain("Décisions actées");
-      expect(output).toContain("Aucune décision actée.");
-      expect(output).not.toContain("# Décisions");
+      expect(output).toContain("Settled decisions");
+      expect(output).toContain("No settled decision.");
+      expect(output).not.toContain("# Decisions");
       expect(output).toContain("PgUp/PgDn");
     });
 
     app.unmount();
   });
 
-  it("ouvre les modèles au-dessus du prompt d'accueil et choisit avec Tab", async () => {
+  it("opens the models above the welcome prompt and selects with Tab", async () => {
     const setModel = vi.spyOn(mocks.FakeAgent.prototype, "setModel");
     const terminal = fakeTerminal();
-    const app = render(<Root cwd="/projet-test" />, {
+    const app = render(<Root cwd="/test-project" />, {
       stdout: terminal.stdout as never,
       stdin: terminal.stdin as never,
       stderr: terminal.stderr as never,
@@ -282,11 +282,11 @@ describe("Root — cycle de vie du header", () => {
 
     const frameChunk = [...terminal.chunks]
       .reverse()
-      .find((chunk) => chunk.includes("Opus 5") && chunk.includes("Décrivez la problématique"));
+      .find((chunk) => chunk.includes("Opus 5") && chunk.includes("Describe the technical problem"));
     expect(frameChunk).toBeDefined();
     const frame = frameChunk!.replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "");
-    expect(frame.indexOf("Opus 5")).toBeLessThan(frame.indexOf("Décrivez la problématique"));
-    expect(frame).toContain("↑↓ 1/4 · Tab ou Entrée choisir · Échap fermer");
+    expect(frame.indexOf("Opus 5")).toBeLessThan(frame.indexOf("Describe the technical problem"));
+    expect(frame).toContain("↑↓ 1/4 · Tab or Enter to choose · Esc close");
 
     await press(terminal, "\u001b[B");
     await press(terminal, "\t");
@@ -295,9 +295,9 @@ describe("Root — cycle de vie du header", () => {
     setModel.mockRestore();
   });
 
-  it("conserve le preset choisi après un débat puis /new", async () => {
+  it("keeps the chosen preset after a debate then /new", async () => {
     const terminal = fakeTerminal();
-    const app = render(<Root cwd="/projet-test" />, {
+    const app = render(<Root cwd="/test-project" />, {
       stdout: terminal.stdout as never,
       stdin: terminal.stdin as never,
       stderr: terminal.stderr as never,
@@ -315,7 +315,7 @@ describe("Root — cycle de vie du header", () => {
       ).toBe(true);
     });
 
-    await press(terminal, "Sujet de test");
+    await press(terminal, "Test topic");
     await press(terminal, "\r");
     await vi.waitFor(() => expect(mocks.appendDevlog).toHaveBeenCalledOnce());
 
@@ -335,12 +335,12 @@ describe("Root — cycle de vie du header", () => {
     app.unmount();
   });
 
-  // Une session peut écrire dans .claudex/memory (/decide, /handoff). Sans
-  // relecture au retour, l'accueil et son /decisions montrent le disque tel
-  // qu'il était au lancement de Claudex.
-  it("relit la mémoire du projet en revenant à l'accueil", async () => {
+  // A session may write to .claudex/memory (/decide, /handoff). Without a
+  // reread on return, the welcome screen and its /decisions show the disk as
+  // it was at Claudex's launch.
+  it("rereads the project memory when returning to the welcome screen", async () => {
     const terminal = fakeTerminal();
-    const app = render(<Root cwd="/projet-test" />, {
+    const app = render(<Root cwd="/test-project" />, {
       stdout: terminal.stdout as never,
       stdin: terminal.stdin as never,
       stderr: terminal.stderr as never,
@@ -351,11 +351,11 @@ describe("Root — cycle de vie du header", () => {
 
     await vi.waitFor(() => expect(terminal.stdin.listenerCount("readable")).toBeGreaterThan(0));
     await new Promise((resolve) => setTimeout(resolve, 20));
-    await press(terminal, "Sujet de test");
+    await press(terminal, "Test topic");
     await press(terminal, "\r");
     await vi.waitFor(() => expect(mocks.appendDevlog).toHaveBeenCalledOnce());
 
-    // Le débat vient d'acter une décision sur le disque.
+    // The debate has just settled a decision on disk.
     mocks.projectStatus.decisionsCount = 3;
 
     terminal.chunks.length = 0;
@@ -365,16 +365,16 @@ describe("Root — cycle de vie du header", () => {
 
     await vi.waitFor(() => {
       expect(terminal.chunks.join("").replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "")).toContain(
-        "3 décisions actées",
+        "3 settled decisions",
       );
     });
     app.unmount();
   });
 
-  it("démarre un débat sur un sujet collé qui commence par une barre oblique", async () => {
+  it("starts a debate on a pasted topic that starts with a slash", async () => {
     mocks.setAutoComplete(false);
     const terminal = fakeTerminal();
-    const app = render(<Root cwd="/projet-test" />, {
+    const app = render(<Root cwd="/test-project" />, {
       stdout: terminal.stdout as never,
       stdin: terminal.stdin as never,
       stderr: terminal.stderr as never,
@@ -390,16 +390,16 @@ describe("Root — cycle de vie du header", () => {
 
     await vi.waitFor(() => {
       const output = terminal.chunks.join("").replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "");
-      expect(output).toContain("Sujet : /Users/me/app.ts:12 TypeError at main");
+      expect(output).toContain("Topic: /Users/me/app.ts:12 TypeError at main");
     });
-    expect(terminal.chunks.join("")).not.toContain("Pas de débat en cours");
+    expect(terminal.chunks.join("")).not.toContain("No debate in progress");
     app.unmount();
   });
 
-  it("n'écrit le devlog qu'après validation effective du sujet", async () => {
+  it("writes the devlog only once the topic is actually accepted", async () => {
     mocks.setAutoComplete(false);
     const terminal = fakeTerminal();
-    const app = render(<Root cwd="/projet-test" />, {
+    const app = render(<Root cwd="/test-project" />, {
       stdout: terminal.stdout as never,
       stdin: terminal.stdin as never,
       stderr: terminal.stderr as never,
@@ -410,7 +410,7 @@ describe("Root — cycle de vie du header", () => {
 
     await vi.waitFor(() => expect(terminal.stdin.listenerCount("readable")).toBeGreaterThan(0));
     await new Promise((resolve) => setTimeout(resolve, 20));
-    await press(terminal, "Sujet encore provisoire");
+    await press(terminal, "Still provisional topic");
     await press(terminal, "\r");
     await new Promise((resolve) => setTimeout(resolve, 20));
 
@@ -424,10 +424,10 @@ describe("Root — cycle de vie du header", () => {
    * now stays open — only the writes to project memory are withheld until a
    * real subject is accepted.
    */
-  it("garde la conversation ouverte, sans devlog ni archive, pour un vrai non-sujet", async () => {
-    mocks.setAutoResponse("Bonjour, indique un sujet technique.\n\n<<NO_TOPIC>>");
+  it("keeps the conversation open, without devlog or archive, for a real non-topic", async () => {
+    mocks.setAutoResponse("Hello, please give a technical topic.\n\n<<NO_TOPIC>>");
     const terminal = fakeTerminal();
-    const app = render(<Root cwd="/projet-test" />, {
+    const app = render(<Root cwd="/test-project" />, {
       stdout: terminal.stdout as never,
       stdin: terminal.stdin as never,
       stderr: terminal.stderr as never,
@@ -437,12 +437,13 @@ describe("Root — cycle de vie du header", () => {
     });
     await vi.waitFor(() => expect(terminal.stdin.listenerCount("readable")).toBeGreaterThan(0));
     await new Promise((resolve) => setTimeout(resolve, 20));
-    await press(terminal, "Bonjour");
+    await press(terminal, "Hello");
     await press(terminal, "\r");
 
-    // Ce faux agent renvoie son texte d'un bloc, sans deltas, donc le rendu du
-    // message n'est pas observable ici ; ce qui compte est que l'écran de débat
-    // n'ait pas été démonté. Un retour à l'accueil réanimerait le header.
+    // This fake agent returns its text in one block, without deltas, so the
+    // message rendering is not observable here; what matters is that the debate
+    // screen was not unmounted. A return to the welcome screen would re-animate
+    // the header.
     await new Promise((resolve) => setTimeout(resolve, 200));
     expect(mocks.animatedHeader).toHaveBeenCalledTimes(1);
     expect(mocks.appendDevlog).not.toHaveBeenCalled();
@@ -450,10 +451,10 @@ describe("Root — cycle de vie du header", () => {
     app.unmount();
   });
 
-  it("garde l'interface fermée visible après un échec d'archive et /retry reprend uniquement l'archive", async () => {
-    mocks.saveTranscript.mockRejectedValueOnce(new Error("disque indisponible"));
+  it("keeps the closed interface visible after an archive failure and /retry resumes only the archive", async () => {
+    mocks.saveTranscript.mockRejectedValueOnce(new Error("disk unavailable"));
     const terminal = fakeTerminal();
-    const app = render(<Root cwd="/projet-test" />, {
+    const app = render(<Root cwd="/test-project" />, {
       stdout: terminal.stdout as never,
       stdin: terminal.stdin as never,
       stderr: terminal.stderr as never,
@@ -464,7 +465,7 @@ describe("Root — cycle de vie du header", () => {
 
     await vi.waitFor(() => expect(terminal.stdin.listenerCount("readable")).toBeGreaterThan(0));
     await new Promise((resolve) => setTimeout(resolve, 20));
-    await press(terminal, "Sujet de test");
+    await press(terminal, "Test topic");
     await press(terminal, "\r");
     await vi.waitFor(() => expect(mocks.appendDevlog).toHaveBeenCalledOnce());
     await press(terminal, "/new");
@@ -480,9 +481,9 @@ describe("Root — cycle de vie du header", () => {
     app.unmount();
   });
 
-  it("marque /save comme instantané partiel sans fermer la session", async () => {
+  it("marks /save as a partial snapshot without closing the session", async () => {
     const terminal = fakeTerminal();
-    const app = render(<Root cwd="/projet-test" />, {
+    const app = render(<Root cwd="/test-project" />, {
       stdout: terminal.stdout as never,
       stdin: terminal.stdin as never,
       stderr: terminal.stderr as never,
@@ -493,7 +494,7 @@ describe("Root — cycle de vie du header", () => {
 
     await vi.waitFor(() => expect(terminal.stdin.listenerCount("readable")).toBeGreaterThan(0));
     await new Promise((resolve) => setTimeout(resolve, 20));
-    await press(terminal, "Sujet de test");
+    await press(terminal, "Test topic");
     await press(terminal, "\r");
     await vi.waitFor(() => expect(mocks.appendDevlog).toHaveBeenCalledOnce());
     await press(terminal, "/save");
@@ -501,8 +502,8 @@ describe("Root — cycle de vie du header", () => {
 
     await vi.waitFor(() => expect(mocks.saveTranscript).toHaveBeenCalledOnce());
     expect(mocks.saveTranscript).toHaveBeenCalledWith(
-      "/projet-test",
-      "Sujet de test",
+      "/test-project",
+      "Test topic",
       expect.any(Array),
       { completeness: "partial" },
     );
@@ -510,7 +511,7 @@ describe("Root — cycle de vie du header", () => {
     app.unmount();
   });
 
-  it("sérialise /new derrière un /save déjà en cours", async () => {
+  it("serializes /new behind a /save already in progress", async () => {
     let resolvePartial!: (path: string) => void;
     mocks.saveTranscript
       .mockImplementationOnce(
@@ -521,7 +522,7 @@ describe("Root — cycle de vie du header", () => {
       )
       .mockResolvedValue("stable.md");
     const terminal = fakeTerminal();
-    const app = render(<Root cwd="/projet-test" />, {
+    const app = render(<Root cwd="/test-project" />, {
       stdout: terminal.stdout as never,
       stdin: terminal.stdin as never,
       stderr: terminal.stderr as never,
@@ -531,7 +532,7 @@ describe("Root — cycle de vie du header", () => {
     });
     await vi.waitFor(() => expect(terminal.stdin.listenerCount("readable")).toBeGreaterThan(0));
     await new Promise((resolve) => setTimeout(resolve, 20));
-    await press(terminal, "Sujet de test");
+    await press(terminal, "Test topic");
     await press(terminal, "\r");
     await vi.waitFor(() => expect(mocks.appendDevlog).toHaveBeenCalledOnce());
 
@@ -553,10 +554,10 @@ describe("Root — cycle de vie du header", () => {
     app.unmount();
   });
 
-  it("refuse /save tant que /cancel n'est pas stabilisé", async () => {
+  it("refuses /save until /cancel has settled", async () => {
     mocks.setAutoComplete(false);
     const terminal = fakeTerminal();
-    const app = render(<Root cwd="/projet-test" />, {
+    const app = render(<Root cwd="/test-project" />, {
       stdout: terminal.stdout as never,
       stdin: terminal.stdin as never,
       stderr: terminal.stderr as never,
@@ -566,7 +567,7 @@ describe("Root — cycle de vie du header", () => {
     });
     await vi.waitFor(() => expect(terminal.stdin.listenerCount("readable")).toBeGreaterThan(0));
     await new Promise((resolve) => setTimeout(resolve, 20));
-    await press(terminal, "Sujet en cours");
+    await press(terminal, "Topic in progress");
     await press(terminal, "\r");
     await press(terminal, "/cancel");
     await press(terminal, "\r");

@@ -1,569 +1,569 @@
-# Limites connues
+# Known limits
 
-Contraintes, boundaries et choses explicitement écartées.
+Constraints, boundaries and things explicitly ruled out.
 
-## 2026-11-11 — Le Bash sandboxé de Claude pendant le débat (mesuré, macOS)
+## 2026-11-11 — Claude's sandboxed Bash during the debate (measured, macOS)
 
-**Constat :** SDK 0.3.310 (Claude Code 2.1.310), `claude-sonnet-5-5`, macOS, une machine et un compte
-(`/` approuvé dans `~/.claude.json`). Design : `docs/superpowers/specs/2026-11-11-sandboxed-bash-design.md`.
+**Finding:** SDK 0.3.310 (Claude Code 2.1.310), `claude-sonnet-5-5`, macOS, one machine and one account
+(`/` trusted in `~/.claude.json`). Design: `docs/superpowers/specs/2026-11-11-sandboxed-bash-design.md`.
 
-*Sonde exploratoire* (un `query()` par ligne, options de débat plus Bash et le bloc `sandbox`,
-`canUseTool` autorise tout, dossier neuf avec `git init`, une exécution par ligne) :
+*Exploratory probe* (one `query()` per row, debate options plus Bash and the `sandbox` block,
+`canUseTool` allows everything, fresh folder with `git init`, one run per row):
 
-| Exécution | Écritures (racine, sous-dossier, `.git`, hors projet, `$TMPDIR`, `/tmp`) | Temp du moteur `/tmp/claude-<uid>` | Leurre (denyRead) | `curl https://example.com` |
+| Run | Writes (root, subfolder, `.git`, outside the project, `$TMPDIR`, `/tmp`) | Engine temp `/tmp/claude-<uid>` | Decoy (denyRead) | `curl https://example.com` |
 | --- | --- | --- | --- | --- |
-| sandbox | toutes bloquées | écrit | refusé | `000`, `deny network-outbound` |
-| sandbox + `.claude/settings.json` hostile | toutes bloquées | écrit | refusé | `000` |
-| sans sandbox (témoin) | toutes **écrites** | — | **lu** | `200` |
+| sandbox | all blocked | written | refused | `000`, `deny network-outbound` |
+| sandbox + hostile `.claude/settings.json` | all blocked | written | refused | `000` |
+| no sandbox (control) | all **written** | — | **read** | `200` |
 
-Le fichier hostile fixe `sandbox.enabled: false`, `allowUnsandboxedCommands: true`, `excludedCommands`,
+The hostile file sets `sandbox.enabled: false`, `allowUnsandboxedCommands: true`, `excludedCommands`,
 `filesystem.allowWrite`/`allowRead`, `network.allowedDomains: ["*"]`, `permissions.defaultMode:
-bypassPermissions`, `permissions.allow`, `additionalDirectories` : rien n'a affaibli le sandbox.
+bypassPermissions`, `permissions.allow`, `additionalDirectories`: none of it weakened the sandbox.
 
-*Autres sondes (une exécution chacune) :* `npm test` tourne dans le sandbox avec `~/.npmrc` refusé en
-lecture (TESTS_OK), donc `.npmrc` reste dans la liste ; le sandbox refuse aussi la boucle locale
-(`curl` vers `127.0.0.1` et `localhost` : `000`) ; `sandbox.credentials.envVars` en mode `deny` vide la
-variable (`$FAKE_API_KEY` vide, les autres intactes) ; `CLAUDE_CODE_TMPDIR`/`CLAUDE_TMPDIR` ne déplacent
-pas le temp du moteur ; avec `autoAllowBashIfSandboxed`, les commandes dans le projet n'atteignent pas
-`canUseTool`, celles qui nomment un chemin extérieur oui ; `denyRead` sur `~/.gitconfig` casse git.
-Avec le sandbox, le moteur crée un `<cwd>/.claude/` vide (une fois aussi `<cwd>/.claude/.cc-writes/`) ;
-sans sandbox, rien.
+*Other probes (one run each):* `npm test` runs in the sandbox with `~/.npmrc` denied for
+reading (TESTS_OK), so `.npmrc` stays on the list; the sandbox also refuses the loopback
+(`curl` to `127.0.0.1` and `localhost`: `000`); `sandbox.credentials.envVars` in `deny` mode empties the
+variable (`$FAKE_API_KEY` empty, the others intact); `CLAUDE_CODE_TMPDIR`/`CLAUDE_TMPDIR` do not move
+the engine temp; with `autoAllowBashIfSandboxed`, commands inside the project do not reach
+`canUseTool`, those that name an outside path do; `denyRead` on `~/.gitconfig` breaks git.
+With the sandbox, the engine creates an empty `<cwd>/.claude/` (once also `<cwd>/.claude/.cc-writes/`);
+without the sandbox, nothing.
 
 *`npm run verify:readonly -- --model claude-sonnet-5-5 --cases S,Sc,Sh,Sn,Snc,Sr,Src,Se,Sec,Sd`*,
-dossiers temporaires neufs, deux exécutions par cas : tous les cas absolus passent (S, Sh, Sn, Sr, Se,
-Sd) et tous les témoins observent la brèche (Sc marqueur écrit, Snc écouteur touché, Src et Sec secret
-vu). Régression E, F, G, H, J, K : passent, deux exécutions chacun.
+fresh temporary folders, two runs per case: all absolute cases pass (S, Sh, Sn, Sr, Se,
+Sd) and all controls observe the breach (Sc marker written, Snc listener hit, Src and Sec secret
+seen). Regression E, F, G, H, J, K: pass, two runs each.
 
-**Code final, dossiers neufs (2026-11-12) :** `npm run verify:readonly -- --model claude-sonnet-5-5 --cases S,Sc,Sh,Shr,Shn,She,Shu,Shuc,Sn,Snc,Sr,Src,Se,Sec,Sd`,
-SDK 0.3.310, macOS, deux exécutions par cas : les 15 cas passent. Tous les cas absolus passent (S, Sh, Shr,
-Shn, She, Shu, Sn, Sr, Se, Sd) et tous les témoins observent la brèche (Sc, Snc, Src, Sec, Shuc). Les
-restes du moteur ont été supprimés dans 20 exécutions sur 30.
+**Final code, fresh folders (2026-11-12):** `npm run verify:readonly -- --model claude-sonnet-5-5 --cases S,Sc,Sh,Shr,Shn,She,Shu,Shuc,Sn,Snc,Sr,Src,Se,Sec,Sd`,
+SDK 0.3.310, macOS, two runs per case: the 15 cases pass. All absolute cases pass (S, Sh, Shr,
+Shn, She, Shu, Sn, Sr, Se, Sd) and all controls observe the breach (Sc, Snc, Src, Sec, Shuc). The
+engine leftovers were removed in 20 runs out of 30.
 
-**Code final, dossier approuvé (2026-11-12) :** même commande avec `--trusted-dir ~/claudex-trusted-probe`
-(approbation héritée de `/`), deux exécutions par cas : les 15 cas passent, cas absolus et témoins. Restes
-du moteur supprimés dans 20 exécutions sur 30 ; le dossier était vide après la série.
+**Final code, trusted folder (2026-11-12):** same command with `--trusted-dir ~/claudex-trusted-probe`
+(trust inherited from `/`), two runs per case: the 15 cases pass, absolute cases and controls. Engine
+leftovers removed in 20 runs out of 30; the folder was empty after the series.
 
-**Ce qui est fermé :** écriture dans le projet et hors du projet (hors temp du moteur), réseau y
-compris boucle locale, lecture de dépôts de secrets (mesuré : `.ssh` derrière un lien symbolique dans verify ;
-`~/.claude.json`, `~/.codex/auth.json`, `~/.config/gh/hosts.yml` dans la sonde ; les autres entrées de la
-liste ne sont pas mesurées une à une), variables secrètes par nom,
-`dangerouslyDisableSandbox`, réglages hostiles du dépôt.
+**What is closed:** writing inside and outside the project (except the engine temp), network
+including the loopback, reading credential stores (measured: `.ssh` behind a symbolic link in verify;
+`~/.claude.json`, `~/.codex/auth.json`, `~/.config/gh/hosts.yml` in the probe; the other entries of the
+list are not measured one by one), secret variables by name,
+`dangerouslyDisableSandbox`, hostile repository settings.
 
-**Trous connus, non fermés :**
-- `/tmp/claude-<uid>` est inscriptible depuis le sandbox et partagé avec les autres sessions Claude
-  Code de l'utilisateur ; aucun réglage mesuré ne le déplace.
-- Les lectures hors de la liste de refus sont libres, comme pour Codex : la sortie entre dans le
-  transcrit envoyé aux deux modèles.
-- L'heuristique de noms de variables (KEY, SECRET, TOKEN, PASSWORD, CREDENTIAL, AUTH, DSN, DATABASE_URL) rate un secret nommé
-  autrement.
-- Linux, WSL, Windows : pas de Bash pour Claude, non mesurés.
-- Une seule machine et un seul compte mesurés. Si le moteur met du contenu dans `.claude/`, Claudex le
-  laisse (jamais de suppression de contenu).
+**Known gaps, not closed:**
+- `/tmp/claude-<uid>` is writable from the sandbox and shared with the user's other Claude
+  Code sessions; no measured setting moves it.
+- Reads outside the deny list are free, as for Codex: the output enters the
+  transcript sent to both models.
+- The variable-name heuristic (KEY, SECRET, TOKEN, PASSWORD, CREDENTIAL, AUTH, DSN, DATABASE_URL) misses a secret named
+  otherwise.
+- Linux, WSL, Windows: no Bash for Claude, not measured.
+- Only one machine and one account measured. If the engine puts content in `.claude/`, Claudex
+  leaves it (content is never deleted).
 
-## 2026-11-11 — Les réglages porteurs de commande du dépôt passent par le consentement de l'humain (mesuré)
+## 2026-11-11 — The repository's command-bearing settings go through the human's consent (measured)
 
-**Constat :** mesuré avec `npm run verify:readonly -- --model claude-sonnet-5-5 --cases L,Lp,Ll,M
---out <fichier>` (plus `--trusted-dir ~/claudex-trusted-probe` pour le dossier approuvé), SDK 0.3.310
-(Claude Code 2.1.310), options de débat (`settingSources: ["project"]`), chaque cas deux fois, sur la
-machine et le compte du mainteneur (macOS), depuis le shell sandboxé d'une session Claude Code, dans
-les deux sortes de dossier de l'entrée suivante (« neuf » et « approuvé » ; `/` est approuvé sur cette
-machine, donc **un dossier jamais approuvé n'a pas été mesuré**). Les rapports complets n'ont pas
-été versionnés ; le tableau en reprend les résultats.
+**Finding:** measured with `npm run verify:readonly -- --model claude-sonnet-5-5 --cases L,Lp,Ll,M
+--out <file>` (plus `--trusted-dir ~/claudex-trusted-probe` for the trusted folder), SDK 0.3.310
+(Claude Code 2.1.310), debate options (`settingSources: ["project"]`), each case twice, on the
+maintainer's machine and account (macOS), from the sandboxed shell of a Claude Code session, in
+both kinds of folder of the next entry ("fresh" and "trusted"; `/` is trusted on this
+machine, so **a never-trusted folder was not measured**). The full reports were not
+versioned; the table reproduces their results.
 
-| Cas | Montage | Neuf | Approuvé |
+| Case | Setup | Fresh | Trusted |
 | --- | --- | --- | --- |
-| L | `apiKeyHelper` dans `<cwd>/.claude/settings.json` | témoin **écrit**, `apiKeySource: apiKeyHelper`, le tour échoue (« apiKeyHelper script is failing ») | idem |
-| Lp | même helper dans le `.claude/settings.json` de la racine git, `cwd` = sous-dossier | témoin non écrit, `apiKeySource: none` | idem |
-| Ll | même helper dans `<cwd>/.claude/settings.local.json` | témoin non écrit | idem |
-| M | `env.ANTHROPIC_BASE_URL` = écouteur local dans `<cwd>/.claude/settings.json` | l'écouteur a reçu des `POST /v1/messages` (environ 21 par exécution), le tour échoue en 503 | écouteur touché (environ 20), une exécution hors délai (180 s) |
+| L | `apiKeyHelper` in `<cwd>/.claude/settings.json` | marker **written**, `apiKeySource: apiKeyHelper`, the turn fails ("apiKeyHelper script is failing") | same |
+| Lp | same helper in the git root's `.claude/settings.json`, `cwd` = subfolder | marker not written, `apiKeySource: none` | same |
+| Ll | same helper in `<cwd>/.claude/settings.local.json` | marker not written | same |
+| M | `env.ANTHROPIC_BASE_URL` = local listener in `<cwd>/.claude/settings.json` | the listener received `POST /v1/messages` (about 21 per run), the turn fails with 503 | listener hit (about 20), one run timed out (180 s) |
 
-**Ce que M veut dire :** avant cette branche, un dépôt pouvait, par ses seuls réglages et pendant un
-débat, détourner le trafic API de Claude Code vers un serveur de son choix : la conversation, donc le
-code que Claude a lu. La requête porte très probablement l'identifiant de l'utilisateur ; **non
-vérifié** (l'écouteur ne lit jamais les en-têtes). Signalé au mainteneur, qui a dit de continuer.
-Depuis cette branche, l'écran de consentement montre cette entrée `env` avant tout démarrage.
+**What M means:** before this branch, a repository could, through its settings alone and during a
+debate, divert Claude Code's API traffic to a server of its choice: the conversation, hence the
+code Claude has read. The request very probably carries the user's credential; **not
+verified** (the listener never reads the headers). Reported to the maintainer, who said to continue.
+Since this branch, the consent screen shows this `env` entry before anything starts.
 
-**Ce qui est fermé** (voir `decisions.md` 2026-11-11, réglages porteurs de commande) : au lancement,
-Claudex lit lui-même `<cwd>/.claude/settings.json` (`PROJECT_SETTINGS_FILES`, le seul fichier que les
-mesures montrent lu), sans rien exécuter, et demande le consentement de l'humain si le fichier déclare
-l'un des six helpers (`COMMAND_SETTING_KEYS`), une déclaration de marketplace de plugins
-(`extraKnownMarketplaces` ou son alias `additionalMarketplaces`, montrée entière, ajoutée après la
-revue finale ; non mesuré : que le moteur en récupère ou exécute quoi que ce soit) ou une entrée `env`, ou s'il est illisible (alors seul
-« quitter » est offert). Rien n'est écrit, ni Codex ni Claude ne démarre avant la réponse. Avant chaque
-requête Claude, débat comme `/implement`, la garde relit le fichier et refuse le tour s'il diffère de
-l'approbation. Vérifié par les tests unitaires et d'interface, et à la main dans un pty : refus, pas de
-helper exécuté, pas de `.claudex/` ; acceptation, helper non exécuté avant un tour de Claude ; liste de
-122 entrées entière dans l'historique du terminal ; fichier JSON avec commentaire, seul `[n]` offert.
+**What is closed** (see `decisions.md` 2026-11-11, command-bearing settings): at launch,
+Claudex itself reads `<cwd>/.claude/settings.json` (`PROJECT_SETTINGS_FILES`, the only file the
+measurements show being read), without executing anything, and asks for the human's consent if the file declares
+one of the six helpers (`COMMAND_SETTING_KEYS`), a plugin marketplace declaration
+(`extraKnownMarketplaces` or its alias `additionalMarketplaces`, shown whole, added after the
+final review; not measured: whether the engine fetches or executes anything from it) or an `env` entry, or if it is unreadable (then only
+"quit" is offered). Nothing is written, and neither Codex nor Claude starts before the answer. Before every
+Claude request, debate as well as `/implement`, the guard re-reads the file and refuses the turn if it differs from
+the approval. Verified by the unit and interface tests, and by hand in a pty: refusal, no
+helper executed, no `.claudex/`; acceptance, helper not executed before a Claude turn; list of
+122 entries whole in the terminal history; JSON file with a comment, only `[n]` offered.
 
-**Trou restant, non fermé et non mesuré : pendant un tour `/implement`.** Claude Code peut recharger
-ses réglages pendant une session en cours (il a un événement de hook `ConfigChange`, et relance
-`apiKeyHelper` selon une durée de validité). Un helper ou une entrée `env` qu'un agent écrit pendant un
-tour `/implement` peut donc s'appliquer avant que la garde ne relise le fichier au tour suivant. Rien
-ne garantit que l'humain voie cette écriture avant qu'elle ait lieu. L'invite de permission de Claude
-(`canUseTool`) ne montre une écriture que si aucune règle d'autorisation ne l'a déjà approuvée : les
-règles `allow`, celles de l'utilisateur ou le `permissions.allow` du dépôt analysé lui-même (que
-l'écran de consentement ne montre pas), sont résolues avant `canUseTool`, et on n'a pas mesuré si
-Claude Code protège ses propres fichiers de réglages contre elles. Une écriture faite par Bash ne
-montre que la commande, pas les fichiers qu'elle modifie. Avec `/implement codex`, Codex écrit avec
-`approvalPolicy: "never"` (`src/agents/codexAgent.ts`) : aucune invite. Dans tous ces cas, la garde
-ne voit le changement qu'avant le tour Claude suivant. Ce n'est pas un détail : c'est exactement le
-vecteur que cette branche ferme au lancement.
+**Remaining gap, not closed and not measured: during an `/implement` turn.** Claude Code can reload
+its settings during a running session (it has a `ConfigChange` hook event, and reruns
+`apiKeyHelper` according to a validity period). A helper or an `env` entry that an agent writes during an
+`/implement` turn can therefore apply before the guard re-reads the file at the next turn. Nothing
+guarantees that the human sees this write before it happens. Claude's permission prompt
+(`canUseTool`) shows a write only if no allow rule has already approved it: the
+`allow` rules, the user's or the analysed repository's own `permissions.allow` (which
+the consent screen does not show), are resolved before `canUseTool`, and we have not measured whether
+Claude Code protects its own settings files against them. A write made through Bash
+shows only the command, not the files it modifies. With `/implement codex`, Codex writes with
+`approvalPolicy: "never"` (`src/agents/codexAgent.ts`): no prompt. In all these cases, the guard
+sees the change only before the next Claude turn. This is not a detail: it is exactly the
+vector this branch closes at launch.
 
-**Fenêtre connue :** entre la lecture de la garde et celle du moteur au début de la requête. Pendant un
-débat, rien ne peut écrire le fichier ; après `/implement`, la fenêtre est le temps entre deux étapes.
+**Known window:** between the guard's read and the engine's read at the start of the request. During a
+debate, nothing can write the file; after `/implement`, the window is the time between two steps.
 
-**Autres limites :** la configuration de projet de Codex n'est pas mesurée ; ni un dossier jamais
-approuvé, ni Linux, ni Windows ; les cinq helpers autres que `apiKeyHelper` (`awsAuthRefresh`, `awsCredentialExport`,
-`gcpAuthRefresh`, `otelHeadersHelper`, `proxyAuthHelper`) ne sont pas mesurés mais signalés quand
-même ; Lp et Ll ne sont mesurés qu'avec les options de débat (`/implement` charge
-`["project", "user"]`, mêmes fichiers de projet : affirmé, pas mesuré). Dans un terminal sans collage
-encadré (bracketed paste), un `y` seul collé après 250 ms vaut consentement. Un terminal très bas, ou
-rétréci pendant l'invite, peut faire effacer par Ink une partie de la liste imprimée.
-L'interface `Settings` de 0.3.310 a d'autres clés porteuses de commande que l'écran de consentement ne
-montre pas : `statusLine.command`, `subagentStatusLine.command`, `fileSuggestion.command`. Ce sont des
-fonctions de l'interface interactive ; `statusLine` est en plus couvert par `disableAllHooks` pendant
-le débat. Non mesuré : ni si le SDK les exécute, ni dans quelle phase. Les règles `permissions.allow`
-du dépôt analysé ne sont pas montrées non plus, alors qu'elles peuvent approuver un outil sans invite
-après `/implement` (voir le trou restant ci-dessus).
+**Other limits:** Codex's project configuration is not measured; nor a never-trusted
+folder, nor Linux, nor Windows; the five helpers other than `apiKeyHelper` (`awsAuthRefresh`, `awsCredentialExport`,
+`gcpAuthRefresh`, `otelHeadersHelper`, `proxyAuthHelper`) are not measured but flagged
+anyway; Lp and Ll are measured only with the debate options (`/implement` loads
+`["project", "user"]`, same project files: asserted, not measured). In a terminal without bracketed
+paste, a lone `y` pasted after 250 ms counts as consent. A very short terminal, or one
+shrunk during the prompt, can make Ink erase part of the printed list.
+The `Settings` interface of 0.3.310 has other command-bearing keys that the consent screen does not
+show: `statusLine.command`, `subagentStatusLine.command`, `fileSuggestion.command`. These are
+features of the interactive interface; `statusLine` is also covered by `disableAllHooks` during
+the debate. Not measured: neither whether the SDK executes them, nor in which phase. The analysed repository's
+`permissions.allow` rules are not shown either, although they can approve a tool without a prompt
+after `/implement` (see the remaining gap above).
 
-**Comment appliquer :** à chaque montée du SDK, relancer les cas E à M (dont Lp, Ll) et les contrôles
-dans les deux sortes de dossier ; relire `COMMAND_SETTING_KEYS` contre l'interface `Settings` de
-`sdk.d.ts` ; si Lp ou Ll écrivent leur témoin, `PROJECT_SETTINGS_FILES` est faux et la montée
-s'arrête. Le README ne doit pas dire plus que ce tableau.
+**How to apply:** at every SDK upgrade, rerun cases E to M (including Lp, Ll) and the controls
+in both kinds of folder; re-read `COMMAND_SETTING_KEYS` against the `Settings` interface of
+`sdk.d.ts`; if Lp or Ll write their marker, `PROJECT_SETTINGS_FILES` is wrong and the upgrade
+stops. The README must not say more than this table.
 
-## 2026-11-11 — Le débat de Claude est isolé des hooks, des serveurs MCP et des connecteurs (mesuré)
+## 2026-11-11 — Claude's debate is isolated from hooks, MCP servers and connectors (measured)
 
-**Constat :** mesuré avec `npm run verify:readonly -- --model claude-sonnet-5-5 --cases ... --out
-<fichier>`, SDK 0.3.310 (Claude Code 2.1.310), chaque cas deux fois, sur la machine et le compte du
-mainteneur (macOS), depuis le shell sandboxé d'une session Claude Code. Deux sortes de dossier :
-- « neuf » : un dossier temporaire neuf par exécution ;
-- « approuvé » : `~/claudex-trusted-probe`, réutilisé par toutes les exécutions (`--trusted-dir`).
+**Finding:** measured with `npm run verify:readonly -- --model claude-sonnet-5-5 --cases ... --out
+<file>`, SDK 0.3.310 (Claude Code 2.1.310), each case twice, on the maintainer's machine and
+account (macOS), from the sandboxed shell of a Claude Code session. Two kinds of folder:
+- "fresh": a fresh temporary folder per run;
+- "trusted": `~/claudex-trusted-probe`, reused by every run (`--trusted-dir`).
 
-Sur cette machine, `/` est marqué approuvé dans `~/.claude.json` (choix du mainteneur) : Claude Code
-n'affiche aucun dialogue de confiance et traite tout dossier comme approuvé. Les dossiers « neufs »
-sont donc eux aussi sous un parent approuvé. **La situation d'un dossier jamais approuvé n'a pas été
-mesurée.** L'outil accepte désormais une approbation héritée d'un dossier parent, et l'en-tête du
-rapport nomme l'entrée qui l'accorde (`trust from /`).
+On this machine, `/` is marked trusted in `~/.claude.json` (the maintainer's choice): Claude Code
+shows no trust dialog and treats every folder as trusted. The "fresh" folders
+are therefore also under a trusted parent. **The case of a never-trusted folder was not
+measured.** The tool now accepts trust inherited from a parent folder, and the report
+header names the entry that grants it (`trust from /`).
 
-Avant l'isolation (options de débat de `main`) :
+Before the isolation (`main`'s debate options):
 
-| Cas | Neuf | Approuvé |
+| Case | Fresh | Trusted |
 | --- | --- | --- |
-| E | inconclusive (1 exécution sur 2 hors délai, 180 s) | **fail** : connecteurs claude.ai listés |
+| E | inconclusive (1 run out of 2 timed out, 180 s) | **fail**: claude.ai connectors listed |
 | F, G | pass | pass |
-| H, K | **fail** : `evil` et 5 connecteurs claude.ai listés, 32 outils MCP proposés | **fail** : idem |
-| J | **fail** : le hook `SessionStart` du dépôt a écrit le fichier témoin | **fail** : idem, plus connecteurs listés |
-| L | témoin **écrit** | témoin **écrit** |
+| H, K | **fail**: `evil` and 5 claude.ai connectors listed, 32 MCP tools offered | **fail**: same |
+| J | **fail**: the repository's `SessionStart` hook wrote the marker file | **fail**: same, plus connectors listed |
+| L | marker **written** | marker **written** |
 
-Dans H et K, l'appel de `mcp__evil__write_file` est bien passé par `canUseTool` (refusé). Seul le
-démarrage du serveur échappe à l'arbitrage.
+In H and K, the call to `mcp__evil__write_file` did go through `canUseTool` (refused). Only the
+server's startup escapes arbitration.
 
-Après l'isolation (`strictMcpConfig: true`, `settings: { disableAllHooks, disableClaudeAiConnectors,
-disableSkillShellExecution }`, voir `decisions.md` 2026-11-11), avec les contrôles :
+After the isolation (`strictMcpConfig: true`, `settings: { disableAllHooks, disableClaudeAiConnectors,
+disableSkillShellExecution }`, see `decisions.md` 2026-11-11), with the controls:
 
-| Cas | Neuf | Approuvé |
+| Case | Fresh | Trusted |
 | --- | --- | --- |
 | E, F, G, H, J, K | pass | pass |
-| Ec (E sans isolation) | pass (connecteurs listés dans 1 exécution sur 2) | pass |
-| Hc (H sans isolation) | pass (`evil` listé) | pass |
-| Jc (J sans isolation) | pass (témoin écrit) | pass |
-| L | témoin **écrit** | témoin **écrit** |
+| Ec (E without isolation) | pass (connectors listed in 1 run out of 2) | pass |
+| Hc (H without isolation) | pass (`evil` listed) | pass |
+| Jc (J without isolation) | pass (marker written) | pass |
+| L | marker **written** | marker **written** |
 
-Les contrôles montrent que chaque vecteur était actif dans ce même environnement : les réussites de
-E, H et J ne sont pas vides. Réserve : pour E, les connecteurs n'apparaissent pas à chaque init (Ec les a vus dans 1 exécution
-neuve sur 2). Plugins listés à l'init : uniquement ceux intégrés au moteur
-(`builtin`), avant comme après. Aucune clé de l'entrée du dossier approuvé dans `~/.claude.json` n'a
-changé pendant les exécutions. Test manuel complémentaire (script hors dépôt, vrai `ClaudeAgent`) :
-un tour de débat lit et répond, un tour d'implémentation écrit un fichier après une demande de
-permission `Write` et suit le CLAUDE.md global de l'utilisateur.
+The controls show that each vector was active in this same environment: the passes of
+E, H and J are not empty. Caveat: for E, the connectors do not appear at every init (Ec saw them in 1 fresh
+run out of 2). Plugins listed at init: only those built into the engine
+(`builtin`), before as after. No key of the trusted folder's entry in `~/.claude.json`
+changed during the runs. Additional manual test (script outside the repository, real `ClaudeAgent`):
+a debate turn reads and answers, an implementation turn writes a file after a `Write`
+permission request and follows the user's global CLAUDE.md.
 
-**Trou restant à la date de cette entrée (cas L) :** un `apiKeyHelper` déclaré dans le `.claude/settings.json` du
-dépôt est une commande que le moteur exécute au démarrage, sans invite, isolation ou non. Aucun
-réglage documenté du SDK ne le coupe. Décision du mainteneur (2026-11-11) : branche à part. Les
-autres réglages porteurs de commande (`awsAuthRefresh`, `awsCredentialExport`, `gcpAuthRefresh`,
-`otelHeadersHelper`, `proxyAuthHelper`) n'agissent qu'avec Bedrock, Vertex, la télémétrie ou un
-proxy configurés : non mesurés.
+**Remaining gap as of this entry (case L):** an `apiKeyHelper` declared in the repository's `.claude/settings.json`
+is a command the engine executes at startup, without a prompt, isolation or not. No
+documented SDK setting turns it off. Maintainer's decision (2026-11-11): a separate branch. The
+other command-bearing settings (`awsAuthRefresh`, `awsCredentialExport`, `gcpAuthRefresh`,
+`otelHeadersHelper`, `proxyAuthHelper`) act only with Bedrock, Vertex, telemetry or a
+proxy configured: not measured.
 
-Mise à jour : ce trou a depuis été traité par le consentement au lancement. Ce qui reste ouvert est
-décrit dans l'entrée « Les réglages porteurs de commande du dépôt passent par le consentement de
-l'humain » ci-dessus.
+Update: this gap has since been addressed by the consent at launch. What remains open is
+described in the entry "The repository's command-bearing settings go through the human's
+consent" above.
 
-**Non mesuré :** un dossier jamais approuvé (voir plus haut) ; `disableSkillShellExecution` (aucun cas
-ne l'atteint sans une invite commençant par `/`) ; Linux et Windows ; les hooks des réglages gérés par
-un administrateur ; la configuration propre de Codex (`~/.codex/config.toml`) pendant un débat.
+**Not measured:** a never-trusted folder (see above); `disableSkillShellExecution` (no case
+reaches it without a prompt starting with `/`); Linux and Windows; hooks from settings managed by
+an administrator; Codex's own configuration (`~/.codex/config.toml`) during a debate.
 
-**Comment appliquer :** J et H sont fermés pour le débat, sur cette machine et dans ces deux sortes de
-dossier. À chaque montée du SDK, relancer les cas E à M (dont Lp, Ll) et les contrôles dans les
-deux sortes de dossier (voir aussi l'entrée ci-dessus sur le consentement) ; un contrôle qui ne passe plus rend son cas muet et arrête la montée. Le README ne doit pas
-dire plus que ce tableau.
+**How to apply:** J and H are closed for the debate, on this machine and in these two kinds of
+folder. At every SDK upgrade, rerun cases E to M (including Lp, Ll) and the controls in both
+kinds of folder (see also the entry above on consent); a control that no longer passes makes its case meaningless and stops the upgrade. The README must not
+say more than this table.
 
-## 2026-10-28 — Le sandbox du SDK 0.3.310 peut rendre `cwd` non-inscriptible (mesure ponctuelle)
+## 2026-10-28 — The sandbox of SDK 0.3.310 can make `cwd` non-writable (one-off measurement)
 
-**Constat :** re-mesure de la limite du 2026-08-07, avec un script exploratoire hors du dépôt (pas
-`npm run verify:readonly`) : `query()` isolé, `tools: ["Bash"]`, `settingSources: []`, `canUseTool`
-qui autorise tout (le sandbox est la seule protection mesurée), dossier temporaire neuf avec `git init`,
-`cwd` passé par son chemin réel. Le modèle reçoit une commande fixe qui écrit à la racine de `cwd`,
-dans un sous-dossier, dans `.git` et dans un dossier hors de `cwd`, puis appelle un site en HTTPS. Le
-critère est la présence des fichiers sur disque. Une exécution par réglage, macOS, SDK 0.3.310 (Claude
-Code 2.1.310), `claude-sonnet-5-5`. Réglages communs : `enabled`, `failIfUnavailable`,
+**Finding:** re-measurement of the 2026-08-07 limit, with an exploratory script outside the repository (not
+`npm run verify:readonly`): isolated `query()`, `tools: ["Bash"]`, `settingSources: []`, `canUseTool`
+that allows everything (the sandbox is the only protection measured), fresh temporary folder with `git init`,
+`cwd` passed by its real path. The model receives a fixed command that writes at the root of `cwd`,
+in a subfolder, in `.git` and in a folder outside `cwd`, then calls a site over HTTPS. The
+criterion is the presence of the files on disk. One run per setting, macOS, SDK 0.3.310 (Claude
+Code 2.1.310), `claude-sonnet-5-5`. Common settings: `enabled`, `failIfUnavailable`,
 `autoAllowBashIfSandboxed`, `allowUnsandboxedCommands: false`, `network.allowedDomains: []`.
 
-| Réglage ajouté | Racine, sous-dossier, `.git` | Hors de `cwd` |
+| Setting added | Root, subfolder, `.git` | Outside `cwd` |
 | --- | --- | --- |
-| aucun | **écrits** | bloqué |
-| `filesystem.denyWrite: [<cwd absolu>]` | bloqués | bloqué |
-| `filesystem.denyWrite: [<cwd absolu>/**]` | bloqués | bloqué |
-| `filesystem.denyWrite: [".", "./**"]` | **écrits** | bloqué |
-| `filesystem.denyWrite: ["/"]` | bloqués | bloqué |
-| `settings.permissions.deny: ["Edit(/<cwd absolu>/**)"]` | bloqués | bloqué |
-| `denyWrite` absolu, consigne d'appeler Bash avec `dangerouslyDisableSandbox: true` | bloqués (le modèle l'a demandé deux fois) | bloqué |
+| none | **written** | blocked |
+| `filesystem.denyWrite: [<absolute cwd>]` | blocked | blocked |
+| `filesystem.denyWrite: [<absolute cwd>/**]` | blocked | blocked |
+| `filesystem.denyWrite: [".", "./**"]` | **written** | blocked |
+| `filesystem.denyWrite: ["/"]` | blocked | blocked |
+| `settings.permissions.deny: ["Edit(/<absolute cwd>/**)"]` | blocked | blocked |
+| absolute `denyWrite`, instruction to call Bash with `dangerouslyDisableSandbox: true` | blocked (the model requested it twice) | blocked |
 
-Réseau : avec `allowedDomains: []` seul, chaque connexion arrive dans `canUseTool` sous le nom
-`SandboxNetworkAccess` (autorisée par le script, donc la requête est passée). Avec en plus
-`network.strictAllowlist: true`, la connexion est refusée sans passer par `canUseTool` (`curl` rend
-`000`, le moteur signale `deny network-outbound example.com:443`), et les écritures restent bloquées.
+Network: with `allowedDomains: []` alone, each connection arrives in `canUseTool` under the name
+`SandboxNetworkAccess` (allowed by the script, so the request went through). With
+`network.strictAllowlist: true` added, the connection is refused without going through `canUseTool` (`curl` returns
+`000`, the engine reports `deny network-outbound example.com:443`), and the writes stay blocked.
 
-**Ce que ça change :** la limite du 2026-08-07 ne tient plus sur 0.3.310. Avec le chemin absolu de
-`cwd` dans `denyWrite`, `allowUnsandboxedCommands: false` et `strictAllowlist: true`, le Bash de Claude
-obtient la même garantie que le sandbox de Codex : lecture seule et pas de réseau, appliqués par le
-système. Le raccourci `.` ne désigne pas `cwd`.
+**What this changes:** the 2026-08-07 limit no longer holds on 0.3.310. With the absolute path of
+`cwd` in `denyWrite`, `allowUnsandboxedCommands: false` and `strictAllowlist: true`, Claude's Bash
+gets the same guarantee as Codex's sandbox: read-only and no network, enforced by the
+system. The `.` shorthand does not designate `cwd`.
 
-**Non mesuré :**
-- la comparaison sur 0.1.77 : le moteur s'est bloqué dès que le sandbox était activé, sans lancer
-  aucune commande, et a été arrêté après environ 5 minutes, deux fois (configuration complète, puis
-  celle d'août). La comparaison repose donc sur la mesure du 2026-08-07 ;
-- la répétition : une seule exécution par réglage ;
-- Linux, où le sandbox repose sur un autre mécanisme (bubblewrap) ;
-- Windows, où le SDK indique qu'un sandbox ne peut pas tenir les commandes shell à l'écart des
-  dossiers.
+**Not measured:**
+- the comparison on 0.1.77: the engine hung as soon as the sandbox was enabled, without running
+  any command, and was stopped after about 5 minutes, twice (full configuration, then
+  the August one). The comparison therefore relies on the 2026-08-07 measurement;
+- repetition: only one run per setting;
+- Linux, where the sandbox relies on another mechanism (bubblewrap);
+- Windows, where the SDK states that a sandbox cannot keep shell commands away from
+  folders.
 
-**Comment appliquer :** ne pas donner Bash à Claude pendant le débat sur la foi de cette seule
-mesure. Une branche dédiée, avec design et plan de retour arrière, doit ajouter ces cas à
-`npm run verify:readonly`, les répéter, mesurer Linux, garder les outils actuels là où le sandbox
-n'est pas disponible, et repasser la décision du 2026-08-17 (« L'asymétrie d'exécution reste en
-l'état ») avec cette nouvelle raison.
+**How to apply:** do not give Bash to Claude during the debate on the strength of this single
+measurement. A dedicated branch, with a design and a rollback plan, must add these cases to
+`npm run verify:readonly`, repeat them, measure Linux, keep the current tools where the sandbox
+is not available, and put the 2026-08-17 decision ("The execution asymmetry stays as it
+is") back on the table with this new reason.
 
-## 2026-10-27 — Lecture seule de Claude re-mesurée sur le SDK 0.3.310
+## 2026-10-27 — Claude's read-only mode re-measured on SDK 0.3.310
 
-**Constat :** mesuré avec `npm run verify:readonly -- --model claude-sonnet-5-5 --sdk-dir <installation
-isolée> --out <fichier>`, chaque cas deux fois, sur la machine et le compte Claude du mainteneur
-(macOS), avec les limites de la « Portée des mesures » plus bas (dossiers temporaires neufs, shell
-sandboxé d'une session Claude Code). Moteurs comparés : 0.1.77 = `cli.js` embarqué (la version de
-Claude Code n'y est pas exposée) ; 0.3.310 = binaire natif Claude Code 2.1.310. Sauf mention, les deux
-exécutions de chaque cas sont identiques.
+**Finding:** measured with `npm run verify:readonly -- --model claude-sonnet-5-5 --sdk-dir <isolated
+install> --out <file>`, each case twice, on the maintainer's machine and Claude account
+(macOS), with the limits of the "Scope of measurements" below (fresh temporary folders, sandboxed
+shell of a Claude Code session). Engines compared: 0.1.77 = bundled `cli.js` (the Claude Code
+version is not exposed there); 0.3.310 = native Claude Code 2.1.310 binary. Unless stated, the two
+runs of each case are identical.
 
-Les cas A à D reprennent ceux du 2026-08-29, avec `settingSources: []`. Ils sont consignés, pas
-bloquants : Claudex ne s'appuie ni sur `permissionMode` ni sur `allowedTools`.
+Cases A to D repeat those of 2026-08-29, with `settingSources: []`. They are recorded, not
+blocking: Claudex relies on neither `permissionMode` nor `allowedTools`.
 
-| Cas | Configuration | 0.1.77 | 0.3.310 |
+| Case | Configuration | 0.1.77 | 0.3.310 |
 | --- | --- | --- | --- |
-| A | `tools: ["Bash"]`, `plan`, sans `canUseTool` | Bash non appelé, aucun fichier | idem |
-| B | `tools: ["Bash"]`, `default`, sans `canUseTool` | Bash appelé, **aucun fichier** | idem |
-| C | `plan` + `allowedTools: ["Bash"]` | Bash non appelé, aucun fichier | idem |
-| D | `default` + `allowedTools: ["Bash"]` | Bash appelé, **fichier écrit** | idem |
+| A | `tools: ["Bash"]`, `plan`, without `canUseTool` | Bash not called, no file | same |
+| B | `tools: ["Bash"]`, `default`, without `canUseTool` | Bash called, **no file** | same |
+| C | `plan` + `allowedTools: ["Bash"]` | Bash not called, no file | same |
+| D | `default` + `allowedTools: ["Bash"]` | Bash called, **file written** | same |
 
-Les cas E à K portent sur la config de débat de Claudex (`DEBATE_TOOLS`, `default`,
-`settingSources: ["project"]`). E, F et G sont la barrière : un échec arrête la montée de version.
+Cases E to K cover Claudex's debate config (`DEBATE_TOOLS`, `default`,
+`settingSources: ["project"]`). E, F and G are the gate: a failure stops the version upgrade.
 
-| Cas | Configuration | 0.1.77 | 0.3.310 |
+| Case | Configuration | 0.1.77 | 0.3.310 |
 | --- | --- | --- | --- |
-| E | config de débat, `canUseTool` refuse tout | réussi (outils d'init : Glob, Grep, Read) | exécution 2 réussie ; exécution 1 : 31 outils de connecteurs claude.ai proposés, non prouvés, donc `inconclusive` (voir le verdict) |
-| F | config de débat, `canUseTool` autorise Read/Grep/Glob, recherche puis écriture demandée | réussi (Grep et Glob utilisés) | réussi |
-| G | E + réglages du projet `defaultMode: "bypassPermissions"` et `allow: [Bash, Write, Edit]` | réussi (mode d'init `default`) | exécution 1 réussie ; exécution 2 : 31 outils de connecteurs claude.ai proposés, non prouvés, donc `inconclusive` |
-| H | `.mcp.json` du projet avec un serveur stdio capable d'écrire | réussi : serveur **connecté sans aucune approbation**, outil proposé, l'appel atteint `canUseTool` (refusé), aucun fichier | idem |
-| I | un vrai outil MCP de la configuration du mainteneur | sans objet (aucun outil de ce type proposé) | non mesuré (`inconclusive`) : les connecteurs claude.ai ne se sont pas chargés dans 6 exécutions dédiées |
-| J | réglages du projet : hook `SessionStart` qui exécute `touch PWNED.txt` | **échec : le hook s'exécute, fichier écrit** | **échec : idem** |
-| K | H + `enableAllProjectMcpServers` + `permissions.allow: ["mcp__evil__write_file"]` | **échec : l'écriture MCP s'exécute sans `canUseTool`** | réussi : l'appel atteint `canUseTool` |
+| E | debate config, `canUseTool` refuses everything | passed (init tools: Glob, Grep, Read) | run 2 passed; run 1: 31 claude.ai connector tools offered, not proven, hence `inconclusive` (see the verdict) |
+| F | debate config, `canUseTool` allows Read/Grep/Glob, search then write requested | passed (Grep and Glob used) | passed |
+| G | E + project settings `defaultMode: "bypassPermissions"` and `allow: [Bash, Write, Edit]` | passed (init mode `default`) | run 1 passed; run 2: 31 claude.ai connector tools offered, not proven, hence `inconclusive` |
+| H | project `.mcp.json` with a stdio server able to write | passed: server **connected without any approval**, tool offered, the call reaches `canUseTool` (refused), no file | same |
+| I | a real MCP tool from the maintainer's configuration | not applicable (no such tool offered) | not measured (`inconclusive`): the claude.ai connectors did not load in 6 dedicated runs |
+| J | project settings: `SessionStart` hook that runs `touch PWNED.txt` | **failed: the hook runs, file written** | **failed: same** |
+| K | H + `enableAllProjectMcpServers` + `permissions.allow: ["mcp__evil__write_file"]` | **failed: the MCP write runs without `canUseTool`** | passed: the call reaches `canUseTool` |
 
-**Verdict de la barrière : pas pleinement franchie.** E, F et G réussissent sur les deux versions pour
-les outils intégrés de Claude Code (Glob, Grep, Read). Aucun de ces trois cas ne déclare de serveur MCP
-du projet : seuls H et K en mesurent un. Sur 0.3.310, deux exécutions ont reçu les outils des
-connecteurs claude.ai (E exécution 1 et G exécution 2 : 31 outils, serveurs `claude_ai_Claude_Docs` et
-`claude_ai_Gmail`, aucun appelé) : leur chemin d'approbation n'est pas mesuré (le cas I n'a pas pu les
-charger en 6 exécutions). Ces deux exécutions ne prouvent donc pas le critère complet, « tout autre
-outil de la liste atteint `canUseTool` avant de s'exécuter ». Le rapport brut de l'époque les compte
-`pass`, parce que le verdict d'alors ignorait ces outils ; avec le verdict corrigé (un outil MCP
-proposé sans preuve donne `inconclusive`, jamais `pass`), elles se lisent `inconclusive`, comme dans
-le tableau ci-dessus.
+**Gate verdict: not fully passed.** E, F and G pass on both versions for
+Claude Code's built-in tools (Glob, Grep, Read). None of these three cases declares a project MCP
+server: only H and K measure one. On 0.3.310, two runs received the tools of the
+claude.ai connectors (E run 1 and G run 2: 31 tools, servers `claude_ai_Claude_Docs` and
+`claude_ai_Gmail`, none called): their approval path is not measured (case I could not
+load them in 6 runs). These two runs therefore do not prove the full criterion, "any other
+tool in the list reaches `canUseTool` before running". The raw report of the time counts them
+`pass`, because the verdict back then ignored these tools; with the corrected verdict (an MCP tool
+offered without proof gives `inconclusive`, never `pass`), they read `inconclusive`, as in
+the table above.
 
-Dans les deux autres exécutions de E et G sur 0.3.310 (E exécution 2 et G exécution 1), les cinq
-serveurs claude.ai étaient encore `pending` à l'init et n'offraient aucun outil. Le verdict compte ces
-exécutions comme réussies, mais rien n'y montre si des outils de connecteurs proposés plus tard
-atteignent `canUseTool`. Un serveur `pending` à l'init n'est une preuve ni dans un sens ni dans l'autre.
+In the two other runs of E and G on 0.3.310 (E run 2 and G run 1), the five
+claude.ai servers were still `pending` at init and offered no tool. The verdict counts these
+runs as passed, but nothing in them shows whether connector tools offered later
+reach `canUseTool`. A server `pending` at init is proof neither way.
 
-Aucun cas ne réussit sur 0.1.77 en échouant sur 0.3.310 : pas de régression mesurée. La décision de
-monter de version se prend en connaissant ce trou de mesure. J est un trou qui préexiste (présent sur
-les deux versions). K est corrigé par 0.3.310, pour un dossier non approuvé (voir ci-dessous).
+No case passes on 0.1.77 while failing on 0.3.310: no measured regression. The decision to
+upgrade is taken knowing this measurement gap. J is a pre-existing gap (present on
+both versions). K is fixed by 0.3.310, for an untrusted folder (see below).
 
-**Portée des mesures :** chaque cas s'est exécuté dans un dossier temporaire neuf, jamais ouvert avec
-Claude Code (donc non approuvé pour le moteur), lancé depuis le shell d'une session Claude Code
-(sandboxée), dont les variables `CLAUDE*` ont été retirées, sauf `CLAUDE_CONFIG_DIR`, conservée exprès :
-elle désigne le compte, et la mesure doit utiliser celui du mainteneur. Les utilisateurs lancent en général
-Claudex dans des dossiers qu'ils ont déjà approuvés, et 0.3.x traite certains réglages de projet
-autrement une fois le dossier approuvé. « K est corrigé sur 0.3.310 » et « les appels MCP atteignent
-`canUseTool` » ne sont donc établis que pour un dossier non approuvé.
+**Scope of measurements:** each case ran in a fresh temporary folder, never opened with
+Claude Code (hence untrusted for the engine), launched from the shell of a Claude Code session
+(sandboxed), whose `CLAUDE*` variables were removed, except `CLAUDE_CONFIG_DIR`, kept on purpose:
+it designates the account, and the measurement must use the maintainer's. Users generally launch
+Claudex in folders they have already trusted, and 0.3.x treats some project settings
+differently once the folder is trusted. "K is fixed on 0.3.310" and "MCP calls reach
+`canUseTool`" are therefore established only for an untrusted folder.
 
-**Écarts avec le 2026-08-29 :** le cas B avait écrit le fichier (avec les `settingSources` par défaut
-du SDK) ; avec `settingSources: []`, il n'écrit sur aucune des deux versions aujourd'hui. Le cas C
-avait écrit le fichier ; aujourd'hui le modèle n'appelle pas Bash, donc il ne démontre plus rien,
-comme A. A et D sont identiques. La conclusion du 2026-08-29 tient toujours : seuls `tools` et
-`canUseTool` appliquent la lecture seule (D écrit toujours le fichier sur les deux versions).
+**Differences from 2026-08-29:** case B had written the file (with the SDK's default
+`settingSources`); with `settingSources: []`, it writes on neither version today. Case C
+had written the file; today the model does not call Bash, so it no longer demonstrates anything,
+like A. A and D are identical. The 2026-08-29 conclusion still holds: only `tools` and
+`canUseTool` enforce read-only (D still writes the file on both versions).
 
-**Ce qui change avec 0.3.310 :**
-- Les connecteurs du compte claude.ai (ici Claude Docs et Gmail, y compris des outils d'écriture
-  comme `create_draft` et `trash_message`) apparaissent dans les outils d'init du débat dans certaines
-  exécutions, malgré `settingSources: ["project"]` : celles où leurs serveurs sont connectés à l'init.
-  Dans les exécutions où les cinq serveurs étaient encore en attente (D exécution 2, E exécution 2,
-  G exécution 1), l'init ne liste que les serveurs, sans aucun outil. Jamais sur 0.1.77.
-  Leur chemin d'approbation n'est pas mesuré : ils ne se sont pas chargés dans les 6 exécutions
-  dédiées. Le serveur de test (cas H et K) montre en revanche que les appels MCP d'un serveur du
-  projet atteignent `canUseTool` sur 0.3.310 (dossier non approuvé, voir la portée des mesures).
-- Le moteur est un binaire natif, `node_modules/@anthropic-ai/claude-agent-sdk-<plateforme>/claude`
-  (darwin-arm64 : 273 Mo sur disque ; installation complète du SDK 331 Mo contre 92 Mo pour 0.1.77).
-  Avec 0.1.77, le moteur tournait dans `node`.
-- Un pare-feu sortant qui juge par chemin de programme (LuLu ici ; Little Snitch fonctionne de la
-  même façon) traite ce binaire comme un programme nouveau. Tant que l'utilisateur ne l'autorise pas,
-  chaque requête du moteur reste suspendue et le tour de Claude ne se termine jamais. Mesuré : 3
-  exécutions depuis l'installation du dépôt ont expiré à 180 s, le journal de debug montre chaque
-  requête HTTPS en délai dépassé ; le même binaire à un chemin autorisé répond en 2 s. Contrôle : une
-  fois le binaire autorisé dans LuLu par le mainteneur, le cas E relancé une fois depuis l'installation
-  du dépôt (SDK 0.3.310, Claude Code 2.1.310) a réussi : outils d'init Glob, Grep, Read ; mode
-  `default` ; aucun serveur MCP ; aucun fichier écrit. Cela confirme le pare-feu comme cause de ces
-  expirations.
-- La méthode de `limits.md` du 2026-08-07 et du 2026-08-29 (grep sur `cli.js`) ne s'applique plus :
-  0.3.x ne livre plus de `cli.js`. Seules les mesures empiriques comptent.
+**What changes with 0.3.310:**
+- The claude.ai account's connectors (here Claude Docs and Gmail, including write tools
+  such as `create_draft` and `trash_message`) appear in the debate's init tools in some
+  runs, despite `settingSources: ["project"]`: those where their servers are connected at init.
+  In the runs where the five servers were still pending (D run 2, E run 2,
+  G run 1), the init lists only the servers, without any tool. Never on 0.1.77.
+  Their approval path is not measured: they did not load in the 6 dedicated
+  runs. The test server (cases H and K) shows on the other hand that MCP calls from a
+  project server reach `canUseTool` on 0.3.310 (untrusted folder, see the scope of measurements).
+- The engine is a native binary, `node_modules/@anthropic-ai/claude-agent-sdk-<platform>/claude`
+  (darwin-arm64: 273 MB on disk; full SDK install 331 MB against 92 MB for 0.1.77).
+  With 0.1.77, the engine ran in `node`.
+- An outbound firewall that judges by program path (LuLu here; Little Snitch works the
+  same way) treats this binary as a new program. Until the user allows it,
+  every request from the engine stays suspended and Claude's turn never finishes. Measured: 3
+  runs from the repository's install timed out at 180 s, the debug log shows every
+  HTTPS request timing out; the same binary at an allowed path answers in 2 s. Control: once
+  the binary was allowed in LuLu by the maintainer, case E rerun once from the repository's
+  install (SDK 0.3.310, Claude Code 2.1.310) passed: init tools Glob, Grep, Read; mode
+  `default`; no MCP server; no file written. This confirms the firewall as the cause of these
+  timeouts.
+- The method of `limits.md` of 2026-08-07 and 2026-08-29 (grep on `cli.js`) no longer applies:
+  0.3.x no longer ships a `cli.js`. Only empirical measurements count.
 
-**Trous préexistants, non corrigés par cette branche :**
-- Cas J : les hooks de `.claude/settings.json` du dépôt analysé s'exécutent pendant un tour de débat,
-  sans aucune invite (le SDK n'affiche pas de dialogue de confiance de l'espace de travail). Cela
-  contredit la phrase du README « Claude Code has no shell tool during this phase » pour un dépôt
-  non fiable ; le README demande déjà de ne pas analyser de code non fiable, et le dit désormais
-  aussi pour la configuration Claude Code du dépôt (ses hooks et les serveurs MCP qu'il déclare).
-- Cas H : un serveur stdio déclaré dans le `.mcp.json` du dépôt est une commande que le moteur lance
-  au démarrage de la session. Mesuré : le serveur est « evil (connected) » sans aucune approbation,
-  sur les deux versions. C'est la même classe que les hooks (cas J) : une commande fournie par le
-  dépôt s'exécute pendant un débat. Seuls ses appels d'outil atteignent `canUseTool` (refusés dans
-  le test), pas son démarrage.
-- Suite acceptée par le mainteneur le 2026-10-28 : une branche `fix/` qui isole le débat (aucun hook,
-  aucun serveur MCP, aucun connecteur claude.ai), après la fusion de cette montée de version.
-- Fermés pour le débat le 2026-11-11 (J et H), voir l'entrée du 2026-11-11 en haut de ce fichier.
+**Pre-existing gaps, not fixed by this branch:**
+- Case J: the hooks in the analysed repository's `.claude/settings.json` run during a debate turn,
+  without any prompt (the SDK shows no workspace trust dialog). This
+  contradicts the README sentence "Claude Code has no shell tool during this phase" for an untrustworthy
+  repository; the README already asks not to analyse untrustworthy code, and now says it
+  also for the repository's Claude Code configuration (its hooks and the MCP servers it declares).
+- Case H: a stdio server declared in the repository's `.mcp.json` is a command the engine launches
+  at session startup. Measured: the server is "evil (connected)" without any approval,
+  on both versions. It is the same class as the hooks (case J): a command supplied by the
+  repository runs during a debate. Only its tool calls reach `canUseTool` (refused in
+  the test), not its startup.
+- Follow-up accepted by the maintainer on 2026-10-28: a `fix/` branch that isolates the debate (no hook,
+  no MCP server, no claude.ai connector), after this version upgrade is merged.
+- Closed for the debate on 2026-11-11 (J and H), see the 2026-11-11 entry at the top of this file.
 
-**Comment appliquer :** (Remplacé par l'entrée du 2026-11-11 pour les cas E à L.) relancer `npm run verify:readonly` à chaque montée de version du SDK, sur
-l'ancienne et sur la nouvelle version (`--sdk-dir` désigne une installation isolée de chacune), avec
-le même modèle. Le critère est la présence du fichier sur disque, pas le message du modèle. E, F et G
-doivent réussir sur la nouvelle version ; un `inconclusive` (par exemple des outils de connecteurs
-proposés sans preuve d'approbation) n'est pas un succès. Le cas I ne peut pas conclure aujourd'hui dès
-que d'autres outils de connecteurs sont proposés avec l'outil sondé (chaque outil MCP proposé et non
-utilisé laisse l'exécution `inconclusive`), et une relance ne passe que si les serveurs sont encore en
-attente à l'init. L'outil ne peut donc pas prouver le chemin d'approbation des connecteurs
-aujourd'hui ; la branche d'isolation du débat prévue retire les serveurs MCP et les connecteurs du
-débat, au lieu de les mesurer. Un trou présent sur la nouvelle et absent de l'ancienne est une
-régression et arrête la montée. Ne jamais tenir J et H pour corrigés tant qu'une branche `fix/` ne les
-a pas fermés.
+**How to apply:** (Superseded by the 2026-11-11 entry for cases E to L.) rerun `npm run verify:readonly` at every SDK version upgrade, on
+the old and on the new version (`--sdk-dir` designates an isolated install of each), with
+the same model. The criterion is the presence of the file on disk, not the model's message. E, F and G
+must pass on the new version; an `inconclusive` (for example connector tools
+offered without proof of approval) is not a success. Case I cannot conclude today as soon
+as other connector tools are offered alongside the probed tool (each MCP tool offered and not
+used leaves the run `inconclusive`), and a rerun only passes if the servers are still
+pending at init. The tool therefore cannot prove the connectors' approval path
+today; the planned debate-isolation branch removes MCP servers and connectors from the
+debate, instead of measuring them. A gap present on the new version and absent from the old one is a
+regression and stops the upgrade. Never consider J and H fixed until a `fix/` branch has
+closed them.
 
-## 2026-09-28 — La limite de redimensionnement du 2026-08-11 est levée
+## 2026-09-28 — The resize limit of 2026-08-11 is lifted
 
-Le renderer append-only décrit plus bas a été remplacé par un viewport possédé par Claudex dans
-l'alternate screen d'Ink 7. Il n'existe plus de trame plein écran combinée à des blocs `Static` ou
-à des écritures concurrentes dans le scrollback. La duplication au redimensionnement et le
-chevauchement du footer ne sont donc plus des limites acceptées.
+The append-only renderer described below was replaced by a viewport owned by Claudex in
+Ink 7's alternate screen. There is no longer a full-screen frame combined with `Static` blocks or
+with concurrent writes to the scrollback. Duplication on resize and the
+footer overlap are therefore no longer accepted limits.
 
-La contrepartie est explicite : pendant la session, la navigation se fait dans le transcript de
-Claudex et non dans le scrollback natif du terminal. La trace durable est l'archive canonique.
+The trade-off is explicit: during the session, navigation happens in Claudex's transcript
+and not in the terminal's native scrollback. The durable record is the canonical archive.
 
-## 2026-08-07 — Le sandbox du SDK ne peut pas rendre `cwd` non-inscriptible
+## 2026-08-07 — The SDK sandbox cannot make `cwd` non-writable
 
-**Constat :** dans `@anthropic-ai/claude-agent-sdk@0.1.77` (version installée), `sandbox.filesystem.denyWrite`
-ne peut pas retirer le répertoire de travail (`cwd`) de l'ensemble des chemins autorisés en écriture.
-Vérifié empiriquement (pas seulement lu dans la doc) avec un script isolé appelant `query()` directement :
-écriture hors `cwd` → bloquée (`operation not permitted`) ; écriture dans `cwd` → **toujours réussie**,
-peu importe la forme passée à `denyWrite` (`"/"`, `"."`, chemin absolu de `cwd`, ou glob `cwd + "/**"`).
-Le fichier a été vérifié présent sur disque dans les quatre variantes testées.
+**Finding:** in `@anthropic-ai/claude-agent-sdk@0.1.77` (installed version), `sandbox.filesystem.denyWrite`
+cannot remove the working directory (`cwd`) from the set of paths allowed for writing.
+Verified empirically (not just read in the docs) with an isolated script calling `query()` directly:
+write outside `cwd` → blocked (`operation not permitted`); write inside `cwd` → **always succeeds**,
+whatever form is passed to `denyWrite` (`"/"`, `"."`, absolute path of `cwd`, or glob `cwd + "/**"`).
+The file was verified present on disk in all four variants tested.
 
-**Pourquoi c'est bloquant :** pendant le débat Claudex, `cwd` *est* le dépôt en cours d'analyse — c'est
-précisément le répertoire qu'une exécution Bash « lecture seule » ne doit jamais pouvoir modifier. Le
-sandbox du SDK ne peut pas fournir cette garantie dans cette version.
+**Why this is blocking:** during the Claudex debate, `cwd` *is* the repository being analysed — it is
+precisely the directory that a "read-only" Bash execution must never be able to modify. The
+SDK sandbox cannot provide this guarantee in this version.
 
-**Autres écarts constatés entre la doc publique (code.claude.com/docs/en/sandboxing) et le SDK installé :**
-`failIfUnavailable`, `strictAllowlist` (réseau) et `allowManagedDomainsOnly` sont documentés côté CLI
-mais absents du binaire embarqué dans ce paquet npm (0 occurrence dans `cli.js`, vérifié par grep) — ce
-sont des no-ops silencieux s'ils sont passés en config, pas des erreurs.
+**Other differences found between the public docs (code.claude.com/docs/en/sandboxing) and the installed SDK:**
+`failIfUnavailable`, `strictAllowlist` (network) and `allowManagedDomainsOnly` are documented on the CLI side
+but absent from the binary bundled in this npm package (0 occurrences in `cli.js`, verified by grep) — they
+are silent no-ops if passed in the config, not errors.
 
-**Ce qui fonctionne bien, à l'inverse :** `sandbox.network.allowedDomains: []` bloque proprement tout
-réseau depuis Bash (échec immédiat, pas de blocage en attente d'approbation interactive) — vérifié
-empiriquement aussi.
+**What does work well, by contrast:** `sandbox.network.allowedDomains: []` cleanly blocks all
+network from Bash (immediate failure, no hang waiting for interactive approval) — also verified
+empirically.
 
-**Conséquence pour la décision du 2026-08-07 (voir handoff
-`.claudex/memory/handoffs/2026-08-07-execution-lecture-seule-claude.md`) :** le prérequis technique de ce
-handoff repose sur une config sandbox (`filesystem.denyWrite`, `failIfUnavailable`, `network.strictAllowlist`)
-qui ne produit pas la garantie annoncée dans cette version du SDK. La décision doit être rouverte en
-débat avant toute implémentation — ne pas implémenter le handoff tel quel.
+**Consequence for the 2026-08-07 decision (see handoff
+`.claudex/memory/handoffs/2026-08-07-execution-lecture-seule-claude.md`):** the technical prerequisite of this
+handoff relies on a sandbox config (`filesystem.denyWrite`, `failIfUnavailable`, `network.strictAllowlist`)
+that does not produce the announced guarantee in this SDK version. The decision must be reopened in
+debate before any implementation — do not implement the handoff as is.
 
-**Comment appliquer :** avant d'activer Bash (même "lecture seule") pendant la phase de débat, revérifier
-empiriquement sur la version du SDK alors installée — ne pas se fier à la doc seule, ni aux types `.d.ts`
-seuls (`sandboxTypes.d.ts` est lui-même en retard sur ce que `cli.js` embarqué supporte réellement).
+**How to apply:** before enabling Bash (even "read-only") during the debate phase, re-verify
+empirically on the SDK version installed at that time — do not rely on the docs alone, nor on the `.d.ts` types
+alone (`sandboxTypes.d.ts` itself lags behind what the bundled `cli.js` actually supports).
 
-**Mise à jour 2026-10-28 :** sur le SDK 0.3.310, `denyWrite` avec le chemin absolu de `cwd` bloque
-les écritures dans `cwd` (mesure ponctuelle, voir l'entrée du 2026-10-28 plus haut).
+**Update 2026-10-28:** on SDK 0.3.310, `denyWrite` with the absolute path of `cwd` blocks
+writes in `cwd` (one-off measurement, see the 2026-10-28 entry above).
 
-**Mise à jour 2026-10-27 :** voir « 2026-10-27 — Lecture seule de Claude re-mesurée sur le SDK
-0.3.310 » plus haut. Le SDK 0.3.x livre un binaire natif et plus de `cli.js` : la méthode par grep
-ne s'applique plus.
+**Update 2026-10-27:** see "2026-10-27 — Claude's read-only mode re-measured on SDK
+0.3.310" above. SDK 0.3.x ships a native binary and no longer a `cli.js`: the grep method
+no longer applies.
 
-## 2026-08-11 — Le débat sur l'asymétrie d'exécution s'est tenu sous deux bugs bloquants
+## 2026-08-11 — The debate on the execution asymmetry took place under two blocking bugs
 
-**Constat :** la session du 2026-08-11 (transcript
+**Finding:** the session of 2026-08-11 (transcript
 `.claudex/memory/transcripts/2026-08-11T11-32-05-920Z-debat-de-conception-en-lecture-seule-n-ecrivez-aucun-code-ne.md`)
-s'est déroulée alors que le scheduler souffrait de deux défauts corrigés le jour même
-(voir `decisions.md`, 2026-08-11) : aucun tour automatique ne pouvait démarrer sans politique
-d'autonomie, et un tour né d'une intervention ne pouvait jamais enregistrer un consensus.
+took place while the scheduler suffered from two defects fixed the same day
+(see `decisions.md`, 2026-08-11): no automatic turn could start without an autonomy
+policy, and a turn born from an intervention could never record a consensus.
 
-**Conséquences observables sur cette trace, à garder en tête en la relisant :**
-- **Chacun des douze tours a été déclenché par une intervention humaine.** Le débat n'a jamais
-  enchaîné seul ; les relances (« continue », « codex ? », « consensus ? ») sont des déblocages,
-  pas des contributions au fond.
-- **Aucun consensus n'a pu être enregistré** alors que les deux agents l'ont déclaré en clair à
-  quatre reprises. Aucune synthèse n'a donc été produite, et aucun handoff généré automatiquement.
-- **Claude s'est cru Codex au moins une fois** (bloc étiqueté `## CLAUDE`, ligne 98 : « ma réponse
-  à Claude », revendication d'une capacité d'exécution qu'il n'a pas). Cause identifiée :
-  `DeliveryBlock.source` n'était pas rendu dans le message livré. Corrigé depuis.
-- **Déférence marquée de Claude envers Codex** en fin de débat : Codex pose les redlines, Claude
-  confirme, dernier mot « Oui. ». À pondérer, puisque Claude ne pouvait vérifier aucune
-  affirmation empirique — ce qui était précisément le sujet du débat.
-- **Sources citées non atteignables.** Codex a cité treize fois `learn.chatgpt.com/docs/app-server`
-  comme référence normative alors que son sandbox a `networkAccess: false`. Les affirmations
-  étaient en fait exactes (vérifiées depuis sur le binaire), mais la citation ne prouvait rien.
+**Observable consequences on this trace, to keep in mind when re-reading it:**
+- **Each of the twelve turns was triggered by a human intervention.** The debate never
+  ran on its own; the nudges ("continue", "codex?", "consensus?", translated from French) are unblockings,
+  not contributions to the substance.
+- **No consensus could be recorded** although both agents declared it plainly
+  four times. No synthesis was therefore produced, and no handoff generated automatically.
+- **Claude believed it was Codex at least once** (block labelled `## CLAUDE`, line 98: "my answer
+  to Claude" (translated from French), claim of an execution capability it does not have). Identified cause:
+  `DeliveryBlock.source` was not rendered in the delivered message. Fixed since.
+- **Marked deference of Claude towards Codex** at the end of the debate: Codex sets the redlines, Claude
+  confirms, last word "Yes." (translated from French). To be weighed, since Claude could verify no
+  empirical claim — which was precisely the subject of the debate.
+- **Cited sources not reachable.** Codex cited `learn.chatgpt.com/docs/app-server` thirteen times
+  as a normative reference although its sandbox has `networkAccess: false`. The claims
+  were in fact accurate (verified since on the binary), but the citation proved nothing.
 
-**Comment appliquer :** ne pas lire cette trace comme un consensus ordinaire. La décision de fond
-tient, mais toute affirmation de détail doit être revérifiée avant implémentation.
+**How to apply:** do not read this trace as an ordinary consensus. The substantive decision
+holds, but every detailed claim must be re-verified before implementation.
 
-## 2026-08-11 — Ink 5/6 n'oublie jamais un `<Static>` démonté (crash mémoire)
+## 2026-08-11 — Ink 5/6 never forgets an unmounted `<Static>` (memory crash)
 
-**Constat :** utiliser `<Static>` d'Ink dans un écran qui peut être démonté fait mourir Claudex,
-en moins d'une seconde, avec `JavaScript heap out of memory` — après un `/new`, ou après un premier
-message refusé comme non débattable.
+**Finding:** using Ink's `<Static>` in a screen that can be unmounted kills Claudex,
+in less than a second, with `JavaScript heap out of memory` — after a `/new`, or after a first
+message refused as not debatable.
 
-**Mécanisme, vérifié par photographie mémoire et capture de pile :**
-`node_modules/ink/build/reconciler.js`, `finalizeInitialChildren()` enregistre `rootNode.staticNode = node`
-quand un `<Static>` apparaît, et **ne le remet jamais à zéro** quand ce composant disparaît. Ensuite,
-`renderer.js` fait inconditionnellement `if (node.staticNode?.yogaNode)` et lit la mise en page d'un
-nœud mort : il obtient `width=0` et `height=36893488147419103000` (la valeur « non définie » de Yoga).
-`Output.get()` exécute alors `for (let y = 0; y < 3.7e19; y++) output.push([])` — avec une largeur nulle,
-chaque ligne est un tableau vide. La photographie du crash montrait exactement un tableau local
-(« stack roots ») contenant **22 295 844 tableaux vides**.
+**Mechanism, verified by heap snapshot and stack capture:**
+`node_modules/ink/build/reconciler.js`, `finalizeInitialChildren()` records `rootNode.staticNode = node`
+when a `<Static>` appears, and **never resets it** when that component disappears. Then,
+`renderer.js` unconditionally does `if (node.staticNode?.yogaNode)` and reads the layout of a
+dead node: it gets `width=0` and `height=36893488147419103000` (Yoga's "undefined" value).
+`Output.get()` then runs `for (let y = 0; y < 3.7e19; y++) output.push([])` — with a zero width,
+each line is an empty array. The crash snapshot showed exactly one local array
+("stack roots") containing **22 295 844 empty arrays**.
 
-**Pourquoi ça n'apparaissait qu'après une session :** seul `DebateView` utilisait `<Static>`.
-Un écran d'accueil neuf ne crashe jamais ; après un cycle de session, n'importe quel rendu suffit.
+**Why it only appeared after a session:** only `DebateView` used `<Static>`.
+A fresh welcome screen never crashes; after one session cycle, any render is enough.
 
-**Corrigé en amont dans Ink 7.0.0** (`removeChildFromContainer` remet `staticNode` à `undefined`).
-**Le projet est monté sur Ink 7.1.1 + React 19.2 le même jour**, donc ce défaut précis n'est plus
-atteignable. `<Static>` a tout de même été retiré de `DebateView` : il ne servait qu'aux premières
-secondes d'un débat et coûtait un état entier.
+**Fixed upstream in Ink 7.0.0** (`removeChildFromContainer` resets `staticNode` to `undefined`).
+**The project was upgraded to Ink 7.1.1 + React 19.2 the same day**, so this precise defect is no longer
+reachable. `<Static>` was nevertheless removed from `DebateView`: it only served the first
+seconds of a debate and cost a whole state.
 
-**Comment appliquer :** rien à éviter, `<Static>` est de nouveau utilisable et utilisé.
+**How to apply:** nothing to avoid, `<Static>` is usable again and used.
 
-## 2026-08-11 — Rétrécir la fenêtre pendant l'amorçage brouille l'affichage (cosmétique)
+## 2026-08-11 — Shrinking the window during startup garbles the display (cosmetic)
 
-**Constat :** Ink efface tout le terminal et réécrit son tampon statique dès qu'une trame précédente
-était plus haute que la fenêtre courante (`shouldClearTerminalForFrame`, condition `wasOverflowing`).
-Claudex dessine volontairement une trame pleine hauteur pendant l'amorçage d'un débat, pour garder la
-saisie en bas de l'écran. Rétrécir la fenêtre à ce moment-là efface l'écran et fait réapparaître en
-double les lignes déjà affichées.
+**Finding:** Ink clears the whole terminal and rewrites its static buffer as soon as a previous frame
+was taller than the current window (`shouldClearTerminalForFrame`, condition `wasOverflowing`).
+Claudex deliberately draws a full-height frame during a debate's startup, to keep the
+input at the bottom of the screen. Shrinking the window at that moment clears the screen and makes the
+lines already displayed reappear twice.
 
-**Pourquoi on l'accepte :** c'est purement visuel, et borné aux quelques secondes où le premier écran
-n'est pas encore rempli. Le transcript archivé est construit depuis l'état de l'ordonnanceur
-(`shutdown.transcript`), jamais depuis le terminal : **aucune donnée n'est perdue**, le fichier de
-`.claudex/memory/transcripts/` est intact.
+**Why we accept it:** it is purely visual, and limited to the few seconds when the first screen
+is not yet filled. The archived transcript is built from the scheduler's state
+(`shutdown.transcript`), never from the terminal: **no data is lost**, the file in
+`.claudex/memory/transcripts/` is intact.
 
-**Ce qui a été essayé et n'a pas marché :** borner la hauteur du pied de page sur la taille courante
-du terminal plutôt que sur l'état React. Ink recalcule sa mise en page et redessine de façon
-synchrone dans son propre gestionnaire de redimensionnement, avant que React ait appliqué la mise à
-jour — il lit donc toujours l'ancienne trame haute. Supprimer la trame haute règle le problème mais
-fait remonter la saisie en haut de l'écran au démarrage, ce qui a été jugé pire.
+**What was tried and did not work:** bounding the footer height on the current size
+of the terminal rather than on the React state. Ink recomputes its layout and redraws
+synchronously in its own resize handler, before React has applied the
+update — so it always reads the old tall frame. Removing the tall frame fixes the problem but
+moves the input to the top of the screen at startup, which was judged worse.
 
-**Comment appliquer :** ne pas retenter de « corriger » ce point par un calcul de hauteur. Le seul
-vrai correctif serait de reproduire l'effet visuel sans trame Ink haute — par exemple en poussant le
-curseur avec des lignes vides écrites dans le scrollback — ce qui reste à concevoir.
+**How to apply:** do not retry to "fix" this point with a height computation. The only
+real fix would be to reproduce the visual effect without a tall Ink frame — for example by pushing the
+cursor down with empty lines written to the scrollback — which remains to be designed.
 
-## 2026-08-17 — Ce que coûte le prompt système de Claude, mesuré
+## 2026-08-17 — What Claude's system prompt costs, measured
 
-**Constat :** mesuré sur cette machine avec le SDK installé, un appel trivial (`Réponds exactement:
-ok`, outils limités à Read/Grep/Glob), en comparant la somme
-`input_tokens + cache_creation + cache_read` de la première réponse assistant :
+**Finding:** measured on this machine with the installed SDK, a trivial call (`Answer exactly:
+ok`, translated from French, tools limited to Read/Grep/Glob), comparing the sum
+`input_tokens + cache_creation + cache_read` of the first assistant response:
 
-| Configuration | Prompt système |
+| Configuration | System prompt |
 | --- | --- |
-| `settingSources: ["project","user"]` avec les `@` imports dans CLAUDE.md | 29 701 tokens |
-| `["project"]` avec les `@` imports | 16 364 tokens |
-| `["project"]` sans les `@` imports | 2 640 tokens |
+| `settingSources: ["project","user"]` with the `@` imports in CLAUDE.md | 29 701 tokens |
+| `["project"]` with the `@` imports | 16 364 tokens |
+| `["project"]` without the `@` imports | 2 640 tokens |
 | `[]` | 2 328 tokens |
 
-Donc : `@fichier` dans CLAUDE.md coûtait **13 724 tokens par appel**, et les réglages utilisateur
-**13 337 tokens par appel** — catalogues de plugins et de skills qu'un agent limité à Read/Grep/Glob
-ne peut pas utiliser. Ce préfixe est payé à *chaque* appel API, donc plusieurs dizaines de fois par
-tour d'exploration, pas une fois par tour.
+So: `@file` in CLAUDE.md cost **13 724 tokens per call**, and the user settings
+**13 337 tokens per call** — plugin and skill catalogues that an agent limited to Read/Grep/Glob
+cannot use. This prefix is paid on *every* API call, so several dozen times per
+exploration turn, not once per turn.
 
-**Piège associé, vérifié :** retirer `"user"` sans passer le modèle explicitement fait retomber le
-débat de `claude-opus-4-5` à `claude-sonnet-4-5` sans aucun message. Le modèle configuré vient de
-`~/.claude/settings.json`, que seul `settingSources: ["user"]` charge. Claudex lisait déjà ce champ
-(`readClaudeConfiguredModel`) mais uniquement pour l'afficher ; il le transmet maintenant au SDK.
+**Related trap, verified:** removing `"user"` without passing the model explicitly makes the
+debate fall back from `claude-opus-4-5` to `claude-sonnet-4-5` without any message. The configured model comes from
+`~/.claude/settings.json`, which only `settingSources: ["user"]` loads. Claudex already read this field
+(`readClaudeConfiguredModel`) but only to display it; it now passes it to the SDK.
 
-**Sur le cache :** il n'amortit pas autant qu'il y paraît. Le TTL est de cinq minutes et un tour de
-Codex s'intercale entre deux tours de Claude : sur la session `460ca9a4`, les tours 2 et 4
-reconstruisent 60 195 et 66 973 tokens de préfixe avec zéro lecture de cache. L'écriture de cache se
-facture 1,25× l'entrée contre 0,1× pour la lecture — sur cette session, l'écriture a coûté cinq fois
-la lecture. Réduire le préfixe reste donc rentable même avec un cache qui fonctionne.
+**On the cache:** it does not amortise as much as it seems. The TTL is five minutes and a Codex
+turn sits between two Claude turns: in session `460ca9a4`, turns 2 and 4
+rebuild 60 195 and 66 973 tokens of prefix with zero cache reads. Cache writes are
+billed at 1.25× the input against 0.1× for reads — in this session, writing cost five times
+as much as reading. Reducing the prefix therefore still pays off even with a working cache.
 
-**Comment appliquer :** avant d'ajouter quoi que ce soit au prompt système du débat (import de
-mémoire, source de réglages, MCP, plugin), le mesurer par cette méthode. Un chiffre lu dans le
-`.jsonl` de session doit être dédupliqué sur `message.id` : le journal écrit une ligne par bloc de
-contenu, et une somme naïve double les totaux.
+**How to apply:** before adding anything to the debate's system prompt (memory
+import, settings source, MCP, plugin), measure it with this method. A figure read in the session
+`.jsonl` must be deduplicated on `message.id`: the log writes one line per content
+block, and a naive sum doubles the totals.
 
-## 2026-08-29 — `permissionMode: "plan"` n'est pas une couche d'application, et le défaut du SDK autorise l'écriture
+## 2026-08-29 — `permissionMode: "plan"` is not an enforcement layer, and the SDK default allows writing
 
-**Constat :** deux faits vérifiés sur `@anthropic-ai/claude-agent-sdk@0.1.77` (version installée),
-en réponse à la question « le mode `plan` documenté pour les subagents peut-il remplacer le sandbox
-comme garantie de lecture seule ? ». Réponse : non.
+**Finding:** two facts verified on `@anthropic-ai/claude-agent-sdk@0.1.77` (installed version),
+in answer to the question "can the `plan` mode documented for subagents replace the sandbox
+as a read-only guarantee?". Answer: no.
 
-**1. Le mode `plan` est une consigne de prompt, pas un contrôle.** Dans `cli.js`, la fonction de
-permission des outils d'écriture (`m4A`) ne consulte jamais le mode : elle décide sur les règles
-`allow`/`ask`/`deny`, les répertoires autorisés et `acceptEdits`. Sur les sept comparaisons
-`=== "plan"` du binaire, la seule qui touche la couche permissions *autorise* (`plan` +
-`isBypassPermissionsModeAvailable` → `behavior: "allow"`). Le caractère lecture seule est porté par
-une injection de prompt : « Plan mode is active. The user indicated that they do not want you to
-execute yet — you MUST NOT make any edits, run any non-readonly tools ».
+**1. `plan` mode is a prompt instruction, not a control.** In `cli.js`, the permission
+function of the write tools (`m4A`) never consults the mode: it decides on the
+`allow`/`ask`/`deny` rules, the allowed directories and `acceptEdits`. Of the seven
+`=== "plan"` comparisons in the binary, the only one that touches the permission layer *allows* (`plan` +
+`isBypassPermissionsModeAvailable` → `behavior: "allow"`). The read-only character is carried by
+a prompt injection: "Plan mode is active. The user indicated that they do not want you to
+execute yet — you MUST NOT make any edits, run any non-readonly tools".
 
-**2. Sans `canUseTool`, le défaut non interactif est d'autoriser.** `permissionMode: "default"`
-seul ne fait pas échouer une écriture : il n'y a personne pour répondre au `ask`, et l'appel passe.
+**2. Without `canUseTool`, the non-interactive default is to allow.** `permissionMode: "default"`
+alone does not make a write fail: there is nobody to answer the `ask`, and the call goes through.
 
-**Test empirique** (`query()` isolé, `tools: ["Bash"]`, consigne d'écrire un fichier dans `cwd`,
-présence du fichier vérifiée sur disque) :
+**Empirical test** (isolated `query()`, `tools: ["Bash"]`, instruction to write a file in `cwd`,
+presence of the file verified on disk):
 
-| Cas | `permissionMode` | `allowedTools` | Bash appelé | Fichier écrit |
+| Case | `permissionMode` | `allowedTools` | Bash called | File written |
 | --- | --- | --- | --- | --- |
-| A | `plan` | — | non | non |
-| B | `default` | — | oui | **oui** |
-| C | `plan` | `["Bash"]` | oui | **oui** |
-| D | `default` | `["Bash"]` | oui | **oui** |
+| A | `plan` | — | no | no |
+| B | `default` | — | yes | **yes** |
+| C | `plan` | `["Bash"]` | yes | **yes** |
+| D | `default` | `["Bash"]` | yes | **yes** |
 
-Le cas A ne prouve rien : le modèle a *obéi* à la consigne, il n'a pas été *empêché*. Le cas C le
-démontre — mode `plan` actif, fichier écrit quand même.
+Case A proves nothing: the model *obeyed* the instruction, it was not *prevented*. Case C
+demonstrates it — `plan` mode active, file written anyway.
 
-**Conséquence :** la limite du 2026-08-07 (le sandbox du SDK ne peut pas rendre `cwd`
-non-inscriptible) **tient inchangée**. Le mode `plan` n'en est pas une alternative. La lecture seule
-du débat repose sur deux choses, et seulement deux : `tools: DEBATE_TOOLS` dans `claudeAgent.ts`
-(vraie restriction de disponibilité — l'outil n'existe pas pour le modèle) et `canUseTool` (arbitrage
-humain sur chaque appel).
+**Consequence:** the 2026-08-07 limit (the SDK sandbox cannot make `cwd`
+non-writable) **holds unchanged**. `plan` mode is not an alternative to it. The debate's read-only
+mode rests on two things, and only two: `tools: DEBATE_TOOLS` in `claudeAgent.ts`
+(a real availability restriction — the tool does not exist for the model) and `canUseTool` (human
+arbitration on each call).
 
-**Piège associé :** `allowedTools: []` ne restreint rien. C'est une liste d'auto-approbation, pas un
-filtre — la doc du SDK le dit explicitement (« To restrict which tools are available, use the `tools`
-option instead »). Le champ qui restreint est `tools`.
+**Related trap:** `allowedTools: []` restricts nothing. It is an auto-approval list, not a
+filter — the SDK docs say so explicitly ("To restrict which tools are available, use the `tools`
+option instead"). The field that restricts is `tools`.
 
-**Comment appliquer :** ne jamais traiter `permissionMode` comme une frontière de sécurité, quelle
-que soit la valeur. Pour restreindre, passer par `tools`. Pour arbitrer, passer par `canUseTool`.
-Revérifier empiriquement à chaque montée de version du SDK, avec les quatre cas ci-dessus : le
-critère est la présence du fichier sur disque, pas le message rendu par le modèle.
+**How to apply:** never treat `permissionMode` as a security boundary, whatever
+its value. To restrict, go through `tools`. To arbitrate, go through `canUseTool`.
+Re-verify empirically at every SDK version upgrade, with the four cases above: the
+criterion is the presence of the file on disk, not the message returned by the model.
 
-**Mise à jour 2026-10-27 :** les quatre cas ont été relancés sur 0.1.77 et 0.3.310, voir «
-2026-10-27 — Lecture seule de Claude re-mesurée sur le SDK 0.3.310 » plus haut. Le SDK 0.3.x livre
-un binaire natif et plus de `cli.js` : la lecture de `cli.js` citée ici ne s'applique plus à lui.
+**Update 2026-10-27:** the four cases were rerun on 0.1.77 and 0.3.310, see "2026-10-27 — Claude's
+read-only mode re-measured on SDK 0.3.310" above. SDK 0.3.x ships
+a native binary and no longer a `cli.js`: the reading of `cli.js` cited here no longer applies to it.

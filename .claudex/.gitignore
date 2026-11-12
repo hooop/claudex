@@ -1,9 +1,9 @@
-# Écrit par Claudex au premier lancement, pour que les transcripts de tes débats
-# ne partent pas dans un commit de ce dépôt.
+# Written by Claudex on first launch, so that the transcripts of your debates
+# do not end up in a commit of this repository.
 #
-# Liste blanche : tout est exclu par défaut — y compris ce que Claudex écrira
-# dans de futures versions — et seul ce qui est explicitement rouvert ci-dessous
-# est versionné.
+# Allowlist: everything is excluded by default, including what Claudex will
+# write in future versions, and only what is explicitly reopened below is
+# versioned.
 *
 !.gitignore
 !memory/
@@ -11,7 +11,7 @@ memory/*
 !memory/decisions.md
 !memory/limits.md
 
-# decisions.md et limits.md sont courts, écrits à dessein, et relus par les deux
-# agents au début de chaque débat : une personne qui clone le dépôt doit les
-# recevoir. Retire les deux dernières lignes pour garder la mémoire du projet
-# entièrement locale.
+# decisions.md and limits.md are short, written on purpose, and the debate
+# rules point both agents at them: someone who clones the repository should
+# get them. Remove the last two lines above to keep the project memory
+# entirely local.

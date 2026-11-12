@@ -6,8 +6,8 @@ describe("parseCommand", () => {
     expect(parseCommand("/handoff")).toEqual({ kind: "handoff" });
   });
 
-  it("parse les commandes informatives du débat", () => {
-    expect(parseCommand("/sujet")).toEqual({ kind: "topic" });
+  it("parses the informational debate commands", () => {
+    expect(parseCommand("/topic")).toEqual({ kind: "topic" });
     expect(parseCommand("/decisions")).toEqual({ kind: "decisions" });
   });
 
@@ -16,9 +16,9 @@ describe("parseCommand", () => {
   });
 
   it("splits /decide on the pipe and trims both halves", () => {
-    expect(parseCommand("/decide  File de livraisons | Architecture C  ")).toEqual({
+    expect(parseCommand("/decide  Delivery queue | Architecture C  ")).toEqual({
       kind: "decide",
-      topic: "File de livraisons",
+      topic: "Delivery queue",
       approach: "Architecture C",
     });
   });
@@ -67,11 +67,11 @@ describe("decideUsageError", () => {
   };
 
   it("accepts a command with both halves", () => {
-    expect(decideUsageError(decide("/decide sujet | approche"))).toBeNull();
+    expect(decideUsageError(decide("/decide topic | approach"))).toBeNull();
   });
 
   // These are the inputs that used to append an empty "## <date> —" entry.
-  it.each(["/decide", "/decide    ", "/decide texte sans barre", "/decide | approche", "/decide sujet |"])(
+  it.each(["/decide", "/decide    ", "/decide text without a bar", "/decide | approach", "/decide topic |"])(
     "rejects %j",
     (raw) => {
       expect(decideUsageError(decide(raw))).toBe(DECIDE_USAGE);

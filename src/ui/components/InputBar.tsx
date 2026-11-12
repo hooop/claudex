@@ -38,14 +38,14 @@ function pasteIndex(char: string): number | null {
 }
 
 function groupThousands(count: number): string {
-  return String(count).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+  return String(count).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 }
 
 function pasteLabel(text: string, number: number | null): string {
   const count = [...text].length;
-  const unit = count > 1 ? "caractères" : "caractère";
+  const unit = count > 1 ? "characters" : "character";
   const suffix = number === null ? "" : ` #${number}`;
-  return `[Texte collé${suffix} · ${groupThousands(count)} ${unit}]`;
+  return `[Pasted text${suffix} · ${groupThousands(count)} ${unit}]`;
 }
 
 function expandPastes(value: string, pastes: readonly string[]): string {

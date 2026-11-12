@@ -24,7 +24,7 @@ function successResult() {
 describe("ClaudeAgent streaming", () => {
   beforeEach(() => queryMock.mockReset());
 
-  it("émet les vrais text_delta sans répéter le message assistant final", async () => {
+  it("emits the real text_delta events without repeating the final assistant message", async () => {
     queryMock.mockReturnValue(
       messages([
         {
@@ -33,7 +33,7 @@ describe("ClaudeAgent streaming", () => {
           event: {
             type: "content_block_delta",
             index: 0,
-            delta: { type: "text_delta", text: "Bon" },
+            delta: { type: "text_delta", text: "Hel" },
           },
         },
         {
@@ -42,7 +42,7 @@ describe("ClaudeAgent streaming", () => {
           event: {
             type: "content_block_delta",
             index: 0,
-            delta: { type: "text_delta", text: "jour" },
+            delta: { type: "text_delta", text: "lo" },
           },
         },
         {
@@ -56,7 +56,7 @@ describe("ClaudeAgent streaming", () => {
               cache_read_input_tokens: 2_000,
               output_tokens: 300,
             },
-            content: [{ type: "text", text: "Bonjour" }],
+            content: [{ type: "text", text: "Hello" }],
           },
         },
         successResult(),
@@ -69,30 +69,30 @@ describe("ClaudeAgent streaming", () => {
     expect(agent.currentModel()).toBe("Opus 4.5");
     expect(agent.hasExplicitModel()).toBe(false);
 
-    const result = await agent.send("Sujet", {
+    const result = await agent.send("Topic", {
       cwd: "/tmp",
       writeAccess: false,
       onTextDelta: (delta) => deltas.push(delta),
       onContextUsage: (usage) => contexts.push(usage),
     });
 
-    expect(deltas).toEqual(["Bon", "jour"]);
+    expect(deltas).toEqual(["Hel", "lo"]);
     expect(contexts).toEqual([{ usedTokens: 3_500, contextWindow: 200_000 }]);
-    expect(result).toMatchObject({ kind: "success", text: "Bonjour" });
+    expect(result).toMatchObject({ kind: "success", text: "Hello" });
     expect(agent.currentModel()).toBe("Test");
     expect(queryMock.mock.calls[0]?.[0]?.options.model).toBeUndefined();
     expect(queryMock.mock.calls[0]?.[0]?.options.includePartialMessages).toBe(true);
-    // Mesuré : les réglages utilisateur coûtent 13 300 tokens de prompt système
-    // par appel, en catalogues de plugins qu'un agent limité à Read/Grep/Glob
-    // ne peut pas utiliser. Le seul champ utile, le modèle par défaut, est lu
-    // par Claudex et passé explicitement.
+    // Measured: user settings cost 13,300 system-prompt tokens per call, in
+    // plugin catalogues that an agent limited to Read/Grep/Glob cannot use.
+    // The only useful field, the default model, is read by Claudex and passed
+    // explicitly.
     expect(queryMock.mock.calls[0]?.[0]?.options.settingSources).toEqual(["project"]);
 
     agent.resetSession();
     expect(agent.currentModel()).toBe("Opus 4.5");
   });
 
-  it("affiche le modèle qui a répondu, pas le premier modèle listé dans modelUsage", async () => {
+  it("shows the model that answered, not the first model listed in modelUsage", async () => {
     // Measured on SDK 0.3.310: with model "opus", modelUsage lists the engine's
     // background Haiku first, then the model that actually answered.
     queryMock.mockReturnValue(
@@ -103,7 +103,7 @@ describe("ClaudeAgent streaming", () => {
           message: {
             model: "claude-opus-5-5",
             usage: { input_tokens: 1_000, output_tokens: 100 },
-            content: [{ type: "text", text: "Résumé" }],
+            content: [{ type: "text", text: "Summary" }],
           },
         },
         {
@@ -117,46 +117,46 @@ describe("ClaudeAgent streaming", () => {
     );
 
     const agent = new ClaudeAgent("opus", "Opus 5");
-    await agent.send("Sujet", { cwd: "/tmp", writeAccess: false });
+    await agent.send("Topic", { cwd: "/tmp", writeAccess: false });
 
     expect(agent.currentModel()).toBe("Opus 5.5");
   });
 
-  it("affiche le libellé du sélecteur dès qu'un modèle est choisi", () => {
+  it("shows the selector label as soon as a model is chosen", () => {
     const agent = new ClaudeAgent();
     agent.setModel("sonnet");
     expect(agent.currentModel()).toBe("Sonnet 5");
     expect(agent.hasExplicitModel()).toBe(true);
   });
 
-  it("explique clairement quand le choix automatique n'est pas encore résolu", () => {
-    expect(new ClaudeAgent().currentModel()).toBe("auto (détecté au 1er tour)");
+  it("says so clearly when the automatic choice is not yet resolved", () => {
+    expect(new ClaudeAgent().currentModel()).toBe("auto (detected on the 1st turn)");
   });
 
-  it("conserve le message assistant complet comme fallback", async () => {
+  it("keeps the full assistant message as a fallback", async () => {
     queryMock.mockReturnValue(
       messages([
         {
           type: "assistant",
           session_id: "session-1",
-          message: { content: [{ type: "text", text: "Réponse complète" }] },
+          message: { content: [{ type: "text", text: "Full answer" }] },
         },
         successResult(),
       ]) as never,
     );
 
     const deltas: string[] = [];
-    const result = await new ClaudeAgent().send("Sujet", {
+    const result = await new ClaudeAgent().send("Topic", {
       cwd: "/tmp",
       writeAccess: false,
       onTextDelta: (delta) => deltas.push(delta),
     });
 
-    expect(deltas).toEqual(["Réponse complète"]);
-    expect(result).toMatchObject({ kind: "success", text: "Réponse complète" });
+    expect(deltas).toEqual(["Full answer"]);
+    expect(result).toMatchObject({ kind: "success", text: "Full answer" });
   });
 
-  it("transforme une limite de session en erreur explicite et reprenable", async () => {
+  it("turns a session limit into an explicit, resumable error", async () => {
     queryMock.mockReturnValue(
       messages([
         {
@@ -170,29 +170,29 @@ describe("ClaudeAgent streaming", () => {
       ]) as never,
     );
 
-    const result = await new ClaudeAgent().send("Sujet", { cwd: "/tmp", writeAccess: false });
+    const result = await new ClaudeAgent().send("Topic", { cwd: "/tmp", writeAccess: false });
 
     expect(result).toMatchObject({ kind: "error" });
     if (result.kind === "error") {
-      expect(result.message).toContain("Limite Claude Code atteinte");
+      expect(result.message).toContain("Claude Code limit reached");
       expect(result.message).toContain("/resume");
       expect(result.message).not.toContain("Unknown SDK error");
     }
   });
 });
 
-describe("ClaudeAgent — réglages par phase", () => {
+describe("ClaudeAgent — settings per phase", () => {
   beforeEach(() => queryMock.mockReset());
 
   /**
-   * Retirer les réglages utilisateur allège le débat, mais les instructions
-   * projet — le CLAUDE.md de l'utilisateur — doivent rester dans
-   * les deux phases, et l'implémentation garde l'outillage global.
+   * Dropping user settings lightens the debate, but the project instructions
+   * (the user's CLAUDE.md) must stay in both phases, and implementation keeps
+   * the global tooling.
    */
-  it("charge les réglages utilisateur seulement pendant l'implémentation", async () => {
+  it("loads user settings only during implementation", async () => {
     queryMock.mockReturnValue(messages([successResult()]));
     const agent = new ClaudeAgent();
-    await agent.send("Applique la spécification", { cwd: "/tmp", writeAccess: true });
+    await agent.send("Apply the specification", { cwd: "/tmp", writeAccess: true });
 
     const options = queryMock.mock.calls[0]?.[0]?.options;
     expect(options.settingSources).toEqual(["project", "user"]);
@@ -201,24 +201,24 @@ describe("ClaudeAgent — réglages par phase", () => {
     expect(options).not.toHaveProperty("settings");
   });
 
-  it("transmet au SDK le modèle configuré que Claudex a lu lui-même", async () => {
+  it("passes the SDK the configured model that Claudex read itself", async () => {
     queryMock.mockReturnValue(messages([successResult()]));
     const agent = new ClaudeAgent("opus");
-    await agent.send("Sujet", { cwd: "/tmp", writeAccess: false });
+    await agent.send("Topic", { cwd: "/tmp", writeAccess: false });
 
     expect(queryMock.mock.calls[0]?.[0]?.options.model).toBe("opus");
   });
 
   /**
-   * En débat, la lecture seule ne repose que sur `tools` et `canUseTool` :
-   * `permissionMode: "plan"` et `allowedTools` ne l'imposent pas dans le SDK
-   * installé (limits.md, 2026-08-29). Ce test fige ces réglages pour qu'une
-   * mise à jour du SDK ne les relâche pas en silence.
+   * In a debate, read-only rests only on `tools` and `canUseTool`:
+   * `permissionMode: "plan"` and `allowedTools` do not enforce it in the
+   * installed SDK (limits.md, 2026-08-29). This test pins these settings so
+   * that an SDK upgrade cannot loosen them silently.
    */
-  it("restreint le débat à Read, Grep et Glob, sous arbitrage humain", async () => {
+  it("restricts the debate to Read, Grep and Glob, under human arbitration", async () => {
     queryMock.mockReturnValue(messages([successResult()]));
     const agent = new ClaudeAgent();
-    await agent.send("Sujet", {
+    await agent.send("Topic", {
       cwd: "/tmp",
       writeAccess: false,
       onPermissionRequest: async () => ({ behavior: "deny" }),
@@ -235,16 +235,16 @@ describe("ClaudeAgent — réglages par phase", () => {
     expect(typeof options.canUseTool).toBe("function");
   });
 
-  it("relaie chaque demande d'outil à l'humain et applique sa réponse", async () => {
+  it("relays every tool request to the human and applies the answer", async () => {
     queryMock.mockReturnValue(messages([successResult()]));
     const onPermissionRequest = vi
       .fn()
       .mockResolvedValueOnce({ behavior: "allow" })
-      .mockResolvedValueOnce({ behavior: "deny", message: "non" })
+      .mockResolvedValueOnce({ behavior: "deny", message: "no" })
       .mockResolvedValueOnce({ behavior: "deny" });
     const onActivity = vi.fn();
     const agent = new ClaudeAgent();
-    await agent.send("Sujet", { cwd: "/tmp", writeAccess: false, onPermissionRequest, onActivity });
+    await agent.send("Topic", { cwd: "/tmp", writeAccess: false, onPermissionRequest, onActivity });
 
     const canUseTool = queryMock.mock.calls[0]?.[0]?.options.canUseTool as (
       name: string,
@@ -266,11 +266,11 @@ describe("ClaudeAgent — réglages par phase", () => {
     });
     expect(results).toEqual([
       { behavior: "allow", updatedInput: input },
-      { behavior: "deny", message: "non" },
+      { behavior: "deny", message: "no" },
       { behavior: "deny", message: "Refused by user" },
     ]);
     expect(onActivity).toHaveBeenCalledWith(
-      expect.objectContaining({ kind: "tool", label: "lit /tmp/a", status: "running" }),
+      expect.objectContaining({ kind: "tool", label: "reads /tmp/a", status: "running" }),
     );
   });
 });
@@ -281,9 +281,9 @@ describe("ClaudeAgent settings guard", () => {
   it.each([false, true])("refuses the turn without calling query (writeAccess %s)", async (writeAccess) => {
     const guard = vi.fn(async () => SETTINGS_CHANGED_MESSAGE);
     const agent = new ClaudeAgent(undefined, undefined, guard);
-    const result = await agent.send("Sujet", { cwd: "/projet", writeAccess });
+    const result = await agent.send("Topic", { cwd: "/project", writeAccess });
     expect(result).toEqual({ kind: "error", message: SETTINGS_CHANGED_MESSAGE });
-    expect(guard).toHaveBeenCalledWith("/projet");
+    expect(guard).toHaveBeenCalledWith("/project");
     expect(queryMock).not.toHaveBeenCalled();
   });
 
@@ -291,7 +291,7 @@ describe("ClaudeAgent settings guard", () => {
     const agent = new ClaudeAgent(undefined, undefined, async () => {
       throw new Error("boom");
     });
-    const result = await agent.send("Sujet", { cwd: "/projet", writeAccess: false });
+    const result = await agent.send("Topic", { cwd: "/project", writeAccess: false });
     expect(result).toEqual({ kind: "error", message: SETTINGS_CHANGED_MESSAGE });
     expect(queryMock).not.toHaveBeenCalled();
   });
@@ -301,86 +301,86 @@ describe("ClaudeAgent settings guard", () => {
     const controller = new AbortController();
     controller.abort();
     const agent = new ClaudeAgent(undefined, undefined, guard);
-    const result = await agent.send("Sujet", { cwd: "/projet", writeAccess: false, signal: controller.signal });
+    const result = await agent.send("Topic", { cwd: "/project", writeAccess: false, signal: controller.signal });
     expect(result).toEqual({ kind: "cancelled" });
     expect(guard).not.toHaveBeenCalled();
   });
 
   it("sends the turn when the guard returns null, with the same options as without a guard", async () => {
     queryMock.mockReturnValue(messages([successResult()]) as never);
-    await new ClaudeAgent().send("Sujet", { cwd: "/projet", writeAccess: false });
+    await new ClaudeAgent().send("Topic", { cwd: "/project", writeAccess: false });
     const unguarded = queryMock.mock.calls[0]?.[0];
 
     queryMock.mockReset();
     queryMock.mockReturnValue(messages([successResult()]) as never);
     const guard = vi.fn(async () => null);
-    const result = await new ClaudeAgent(undefined, undefined, guard).send("Sujet", {
-      cwd: "/projet",
+    const result = await new ClaudeAgent(undefined, undefined, guard).send("Topic", {
+      cwd: "/project",
       writeAccess: false,
     });
     expect(result).toMatchObject({ kind: "success" });
-    expect(guard).toHaveBeenCalledWith("/projet");
+    expect(guard).toHaveBeenCalledWith("/project");
     expect(queryMock).toHaveBeenCalledTimes(1);
     expect(JSON.stringify(queryMock.mock.calls[0]?.[0])).toBe(JSON.stringify(unguarded));
   });
 });
 
-describe("ClaudeAgent sandbox du débat", () => {
+describe("ClaudeAgent debate sandbox", () => {
   beforeEach(() => queryMock.mockReset());
 
   const sandbox = { cwd: "/r", home: "/h", extraDenyRead: [], secretEnvNames: [] };
 
-  it("passe le sandbox résolu à query et ajoute Bash aux outils", async () => {
+  it("passes the resolved sandbox to query and adds Bash to the tools", async () => {
     queryMock.mockReturnValue(messages([successResult()]) as never);
     const resolver = vi.fn(async () => sandbox);
-    const result = await new ClaudeAgent(undefined, undefined, undefined, resolver).send("Sujet", {
-      cwd: "/projet",
+    const result = await new ClaudeAgent(undefined, undefined, undefined, resolver).send("Topic", {
+      cwd: "/project",
       writeAccess: false,
     });
     expect(result).toMatchObject({ kind: "success" });
-    expect(resolver).toHaveBeenCalledWith("/projet");
+    expect(resolver).toHaveBeenCalledWith("/project");
     const options = queryMock.mock.calls[0]?.[0].options;
     expect(options.sandbox.filesystem.denyWrite).toEqual(["/r"]);
     expect(options.tools).toContain("Bash");
   });
 
-  it("sans résolveur, n'ajoute ni sandbox ni Bash", async () => {
+  it("without a resolver, adds neither sandbox nor Bash", async () => {
     queryMock.mockReturnValue(messages([successResult()]) as never);
-    await new ClaudeAgent().send("Sujet", { cwd: "/projet", writeAccess: false });
+    await new ClaudeAgent().send("Topic", { cwd: "/project", writeAccess: false });
     const options = queryMock.mock.calls[0]?.[0].options;
     expect("sandbox" in options).toBe(false);
     expect(options.tools).toEqual(["Read", "Grep", "Glob"]);
   });
 
-  it("refuse le tour si le résolveur rejette", async () => {
+  it("refuses the turn if the resolver rejects", async () => {
     const resolver = vi.fn(async () => {
       throw new Error("boom");
     });
-    const result = await new ClaudeAgent(undefined, undefined, undefined, resolver).send("Sujet", {
-      cwd: "/projet",
+    const result = await new ClaudeAgent(undefined, undefined, undefined, resolver).send("Topic", {
+      cwd: "/project",
       writeAccess: false,
     });
     expect(result).toEqual({ kind: "error", message: DEBATE_SANDBOX_ERROR });
     expect(queryMock).not.toHaveBeenCalled();
   });
 
-  it("refuse le tour si le résolveur lève de façon synchrone", async () => {
+  it("refuses the turn if the resolver throws synchronously", async () => {
     const resolver = vi.fn((): Promise<never> => {
       throw new Error("boom");
     });
-    const result = await new ClaudeAgent(undefined, undefined, undefined, resolver).send("Sujet", {
-      cwd: "/projet",
+    const result = await new ClaudeAgent(undefined, undefined, undefined, resolver).send("Topic", {
+      cwd: "/project",
       writeAccess: false,
     });
     expect(result).toEqual({ kind: "error", message: DEBATE_SANDBOX_ERROR });
     expect(queryMock).not.toHaveBeenCalled();
   });
 
-  it("n'appelle pas le résolveur en phase d'implémentation", async () => {
+  it("does not call the resolver in the implementation phase", async () => {
     queryMock.mockReturnValue(messages([successResult()]) as never);
     const resolver = vi.fn(async () => sandbox);
-    await new ClaudeAgent(undefined, undefined, undefined, resolver).send("Sujet", {
-      cwd: "/projet",
+    await new ClaudeAgent(undefined, undefined, undefined, resolver).send("Topic", {
+      cwd: "/project",
       writeAccess: true,
     });
     expect(resolver).not.toHaveBeenCalled();
@@ -389,14 +389,14 @@ describe("ClaudeAgent sandbox du débat", () => {
     expect(options.tools).toEqual({ type: "preset", preset: "claude_code" });
   });
 
-  it("annule le tour si l'abandon survient pendant la résolution", async () => {
+  it("cancels the turn if the abort happens during resolution", async () => {
     const controller = new AbortController();
     const resolver = vi.fn(async () => {
       controller.abort();
       return sandbox;
     });
-    const result = await new ClaudeAgent(undefined, undefined, undefined, resolver).send("Sujet", {
-      cwd: "/projet",
+    const result = await new ClaudeAgent(undefined, undefined, undefined, resolver).send("Topic", {
+      cwd: "/project",
       writeAccess: false,
       signal: controller.signal,
     });
@@ -405,7 +405,7 @@ describe("ClaudeAgent sandbox du débat", () => {
   });
 });
 
-describe("ClaudeAgent — restes du moteur", () => {
+describe("ClaudeAgent — engine leftovers", () => {
   beforeEach(() => queryMock.mockReset());
 
   const sandbox = { cwd: "/r", home: "/h", extraDenyRead: [], secretEnvNames: [] };
@@ -425,46 +425,46 @@ describe("ClaudeAgent — restes du moteur", () => {
     return { agent, snapshot, remove, calls };
   }
 
-  it("prend un instantané avant query et nettoie après, avec le cwd du tour", async () => {
+  it("takes a snapshot before query and cleans up after, with the turn's cwd", async () => {
     const { agent, snapshot, remove, calls } = setup();
     queryMock.mockImplementation(() => {
       calls.push("query");
       return messages([successResult()]);
     });
-    const result = await agent.send("Sujet", { cwd: "/projet", writeAccess: false });
+    const result = await agent.send("Topic", { cwd: "/project", writeAccess: false });
     expect(result).toMatchObject({ kind: "success" });
-    expect(calls).toEqual(["snapshot:/projet", "query", "remove:/projet"]);
-    expect(remove).toHaveBeenCalledWith("/projet", await snapshot.mock.results[0]?.value);
+    expect(calls).toEqual(["snapshot:/project", "query", "remove:/project"]);
+    expect(remove).toHaveBeenCalledWith("/project", await snapshot.mock.results[0]?.value);
   });
 
-  it("nettoie aussi quand le flux lève, sans changer le résultat", async () => {
+  it("also cleans up when the stream throws, without changing the result", async () => {
     const { agent, remove } = setup();
     queryMock.mockImplementation(async function* () {
       yield { type: "system" };
-      throw new Error("flux cassé");
+      throw new Error("broken stream");
     });
-    const result = await agent.send("Sujet", { cwd: "/projet", writeAccess: false });
+    const result = await agent.send("Topic", { cwd: "/project", writeAccess: false });
     expect(result).toMatchObject({ kind: "error" });
     expect(remove).toHaveBeenCalledTimes(1);
   });
 
-  it("ne touche pas au disque sans sandbox ni en phase d'implémentation", async () => {
+  it("does not touch the disk without a sandbox or in the implementation phase", async () => {
     const snapshot = vi.fn(async () => new Set<string>() as ReadonlySet<string>);
     const remove = vi.fn(async () => [] as string[]);
     queryMock.mockImplementation(() => messages([successResult()]));
-    await new ClaudeAgent(undefined, undefined, undefined, async () => null, { snapshot, remove }).send("Sujet", {
-      cwd: "/projet",
+    await new ClaudeAgent(undefined, undefined, undefined, async () => null, { snapshot, remove }).send("Topic", {
+      cwd: "/project",
       writeAccess: false,
     });
-    await new ClaudeAgent(undefined, undefined, undefined, resolver, { snapshot, remove }).send("Sujet", {
-      cwd: "/projet",
+    await new ClaudeAgent(undefined, undefined, undefined, resolver, { snapshot, remove }).send("Topic", {
+      cwd: "/project",
       writeAccess: true,
     });
     expect(snapshot).not.toHaveBeenCalled();
     expect(remove).not.toHaveBeenCalled();
   });
 
-  it("ne change pas le résultat si le nettoyage ou l'instantané lèvent", async () => {
+  it("does not change the result if the cleanup or the snapshot throw", async () => {
     const snapshot = vi.fn(async () => {
       throw new Error("snapshot");
     });
@@ -473,7 +473,7 @@ describe("ClaudeAgent — restes du moteur", () => {
     });
     queryMock.mockImplementation(() => messages([successResult()]));
     const agent = new ClaudeAgent(undefined, undefined, undefined, resolver, { snapshot, remove });
-    const result = await agent.send("Sujet", { cwd: "/projet", writeAccess: false });
+    const result = await agent.send("Topic", { cwd: "/project", writeAccess: false });
     expect(result).toMatchObject({ kind: "success" });
   });
 });
