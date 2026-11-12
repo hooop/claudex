@@ -197,6 +197,11 @@ class EntryPipeline {
   }
 }
 
+/** One string per terminal row; a CRLF leaves no stray "\r" behind. */
+function splitRows(text: string): string[] {
+  return text.split(/\r?\n/u);
+}
+
 function terminalColor(color: string) {
   const ansi256 = /^ansi256\((\d+)\)$/.exec(color);
   return ansi256 ? chalk.ansi256(Number(ansi256[1])) : chalk.hex(color);
@@ -244,7 +249,7 @@ export class TranscriptStream {
     this.interruptActive();
     // Split defensively: a string with a line break would otherwise be one line
     // in the count and several rows on screen.
-    this.pushPermanent(lines.flatMap((text) => text.split("\n").map((row) => line(row))));
+    this.pushPermanent(lines.flatMap((text) => splitRows(text).map((row) => line(row))));
     this.controller.flush();
   }
 
@@ -339,7 +344,7 @@ export class TranscriptStream {
       // One TranscriptLine per row: a message with line breaks must not count as a
       // single line, or length(), rewind and the viewport height would be wrong.
       const paint = chalk.hex(ERROR_STYLE.color);
-      const rows = asciiSymbolsForDisplay(outcome.message).split(/\r?\n/u);
+      const rows = splitRows(asciiSymbolsForDisplay(outcome.message));
       rows.forEach((row, index) => {
         lines.push(line(paint(index === 0 ? `${ERROR_STYLE.badge} Error: ${row}` : row)));
       });

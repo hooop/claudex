@@ -2,6 +2,7 @@ import chalk from "chalk";
 import { describe, expect, it, vi } from "vitest";
 import type { TranscriptEntry } from "../../../types.js";
 import type { Signal } from "../../../orchestrator/types.js";
+import { ERROR_STYLE } from "../../theme.js";
 import { displayWidth } from "../lineBuffer.js";
 import type { TranscriptLine } from "../streamController.js";
 import { TranscriptStream, type TailView } from "../transcriptStream.js";
@@ -529,28 +530,35 @@ describe("TranscriptStream — soft wraps", () => {
 
 describe("TranscriptStream — multi-line input", () => {
   it("writes one line per row of a multi-line error message", () => {
+    // `count` is kept by the writer itself, independently of the rows asserted on.
+    let count = 0;
     const rows: string[] = [];
     const stream = new TranscriptStream({
-      write: (lines) => rows.push(...lines.map((l) => l.styled)),
+      write: (lines) => {
+        count += lines.length;
+        rows.push(...lines.map((l) => l.styled));
+      },
       width: () => 60,
       onTail: () => {},
-      length: () => rows.length,
+      length: () => count,
       rewind: (n) => {
+        count = n;
         rows.length = n;
       },
       intervalMs: 0,
     });
     const e = entry({ from: "claude", kind: "message" });
     stream.entryStarted(e);
-    const before = rows.length;
+    const before = count;
     stream.entryCompleted(e.id, { status: "error", message: "first\nsecond" });
     const plain = rows.slice(before).map((r) => r.replace(/\u001b\[[0-9;]*m/g, ""));
-    expect(plain.some((r) => r.endsWith("Error: first"))).toBe(true);
-    expect(plain).toContain("second");
+    // Two error rows, then the blank separator that closes every entry.
+    expect(plain).toEqual([`${ERROR_STYLE.badge} Error: first`, "second", ""]);
+    expect(count - before).toBe(3);
     expect(rows.every((r) => !r.includes("\n"))).toBe(true);
   });
 
-  it("splits raw lines that contain a line break", () => {
+  it("splits raw lines that contain a line break, CRLF included", () => {
     const rows: string[] = [];
     const stream = new TranscriptStream({
       write: (lines) => rows.push(...lines.map((l) => l.styled)),
@@ -558,7 +566,7 @@ describe("TranscriptStream — multi-line input", () => {
       onTail: () => {},
       intervalMs: 0,
     });
-    stream.raw(["a\nb"]);
-    expect(rows).toEqual(["a", "b"]);
+    stream.raw(["a\nb", "c\r\nd"]);
+    expect(rows).toEqual(["a", "b", "c", "d"]);
   });
 });
