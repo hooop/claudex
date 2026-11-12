@@ -964,7 +964,13 @@ export class Scheduler {
         // An obsolete validation remains readable but cannot validate an older
         // revision of the subject or start an autonomous chain.
         if (job.origin === "initial" && job.provisionalRevision !== this.provisionalRevision) {
-          this.callbacks.onEntryCompleted(entry.id, { status: "ok", signal });
+          // Obsolete, so its signal is set aside: it can neither count nor close.
+          this.callbacks.onEntryCompleted(entry.id, {
+            status: "ok",
+            signal,
+            counted: false,
+            closesDebate: false,
+          });
           this.removeJob(job);
           this.enqueueProvisionalValidation();
           return "continue";
@@ -1010,7 +1016,12 @@ export class Scheduler {
           jobEpoch === this.consensusEpoch &&
           otherSignal.signal === "consensus" &&
           otherSignal.epoch === this.consensusEpoch;
-        this.callbacks.onEntryCompleted(entry.id, { status: "ok", signal, closesDebate });
+        this.callbacks.onEntryCompleted(entry.id, {
+          status: "ok",
+          signal,
+          counted: jobEpoch === this.consensusEpoch,
+          closesDebate,
+        });
 
         // Remove job from queue (success = acquitted)
         this.removeJob(job);
@@ -1459,7 +1470,7 @@ export class Scheduler {
         // Invalidated — discard result
         entry.text = "(Synthesis invalidated by a new intervention)";
         this.callbacks.onEntryUpdate(entry);
-        this.callbacks.onEntryCompleted(entry.id, { status: "ok", signal: null });
+        this.callbacks.onEntryCompleted(entry.id, { status: "ok", signal: null, counted: true });
         // Already-written output can't be taken back, so say so instead.
         this.addEntry({ from: "system", kind: "system", text: "Synthesis invalidated by a new intervention." });
         return "continue";
@@ -1469,7 +1480,7 @@ export class Scheduler {
         const summary = result.text.trim();
         entry.text = summary;
         this.callbacks.onEntryUpdate(entry);
-        this.callbacks.onEntryCompleted(entry.id, { status: "ok", signal: null });
+        this.callbacks.onEntryCompleted(entry.id, { status: "ok", signal: null, counted: true });
 
         this.implementationSummary = summary;
         this.pendingSynthesis = null;

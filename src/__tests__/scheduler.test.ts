@@ -1422,6 +1422,38 @@ describe("working notes and trace", () => {
     expect(agents.codex.lastMessage).toContain("Looking.");
   });
 
+  it("marks a turn's signal as counted when no intervention arrived during it", async () => {
+    startDebate("claude");
+    await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
+    const entry = messageEntryOf("claude");
+    agents.claude.complete("Answer.\n\n<<CONTINUE>>");
+
+    await vi.waitFor(() => expect(agents.codex.isPending()).toBe(true));
+    expect(callbacks.onEntryCompleted).toHaveBeenCalledWith(entry.id, {
+      status: "ok",
+      signal: "continue",
+      counted: true,
+      closesDebate: false,
+    });
+  });
+
+  it("marks a signal from an older epoch as not counted", async () => {
+    const running = startDebate("claude");
+    await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
+    const entry = messageEntryOf("claude");
+    running.intervene("new fact", "both");
+    agents.claude.complete("Answer.\n\n<<CONSENSUS>>");
+
+    await vi.waitFor(() =>
+      expect(callbacks.onEntryCompleted).toHaveBeenCalledWith(entry.id, {
+        status: "ok",
+        signal: "consensus",
+        counted: false,
+        closesDebate: false,
+      }),
+    );
+  });
+
   it("does not reset a turn without notes even if the result differs from the stream", async () => {
     startDebate("claude");
     await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));

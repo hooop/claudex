@@ -32,7 +32,7 @@ describe("TranscriptStream", () => {
     const e = entry({ from: "claude", kind: "message" });
     stream.entryStarted(e);
     stream.chunk(e.id, "Hello.\n");
-    stream.entryCompleted(e.id, { status: "ok", signal: "continue" });
+    stream.entryCompleted(e.id, { status: "ok", signal: "continue", counted: true });
 
     const lines = plain().split("\n");
     expect(lines[0]).toContain("Claude");
@@ -46,7 +46,7 @@ describe("TranscriptStream", () => {
     const e = entry({ from: "codex", kind: "message" });
     stream.entryStarted(e);
     stream.chunk(e.id, "one line\n");
-    stream.entryCompleted(e.id, { status: "ok", signal: "continue" });
+    stream.entryCompleted(e.id, { status: "ok", signal: "continue", counted: true });
     for (const write of writes) expect(write.endsWith("\n")).toBe(true);
   });
 
@@ -86,7 +86,7 @@ describe("TranscriptStream", () => {
     stream.entryStarted(e);
     // Even if the agent produces one itself.
     stream.chunk(e.id, "before\u001b[2J\u001b[3Jafter\n");
-    stream.entryCompleted(e.id, { status: "ok", signal: "continue" });
+    stream.entryCompleted(e.id, { status: "ok", signal: "continue", counted: true });
     expect(output()).not.toMatch(/\u001b\[[0-9]*[JH]/);
     expect(output()).toContain("beforeafter");
   });
@@ -96,7 +96,7 @@ describe("TranscriptStream", () => {
     const e = entry({ from: "claude", kind: "message" });
     stream.entryStarted(e);
     stream.chunk(e.id, `${"✓".repeat(30)}${"text rather long ".repeat(8)}\n`);
-    stream.entryCompleted(e.id, { status: "ok", signal: null });
+    stream.entryCompleted(e.id, { status: "ok", signal: null, counted: true });
 
     const body = plain()
       .split("\n")
@@ -113,7 +113,7 @@ describe("TranscriptStream", () => {
     stream.entryStarted(e);
     stream.chunk(e.id, "Agreed.\n\n");
     stream.chunk(e.id, "<<CONSENSUS>>");
-    stream.entryCompleted(e.id, { status: "ok", signal: "consensus" });
+    stream.entryCompleted(e.id, { status: "ok", signal: "consensus", counted: true });
     expect(plain()).not.toContain("CONSENSUS");
     expect(plain()).toContain("Agreed.");
   });
@@ -123,7 +123,7 @@ describe("TranscriptStream", () => {
     const e = entry({ from: "claude", kind: "message" });
     stream.entryStarted(e);
     stream.chunk(e.id, "Text\n<<CONSENSUS>>\nactually no\n");
-    stream.entryCompleted(e.id, { status: "ok", signal: null });
+    stream.entryCompleted(e.id, { status: "ok", signal: null, counted: true });
     expect(plain()).toContain("<<CONSENSUS>>");
     expect(plain()).toContain("actually no");
   });
@@ -145,7 +145,7 @@ describe("TranscriptStream", () => {
     stream.chunk(e.id, "I am looking at the file");
     stream.entry(entry({ from: "claude", kind: "system", text: "Read src/cli.tsx" }));
     stream.chunk(e.id, " and I continue\n");
-    stream.entryCompleted(e.id, { status: "ok", signal: "continue" });
+    stream.entryCompleted(e.id, { status: "ok", signal: "continue", counted: true });
 
     const body = plain();
     expect(body.indexOf("I am looking at the file")).toBeLessThan(body.indexOf("Read src/cli.tsx"));
@@ -156,10 +156,10 @@ describe("TranscriptStream", () => {
     const { stream, writes } = harness();
     const e = entry({ from: "claude", kind: "message" });
     stream.entryStarted(e);
-    stream.entryCompleted(e.id, { status: "ok", signal: "continue" });
+    stream.entryCompleted(e.id, { status: "ok", signal: "continue", counted: true });
     const before = writes.length;
     stream.chunk(e.id, "too late");
-    stream.entryCompleted(e.id, { status: "ok", signal: "continue" });
+    stream.entryCompleted(e.id, { status: "ok", signal: "continue", counted: true });
     expect(writes.length).toBe(before);
   });
 
@@ -172,7 +172,7 @@ describe("TranscriptStream", () => {
       const e = entry({ from, kind: "message" });
       stream.entryStarted(e);
       stream.chunk(e.id, "My analysis.\n");
-      stream.entryCompleted(e.id, { status: "ok", signal, closesDebate });
+      stream.entryCompleted(e.id, { status: "ok", signal, counted: true, closesDebate });
       return plain();
     };
 
@@ -216,7 +216,7 @@ describe("TranscriptStream", () => {
       const e = entry({ from: "system", kind: "summary" });
       stream.entryStarted(e);
       stream.chunk(e.id, "Final specification.\n");
-      stream.entryCompleted(e.id, { status: "ok", signal: null });
+      stream.entryCompleted(e.id, { status: "ok", signal: null, counted: true });
       expect(plain()).not.toContain("no decision signalled");
     });
 
@@ -267,7 +267,7 @@ describe("TranscriptStream", () => {
     stream.chunk(e.id, "line one\n");
     const afterFirst = writes.join("");
     stream.chunk(e.id, "line two\n");
-    stream.entryCompleted(e.id, { status: "ok", signal: "continue" });
+    stream.entryCompleted(e.id, { status: "ok", signal: "continue", counted: true });
     expect(writes.join("").startsWith(afterFirst)).toBe(true);
   });
 
@@ -277,7 +277,7 @@ describe("TranscriptStream", () => {
       const e = entry({ from: "claude", kind: "message" });
       stream.entryStarted(e);
       stream.chunk(e.id, `turn ${i}\n`);
-      stream.entryCompleted(e.id, { status: "ok", signal: "continue" });
+      stream.entryCompleted(e.id, { status: "ok", signal: "continue", counted: true });
     }
     // Each write carries only new text: the sum stays linear.
     const total = writes.join("").length;
@@ -298,7 +298,7 @@ describe("TranscriptStream", () => {
     stream.chunk(e.id, "a text long enough to need wrapping several times\n");
     width = 80;
     stream.chunk(e.id, "and a second line just as long but which fits now\n");
-    stream.entryCompleted(e.id, { status: "ok", signal: "continue" });
+    stream.entryCompleted(e.id, { status: "ok", signal: "continue", counted: true });
 
     const lines = writes.join("").replace(/\u001b\[[0-9;]*m/g, "").split("\n");
     for (const line of lines) expect(line.length).toBeLessThanOrEqual(80);
@@ -356,7 +356,7 @@ describe("TranscriptStream — frozen lines", () => {
     const e = entry({ from: "claude", kind: "message" });
     stream.entryStarted(e);
     stream.chunk(e.id, "```ts\nconst a = 1;\n```\n");
-    stream.entryCompleted(e.id, { status: "ok", signal: "continue" });
+    stream.entryCompleted(e.id, { status: "ok", signal: "continue", counted: true });
 
     // "│" followed by a space would be copied along with the text on selection.
     expect(plain().split("\n")).not.toContain("│ ");
@@ -391,7 +391,7 @@ describe("TranscriptStream — reset", () => {
     stream.reset(e.id, "");
     expect(tails.at(-1)).toBeNull();
     stream.chunk(e.id, "Answer.");
-    stream.entryCompleted(e.id, { status: "ok", signal: "continue" });
+    stream.entryCompleted(e.id, { status: "ok", signal: "continue", counted: true });
 
     const lines = plainLines();
     expect(lines[0]).toContain("Claude");
@@ -409,7 +409,7 @@ describe("TranscriptStream — reset", () => {
     stream.entry(entry({ from: "human", kind: "message", text: "Please hurry." }));
     stream.reset(e.id, "");
     stream.chunk(e.id, "Answer.\n");
-    stream.entryCompleted(e.id, { status: "ok", signal: "continue" });
+    stream.entryCompleted(e.id, { status: "ok", signal: "continue", counted: true });
 
     const lines = plainLines();
     const text = lines.join("\n");
@@ -430,7 +430,7 @@ describe("TranscriptStream — reset", () => {
     stream.chunk(e.id, "Kept part. Note");
     stream.raw(["--- frozen ---"]);
     stream.reset(e.id, "Kept part.");
-    stream.entryCompleted(e.id, { status: "ok", signal: "continue" });
+    stream.entryCompleted(e.id, { status: "ok", signal: "continue", counted: true });
 
     const lines = plainLines();
     expect(lines.slice(2, 4)).toEqual(["│ Kept part.", "--- frozen ---"]);
@@ -444,7 +444,7 @@ describe("TranscriptStream — reset", () => {
     stream.chunk(e.id, "Draft.\n");
     stream.reset(e.id, "Final.\n<<CONTINUE>>");
     expect(plainLines().join("\n")).not.toContain("<<CONTINUE>>");
-    stream.entryCompleted(e.id, { status: "ok", signal: "continue" });
+    stream.entryCompleted(e.id, { status: "ok", signal: "continue", counted: true });
 
     const text = plainLines().join("\n");
     expect(text).toContain("│ Final.");
@@ -457,12 +457,12 @@ describe("TranscriptStream — reset", () => {
     const first = entry({ from: "claude", kind: "message" });
     stream.entryStarted(first);
     stream.raw(["--- once ---"]);
-    stream.entryCompleted(first.id, { status: "ok", signal: "continue" });
+    stream.entryCompleted(first.id, { status: "ok", signal: "continue", counted: true });
     const second = entry({ from: "codex", kind: "message" });
     stream.entryStarted(second);
     stream.chunk(second.id, "Note\n");
     stream.reset(second.id, "");
-    stream.entryCompleted(second.id, { status: "ok", signal: "continue" });
+    stream.entryCompleted(second.id, { status: "ok", signal: "continue", counted: true });
 
     expect(plainLines().filter((line) => line === "--- once ---")).toHaveLength(1);
     expect(plainLines().join("\n")).not.toContain("Note");
@@ -473,7 +473,7 @@ describe("TranscriptStream — reset", () => {
     const done = entry({ from: "claude", kind: "message" });
     stream.entryStarted(done);
     stream.chunk(done.id, "Finished.\n");
-    stream.entryCompleted(done.id, { status: "ok", signal: "continue" });
+    stream.entryCompleted(done.id, { status: "ok", signal: "continue", counted: true });
     const running = entry({ from: "codex", kind: "message" });
     stream.entryStarted(running);
     stream.chunk(running.id, "Running.\n");
@@ -494,7 +494,7 @@ describe("TranscriptStream — reset", () => {
       stream.chunk(e.id, "Looking.\n");
       if (withReset) stream.reset(e.id, "");
       stream.chunk(e.id, "Answer.\n");
-      stream.entryCompleted(e.id, { status: "ok", signal: "continue" });
+      stream.entryCompleted(e.id, { status: "ok", signal: "continue", counted: true });
       return output();
     };
     expect(run(true)).toBe(run(false));

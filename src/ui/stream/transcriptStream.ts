@@ -27,7 +27,7 @@
  */
 
 import type { AgentId, TranscriptEntry } from "../../types.js";
-import type { Signal } from "../../orchestrator/types.js";
+import type { EntryOutcome, Signal } from "../../orchestrator/types.js";
 import { AGENT_STYLE, ERROR_STYLE, HUMAN_STYLE, RAIL_WIDTH, SUMMARY_STYLE, SYSTEM_STYLE } from "../theme.js";
 import chalk from "chalk";
 import { LineBuffer, displayWidth, truncateEnd, type PhysicalLine } from "./lineBuffer.js";
@@ -49,12 +49,6 @@ export interface TailView {
   color: string;
   rail: boolean;
 }
-
-/** How a streaming entry ended, as far as the renderer needs to care. */
-export type EntryOutcome =
-  | { status: "ok"; signal: Signal; closesDebate?: boolean }
-  | { status: "error"; message: string }
-  | { status: "cancelled" };
 
 /**
  * What the agent decided, in words, closing its turn.
