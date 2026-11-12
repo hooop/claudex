@@ -87,6 +87,13 @@ class FakeAgent implements CodingAgent {
     this.pendingResolve = null;
   }
 
+  /** Complete the pending send with any result, partial text included. */
+  resolveWith(result: AgentResult): void {
+    if (!this.pendingResolve) throw new Error("No pending send");
+    this.pendingResolve(result);
+    this.pendingResolve = null;
+  }
+
   /**
    * Complete the pending send with cancellation.
    */
@@ -1413,6 +1420,56 @@ describe("working notes and trace", () => {
     expect(callbacks.onOutputReset).toHaveBeenLastCalledWith(entry.id, "Looking.\n\n<<CONTINUE>>");
     expect(entry.text).toBe("Looking.");
     expect(agents.codex.lastMessage).toContain("Looking.");
+  });
+
+  it("does not reset a turn without notes even if the result differs from the stream", async () => {
+    startDebate("claude");
+    await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
+    agents.claude.streamText("Streamed draft.");
+    agents.claude.complete("Final answer.\n\n<<CONTINUE>>");
+
+    await vi.waitFor(() => expect(agents.codex.isPending()).toBe(true));
+    expect(callbacks.onOutputReset).not.toHaveBeenCalled();
+    expect(messageEntryOf("claude").text).toBe("Final answer.");
+  });
+
+  for (const ending of ["error", "cancelled"] as const) {
+    it(`resets a ${ending === "error" ? "failed" : "cancelled"} turn with notes to its partial text`, async () => {
+      startDebate("claude");
+      await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
+      const entry = messageEntryOf("claude");
+
+      agents.claude.streamText("Looking.");
+      agents.claude.emitNote("Looking.", true);
+      agents.claude.streamText("Half an");
+      const completed = vi.mocked(callbacks.onEntryCompleted);
+      const completedBefore = completed.mock.calls.length;
+      agents.claude.resolveWith(
+        ending === "error"
+          ? { kind: "error", message: "boom", partialText: "Looking.\n\nHalf an" }
+          : { kind: "cancelled", partialText: "Looking.\n\nHalf an" },
+      );
+
+      await vi.waitFor(() => expect(completed.mock.calls.length).toBe(completedBefore + 1));
+      expect(callbacks.onOutputReset).toHaveBeenLastCalledWith(entry.id, "Looking.\n\nHalf an");
+      const resetOrder = vi.mocked(callbacks.onOutputReset).mock.invocationCallOrder.at(-1) ?? 0;
+      const completedOrder = completed.mock.invocationCallOrder.at(-1) ?? 0;
+      expect(resetOrder).toBeLessThan(completedOrder);
+      expect(entry.text.startsWith("Looking.\n\nHalf an")).toBe(true);
+    });
+  }
+
+  it("does not reset a failed turn whose partial text matches the stream", async () => {
+    startDebate("claude");
+    await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
+    agents.claude.streamText("Looking.");
+    agents.claude.emitNote("Looking.", true);
+    agents.claude.streamText("Half");
+    const resetsBefore = vi.mocked(callbacks.onOutputReset).mock.calls.length;
+    agents.claude.resolveWith({ kind: "error", message: "boom", partialText: "Half" });
+
+    await vi.waitFor(() => expect(callbacks.onTurnError).toHaveBeenCalled());
+    expect(vi.mocked(callbacks.onOutputReset).mock.calls.length).toBe(resetsBefore);
   });
 
   it("records notes and tools in the trace", async () => {

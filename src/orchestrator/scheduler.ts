@@ -848,6 +848,9 @@ export class Scheduler {
     const entry = this.addEntry({ from: agent, kind: "message", text: "" }, { streaming: true });
     this.currentEntry = entry;
     let liveText = "";
+    // Only a turn with notes can end with a result that differs from what was
+    // streamed for a reason the view must show; without notes it behaves as before.
+    let hadNotes = false;
     let lastActivity = "waiting:running";
 
     const emitActivity = (activity: AgentActivity) => {
@@ -864,6 +867,7 @@ export class Scheduler {
       this.phase === "debate"
         ? (note: string, streamed: boolean) => {
             if (!this.isRunLive(runToken)) return;
+            hadNotes = true;
             const text = note.trim();
             this.recordTrace(agent, { kind: "note", text });
             // The raw note, paragraph break included, is what was streamed.
@@ -905,7 +909,7 @@ export class Scheduler {
       });
 
       if (!this.isRunLive(runToken)) return "stop";
-      return this.handleJobResult(job, entry, result, liveText);
+      return this.handleJobResult(job, entry, result, hadNotes ? liveText : null);
     } catch (err) {
       if (!this.isRunLive(runToken)) return "stop";
       // Unexpected exception (shouldn't happen with new contract)
@@ -933,7 +937,8 @@ export class Scheduler {
     job: DeliveryJob,
     entry: TranscriptEntry,
     result: AgentResult,
-    liveText: string,
+    /** What the live view shows, when the turn had notes; `null` otherwise. */
+    noteTrimmedText: string | null,
   ): JobOutcome {
     const agent = job.agent;
     const jobEpoch = job.epoch;
@@ -946,7 +951,7 @@ export class Scheduler {
 
         // The adapter's fallback (every segment, when the answer is empty) was
         // not what the live view last showed, so the view starts over from it.
-        if (result.text !== liveText) this.callbacks.onOutputReset(entry.id, result.text);
+        this.resetOutputIfChanged(entry, noteTrimmedText, result.text);
 
         // Parse the single shared protocol grammar before changing any causal
         // state. The visible body never includes a recognised marker.
@@ -1077,6 +1082,7 @@ export class Scheduler {
         // Show partial text in transcript if any
         if (result.partialText) {
           entry.text = result.partialText;
+          this.resetOutputIfChanged(entry, noteTrimmedText, result.partialText);
         }
         entry.kind = "error";
         entry.text += `\n\nError: ${result.message}`;
@@ -1093,6 +1099,7 @@ export class Scheduler {
 
         if (result.partialText) {
           entry.text = result.partialText;
+          this.resetOutputIfChanged(entry, noteTrimmedText, result.partialText);
         }
         entry.kind = "error";
         entry.text += "\n\n(Cancelled)";
@@ -1101,6 +1108,16 @@ export class Scheduler {
 
         return "cancelled";
       }
+    }
+  }
+
+  /**
+   * After a turn with notes, the live view may no longer match the text the
+   * entry keeps (the adapter's fallback, or a partial text): show the latter.
+   */
+  private resetOutputIfChanged(entry: TranscriptEntry, noteTrimmedText: string | null, text: string): void {
+    if (noteTrimmedText !== null && text !== noteTrimmedText) {
+      this.callbacks.onOutputReset(entry.id, text);
     }
   }
 
