@@ -18,6 +18,12 @@
  * permission arriving mid-answer therefore interrupts that answer visually — the
  * running message's incomplete line is committed first, and the message picks up
  * on a new line afterwards. The stored transcript still groups each entry whole.
+ *
+ * The one exception to append-only is `reset`: when a working note turns out not
+ * to belong to the answer, the running entry's body is rewound and re-rendered
+ * from the text that remains, through a fresh pipeline, and the lines that had
+ * been interleaved into it are written again after it. Only a writer that can
+ * rewind (`length` and `rewind`) supports it; without one, a reset is ignored.
  */
 
 import type { AgentId, TranscriptEntry } from "../../types.js";
@@ -94,6 +100,10 @@ export interface TranscriptStreamOptions {
   width: () => number;
   onTail: (tail: TailView | null) => void;
   intervalMs?: number;
+  /** Lines written so far. With `rewind`, lets `reset` find the running body. */
+  length?: () => number;
+  /** Drop every line from `toLength` on. */
+  rewind?: (toLength: number) => void;
 }
 
 export function entryStyle(entry: TranscriptEntry): EntryStyle {
@@ -207,9 +217,21 @@ function isInitialSubject(entry: TranscriptEntry): boolean {
   return entry.from === "system" && entry.kind === "system" && entry.text.startsWith("Topic:");
 }
 
+interface ActiveEntry {
+  id: string;
+  pipe: EntryPipeline;
+  from: TranscriptEntry["from"];
+  style: EntryStyle;
+  asciiOnly: boolean;
+  /** Line count right after the header: where a reset rewinds to. */
+  bodyStart: number | null;
+  /** Permanent lines written into the running entry, to write again after a reset. */
+  interleaved: string[];
+}
+
 export class TranscriptStream {
   private readonly controller: StreamController;
-  private active: { id: string; pipe: EntryPipeline; from: TranscriptEntry["from"] } | null = null;
+  private active: ActiveEntry | null = null;
 
   constructor(private readonly options: TranscriptStreamOptions) {
     this.controller = new StreamController({
@@ -222,7 +244,7 @@ export class TranscriptStream {
   /** Pre-formatted permanent lines: the frozen header, the help panel. */
   raw(lines: readonly string[]): void {
     this.interruptActive();
-    this.controller.push(lines);
+    this.pushPermanent(lines);
     this.controller.flush();
   }
 
@@ -242,12 +264,12 @@ export class TranscriptStream {
       // These rows belong only to the terminal presentation; the canonical
       // transcript remains unchanged.
       if (isInitialSubject(entry)) lines.push("", "");
-      this.controller.push(lines);
+      this.pushPermanent(lines);
       this.controller.flush();
       return;
     }
 
-    this.controller.push([
+    this.pushPermanent([
       ...this.headerLines(entry, style),
       ...pipe.push(entry.text),
       ...pipe.finish(false),
@@ -260,10 +282,19 @@ export class TranscriptStream {
     this.interruptActive();
 
     const style = entryStyle(entry);
-    const pipe = new EntryPipeline(style, this.options.width(), shouldUseAscii(entry));
-    this.active = { id: entry.id, pipe, from: entry.from };
+    const asciiOnly = shouldUseAscii(entry);
+    const pipe = new EntryPipeline(style, this.options.width(), asciiOnly);
     this.controller.push(this.headerLines(entry, style));
     this.controller.flush();
+    this.active = {
+      id: entry.id,
+      pipe,
+      from: entry.from,
+      style,
+      asciiOnly,
+      bodyStart: this.options.length?.() ?? null,
+      interleaved: [],
+    };
   }
 
   chunk(id: string, delta: string): void {
@@ -272,6 +303,31 @@ export class TranscriptStream {
     active.pipe.setWidth(this.options.width());
     this.controller.push(active.pipe.push(delta));
     this.controller.schedule();
+  }
+
+  /**
+   * Replace everything streamed so far for the running entry with `text`.
+   *
+   * The new body goes through a fresh pipeline, so a protocol marker at its end
+   * is held back exactly as a streamed one would be, and later chunks continue
+   * from it.
+   */
+  reset(id: string, text: string): void {
+    const active = this.active;
+    const { length, rewind } = this.options;
+    if (!active || active.id !== id || !length || !rewind || active.bodyStart === null) return;
+
+    // Queued lines must reach the writer first, or the rewind would miss them.
+    this.controller.flush();
+    rewind(active.bodyStart);
+
+    active.pipe = new EntryPipeline(active.style, this.options.width(), active.asciiOnly);
+    const lines = active.pipe.push(text);
+    if (active.interleaved.length > 0) {
+      lines.push(...active.pipe.interrupt(), ...active.interleaved);
+    }
+    this.controller.push(lines);
+    this.controller.flush();
   }
 
   entryCompleted(id: string, outcome: EntryOutcome): void {
@@ -327,6 +383,12 @@ export class TranscriptStream {
   private interruptActive(): void {
     if (!this.active) return;
     this.controller.push(this.active.pipe.interrupt());
+  }
+
+  /** Write lines that belong to no running entry, remembering them for a reset. */
+  private pushPermanent(lines: readonly string[]): void {
+    this.active?.interleaved.push(...lines);
+    this.controller.push(lines);
   }
 
   private headerLines(entry: TranscriptEntry, style: EntryStyle): string[] {

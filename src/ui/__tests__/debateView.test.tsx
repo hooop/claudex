@@ -63,6 +63,10 @@ class FakeAgent implements CodingAgent {
     this.options?.onTextDelta?.(delta);
   }
 
+  note(text: string): void {
+    this.options?.onNote?.(text, true);
+  }
+
   emitContext(usedTokens: number, contextWindow: number): void {
     this.options?.onContextUsage?.({ usedTokens, contextWindow });
   }
@@ -419,6 +423,27 @@ describe("DebateView — full-screen viewport", () => {
 
     const committed = t.chunks.join("");
     expect(committed).toContain("incomplete sentence with no line end — now complete");
+
+    t.app.unmount();
+  });
+
+  it("drops a removed note from the viewport", async () => {
+    const t = mount();
+    await vi.waitFor(() => expect(t.agents.claude.pending).toBe(true));
+
+    t.agents.claude.emit("Looking.\n");
+    await tick();
+    expect(t.chunks.join("")).toContain("Looking.");
+
+    t.chunks.length = 0;
+    t.agents.claude.note("Looking.\n");
+    t.agents.claude.emit("Answer.\n");
+    t.agents.claude.complete("Answer.\n");
+    await tick();
+
+    const frame = t.chunks.join("");
+    expect(frame).toContain("Answer.");
+    expect(frame).not.toContain("Looking.");
 
     t.app.unmount();
   });
