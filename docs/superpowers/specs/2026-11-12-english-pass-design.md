@@ -56,18 +56,19 @@ French words: about 65 tracked files.
    other prompt text sent to an agent; `src/agents/*` for prompts sent by the
    adapters). Translate rule by rule. The worked example at the end of
    `CONSENSUS_INSTRUCTIONS` stays (marker alone on the last line).
-2. **Language of the agents' answers.** Today the prompts are in French, so
-   the agents answer in French. With English prompts they would answer in
-   English even when the human writes French. Decision: add one rule to
-   `CONSENSUS_INSTRUCTIONS` and to `SYNTHESIS_PROMPT`: write in the language
-   of the human's messages (the topic). Prompts are English, the debate
-   follows the human. The rule covers the debate messages and the consensus
-   summary only: it states explicitly that code, code comments, commit
-   messages and files written after `/implement` follow the project's own
-   conventions, not the language of the conversation (the rules stay in the
-   agent's context during `/implement`). A new test pins the rule (strict
-   TDD: written first). The symmetry test on `CONSENSUS_INSTRUCTIONS` must
-   still pass. *(Maintainer to confirm, see "Open question".)*
+2. **Language of the agents' answers** (decided by the maintainer,
+   2026-11-12: "same language as the question; if it cannot, and for the
+   other texts, everything in English"). Today the prompts are in French, so
+   the agents answer in French. New rule, added to `CONSENSUS_INSTRUCTIONS`
+   and `SYNTHESIS_PROMPT`: debate messages and the consensus summary are
+   written in the language of the human's messages (the topic); when that
+   language cannot be determined or used, in English. Every other text an
+   agent produces (code, code comments, commit messages, files written
+   after `/implement`) is in English, whatever the language of the
+   conversation; the rules stay in the agent's context during `/implement`,
+   so the rule says this explicitly. New tests pin the rule (strict TDD:
+   written first). The symmetry test on `CONSENSUS_INSTRUCTIONS` must still
+   pass.
 3. **UI strings** (`src/ui/**`, `src/cli.tsx`, `src/launch.ts`, `bin/claudex.mjs`,
    error and usage messages in `src/orchestrator/**`, `src/agents/**`,
    `src/memory/**`, `src/util/**`).
@@ -158,10 +159,6 @@ rule-by-rule review.
 - One language, no i18n layer: simplest, no dependency, matches "nothing in
   French". Rejected: a locale switch (dependency or home-made catalogue,
   extra surface, not asked).
-- Agents answer in the human's language: keeps Claudex usable by
-  non-English speakers, including the maintainer, at the cost of one prompt
-  rule. Rejected: English-only answers (hostile to non-English users);
-  keeping French prompts (contradicts the goal).
 - `/sujet` → `/topic` without alias. Rejected: keeping an alias (French
   left in the code, no users to protect).
 - Fixed `en-US` date locale. Rejected: the system locale (mixes languages in
@@ -169,14 +166,12 @@ rule-by-rule review.
 - Users' existing French memory files are left as they are. Rejected: a
   migration (writes in the user's project for no functional gain).
 - Our own translation, not the fork's.
-- The language rule does not reach code written after `/implement`.
 - French evidence in the memory and in old specs/plans is translated and
   marked, not kept verbatim: the goal is "nothing in French", and the git
   history keeps the originals.
 
-## Open question for the maintainer
+## Answered by the maintainer (2026-11-12)
 
-1. Agents answer in the language of the human's messages (recommended), or
-   always in English?
-2. Permission to modify existing tests for translation only, under the rule
-   in item 7.
+1. Agents answer in the language of the question; English when they cannot,
+   and English for every other text (item 2).
+2. Existing tests may be modified for translation, under the rule in item 7.
