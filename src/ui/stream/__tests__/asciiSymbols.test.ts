@@ -2,55 +2,56 @@ import { describe, expect, it } from "vitest";
 import { AsciiSymbolSanitizer, asciiSymbolsForDisplay } from "../asciiSymbols.js";
 
 describe("asciiSymbolsForDisplay", () => {
-  it("remplace les pictogrammes de statut par leur notation ASCII", () => {
-    expect(asciiSymbolsForDisplay("✅ bon ⚠ attention ❌ non ⏸ pause")).toBe(
-      "[ok] bon [!] attention [x] non [pause] pause",
+  it("replaces status pictograms with their ASCII notation", () => {
+    expect(asciiSymbolsForDisplay("✅ good ⚠ warning ❌ no ⏸ pause")).toBe(
+      "[ok] good [!] warning [x] no [pause] pause",
     );
   });
 
-  it("retire les autres emoji, y compris les séquences composées", () => {
-    expect(asciiSymbolsForDisplay("Départ 🚀 puis test 👩‍💻 terminé")).toBe(
-      "Départ  puis test  terminé",
+  it("removes other emoji, including composed sequences", () => {
+    expect(asciiSymbolsForDisplay("Start 🚀 then test 👩‍💻 done")).toBe(
+      "Start  then test  done",
     );
   });
 
-  it("préserve le français et les caractères structurels ordinaires", () => {
-    expect(asciiSymbolsForDisplay("café — liste | rail ↑↓")).toBe("café — liste | rail ↑↓");
+  // Deliberate French input: accented characters must pass through untouched.
+  it("preserves accented text and ordinary structural characters", () => {
+    expect(asciiSymbolsForDisplay("café — list | rail ↑↓")).toBe("café — list | rail ↑↓");
   });
 
-  // Ces caractères sont Extended_Pictographic sans être des emoji : un agent
-  // qui cite un en-tête de licence ou un nom de produit doit les garder.
-  it("préserve la ponctuation typographique que les agents citent verbatim", () => {
-    expect(asciiSymbolsForDisplay("Copyright © 2024, Node™ et React®")).toBe(
-      "Copyright © 2024, Node™ et React®",
+  // These characters are Extended_Pictographic without being emoji: an agent
+  // quoting a license header or a product name must keep them.
+  it("preserves the typographic punctuation that agents quote verbatim", () => {
+    expect(asciiSymbolsForDisplay("Copyright © 2024, Node™ and React®")).toBe(
+      "Copyright © 2024, Node™ and React®",
     );
-    expect(asciiSymbolsForDisplay("‼ urgent ▶ lancer ☑ fait ✂ couper")).toBe(
-      "‼ urgent ▶ lancer ☑ fait ✂ couper",
+    expect(asciiSymbolsForDisplay("‼ urgent ▶ launch ☑ done ✂ cut")).toBe(
+      "‼ urgent ▶ launch ☑ done ✂ cut",
     );
   });
 
-  it("retire les mêmes caractères quand U+FE0F en demande la présentation emoji", () => {
-    expect(asciiSymbolsForDisplay("▶️ lancer")).toBe(" lancer");
+  it("removes the same characters when U+FE0F asks for the emoji presentation", () => {
+    expect(asciiSymbolsForDisplay("▶️ launch")).toBe(" launch");
   });
 
-  it("retire les emoji par défaut, drapeaux et keycaps", () => {
-    expect(asciiSymbolsForDisplay("⚡ vite 🇫🇷 ici 1️⃣ un")).toBe(
-      " vite  ici  un",
+  it("removes default emoji, flags and keycaps", () => {
+    expect(asciiSymbolsForDisplay("⚡ fast 🇫🇷 here 1️⃣ one")).toBe(
+      " fast  here  one",
     );
   });
 });
 
 describe("AsciiSymbolSanitizer", () => {
-  it("recompose un emoji découpé entre plusieurs fragments", () => {
+  it("reassembles an emoji split across several fragments", () => {
     const sanitizer = new AsciiSymbolSanitizer();
-    expect(sanitizer.push("avant \uD83D")).toBe("avant ");
-    expect(sanitizer.push("\uDE80 après")).toBe(" après");
+    expect(sanitizer.push("before \uD83D")).toBe("before ");
+    expect(sanitizer.push("\uDE80 after")).toBe(" after");
     expect(sanitizer.flush()).toBe("");
   });
 
-  it("attend la variante éventuelle d'un symbole avant de le remplacer", () => {
+  it("waits for a symbol's possible variant before replacing it", () => {
     const sanitizer = new AsciiSymbolSanitizer();
     expect(sanitizer.push("✓")).toBe("");
-    expect(sanitizer.push("️ terminé")).toBe("[ok] terminé");
+    expect(sanitizer.push("️ done")).toBe("[ok] done");
   });
 });

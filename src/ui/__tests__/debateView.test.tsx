@@ -78,7 +78,7 @@ function fakeTerminal(columns = 100, rows = 30) {
   const inputQueue: string[] = [];
 
   const stdout = Object.assign(new EventEmitter(), {
-    // Ink 7 ne dessine que si la sortie est un vrai terminal.
+    // Ink 7 only draws when the output is a real terminal.
     isTTY: true,
     columns,
     rows,
@@ -133,7 +133,7 @@ function mount(options: { fromFullScreen?: boolean; topic?: string } = {}) {
   const debate = (
     <DebateView
       session={session}
-      topic={options.topic ?? "Sujet de test"}
+      topic={options.topic ?? "Test topic"}
       cwd="/tmp"
       status={{
         decisionsCount: 2,
@@ -175,24 +175,24 @@ function mount(options: { fromFullScreen?: boolean; topic?: string } = {}) {
   return { ...terminal, agents, session, app, startDebate: () => app.rerender(debate) };
 }
 
-describe("DebateView — viewport plein écran", () => {
-  it("ouvre la palette sans déclencher la pause d'urgence avec Échap", async () => {
+describe("DebateView — full-screen viewport", () => {
+  it("opens the palette without triggering the emergency pause on Escape", async () => {
     const t = mount();
     await vi.waitFor(() => expect(t.agents.claude.pending).toBe(true));
     const pause = vi.spyOn(t.session, "pause");
-    t.agents.claude.emit(Array.from({ length: 35 }, (_, i) => `stabilisation ${i}\n`).join(""));
+    t.agents.claude.emit(Array.from({ length: 35 }, (_, i) => `settling ${i}\n`).join(""));
     await tick();
-    t.agents.claude.emit("ÉTAT_TRANSITOIRE_À_RESTAURER");
+    t.agents.claude.emit("TRANSIENT_STATE_TO_RESTORE");
     await tick();
     t.chunks.length = 0;
 
     await press(t, "/");
-    await vi.waitFor(() => expect(t.chunks.join("")).toContain("/claude <texte>"));
+    await vi.waitFor(() => expect(t.chunks.join("")).toContain("/claude <text>"));
 
     t.chunks.length = 0;
     await press(t, "\u001b");
     expect(pause).not.toHaveBeenCalled();
-    await vi.waitFor(() => expect(t.chunks.join("")).toContain("ÉTAT_TRANSITOIRE_À_RESTAURER"));
+    await vi.waitFor(() => expect(t.chunks.join("")).toContain("TRANSIENT_STATE_TO_RESTORE"));
 
     await press(t, "\u001b");
     expect(pause).toHaveBeenCalledOnce();
@@ -203,7 +203,7 @@ describe("DebateView — viewport plein écran", () => {
     t.app.unmount();
   });
 
-  it("ouvre les modèles comme les commandes, au-dessus du prompt, et choisit avec Tab", async () => {
+  it("opens the models like the commands, above the prompt, and selects with Tab", async () => {
     const t = mount();
     await vi.waitFor(() => expect(t.agents.claude.pending).toBe(true));
     const pause = vi.spyOn(t.session, "pause");
@@ -219,7 +219,7 @@ describe("DebateView — viewport plein écran", () => {
     expect(frameChunk).toBeDefined();
     const frame = frameChunk!.replace(ANSI_SEQUENCE, "");
     expect(frame.indexOf("gpt-5.6-sol")).toBeLessThan(frame.indexOf("‣"));
-    expect(frame).toContain("↑↓ 1/2 · Tab ou Entrée choisir · Échap fermer");
+    expect(frame).toContain("↑↓ 1/2 · Tab or Enter to choose · Esc close");
     expect(frame).not.toContain("fake-model + fake-model");
 
     await press(t, "\u001b[B");
@@ -233,40 +233,40 @@ describe("DebateView — viewport plein écran", () => {
     t.app.unmount();
   });
 
-  it("n'efface jamais l'écran, même sur une réponse plus haute que le terminal", async () => {
+  it("never clears the screen, even on an answer taller than the terminal", async () => {
     const t = mount();
     await vi.waitFor(() => expect(t.agents.claude.pending).toBe(true));
 
-    // Deux fois la hauteur du terminal, en petits morceaux comme un vrai flux.
+    // Twice the terminal height, in small pieces like a real stream.
     for (let i = 0; i < 60; i++) {
-      t.agents.claude.emit(`ligne de réponse numéro ${i}\n`);
+      t.agents.claude.emit(`answer line number ${i}\n`);
       await tick(2);
     }
-    t.agents.claude.complete("fin");
+    t.agents.claude.complete("end");
     await tick();
 
     const output = t.chunks.join("");
     expect(output).not.toMatch(CLEAR_SCREEN);
-    expect(output).toContain("ligne de réponse numéro 59");
+    expect(output).toContain("answer line number 59");
 
     t.app.unmount();
   });
 
-  it("garde la trame dynamique strictement sous la hauteur du terminal", async () => {
+  it("keeps the dynamic frame strictly below the terminal height", async () => {
     const t = mount();
     await vi.waitFor(() => expect(t.agents.claude.pending).toBe(true));
 
-    // Remplit d'abord l'espace qui maintient le prompt en bas.
+    // First fill the space that keeps the prompt at the bottom.
     for (let i = 0; i < 30; i++) {
-      t.agents.claude.emit(`du texte assez long pour être replié une fois ou deux — tour ${i}\n`);
+      t.agents.claude.emit(`some text long enough to wrap once or twice — turn ${i}\n`);
       await tick(2);
     }
     await tick();
     t.chunks.length = 0;
 
-    // En régime établi, la trame plein écran garde le header fixé en haut.
+    // In steady state, the full-screen frame keeps the header pinned at the top.
     for (let i = 30; i < 70; i++) {
-      t.agents.claude.emit(`ligne établie ${i}\n`);
+      t.agents.claude.emit(`steady line ${i}\n`);
       await tick(2);
     }
     await tick();
@@ -279,20 +279,20 @@ describe("DebateView — viewport plein écran", () => {
     t.app.unmount();
   });
 
-  it("place la première ligne en haut de l'espace libre et garde le prompt en bas", async () => {
+  it("puts the first line at the top of the free space and keeps the prompt at the bottom", async () => {
     const t = mount({ fromFullScreen: true });
     await tick();
     t.chunks.length = 0;
     t.startDebate();
     await vi.waitFor(() => expect(t.agents.claude.pending).toBe(true));
 
-    t.agents.claude.emit("PREMIÈRE INTERVENTION");
+    t.agents.claude.emit("FIRST INTERVENTION");
     await tick();
 
-    const frame = [...t.chunks].reverse().find((chunk) => chunk.includes("PREMIÈRE INTERVENTION"));
+    const frame = [...t.chunks].reverse().find((chunk) => chunk.includes("FIRST INTERVENTION"));
     expect(frame).toBeDefined();
     const lines = frame!.replace(ANSI_SEQUENCE, "").split("\n");
-    const interventionRow = lines.findIndex((line) => line.includes("PREMIÈRE INTERVENTION"));
+    const interventionRow = lines.findIndex((line) => line.includes("FIRST INTERVENTION"));
     const promptRow = lines.findIndex((line) => line.includes("‣"));
 
     expect(interventionRow).toBeGreaterThanOrEqual(0);
@@ -303,10 +303,10 @@ describe("DebateView — viewport plein écran", () => {
     t.app.unmount();
   });
 
-  it("borne l'amorçage sous la hauteur du terminal sans clear-screen", async () => {
+  it("bounds the bootstrap below the terminal height without clear-screen", async () => {
     const t = mount();
     await vi.waitFor(() => expect(t.agents.claude.pending).toBe(true));
-    t.agents.claude.emit("début court");
+    t.agents.claude.emit("short start");
     await tick();
 
     expect(t.chunks.join("")).not.toMatch(CLEAR_SCREEN);
@@ -318,21 +318,21 @@ describe("DebateView — viewport plein écran", () => {
   });
 
   /**
-   * Limite assumée depuis Ink 7 : rétrécir la fenêtre pendant l'amorçage efface
-   * l'écran et réécrit le tampon statique, donc les lignes déjà affichées
-   * peuvent apparaître en double. Ink efface dès qu'une trame précédente
-   * dépassait la fenêtre courante (`shouldClearTerminalForFrame`,
-   * `wasOverflowing`), et l'amorçage dessine délibérément une trame pleine
-   * hauteur pour garder la saisie en bas de l'écran.
+   * Accepted limit since Ink 7: shrinking the window during bootstrap clears
+   * the screen and rewrites the static buffer, so lines already shown may
+   * appear twice. Ink clears as soon as a previous frame exceeded the current
+   * window (`shouldClearTerminalForFrame`, `wasOverflowing`), and the
+   * bootstrap deliberately draws a full-height frame to keep the input at the
+   * bottom of the screen.
    *
-   * C'est purement cosmétique : le transcript archivé est construit depuis
-   * l'état de l'ordonnanceur, jamais depuis le terminal. Ce test verrouille
-   * donc ce qui compte — aucune perte de contenu. Voir limits.md.
+   * This is purely cosmetic: the archived transcript is built from the
+   * scheduler state, never from the terminal. This test therefore locks what
+   * matters — no content loss. See limits.md.
    */
-  it("ne perd aucun contenu si le terminal rétrécit pendant l'amorçage", async () => {
+  it("loses no content if the terminal shrinks during bootstrap", async () => {
     const t = mount();
     await vi.waitFor(() => expect(t.agents.claude.pending).toBe(true));
-    t.agents.claude.emit("quelques mots");
+    t.agents.claude.emit("a few words");
     await tick();
 
     t.stdout.rows = 12;
@@ -340,17 +340,17 @@ describe("DebateView — viewport plein écran", () => {
     await tick();
 
     const output = t.chunks.join("");
-    expect(output).toContain("Topic: Sujet de test");
-    expect(output).toContain("quelques mots");
+    expect(output).toContain("Topic: Test topic");
+    expect(output).toContain("a few words");
 
     t.app.unmount();
   });
 
-  it("permet de remonter dans un long transcript sans déplacer le footer", async () => {
+  it("allows scrolling up a long transcript without moving the footer", async () => {
     const t = mount();
     await vi.waitFor(() => expect(t.agents.claude.pending).toBe(true));
 
-    t.agents.claude.emit(Array.from({ length: 50 }, (_, i) => `ligne historique ${i}\n`).join(""));
+    t.agents.claude.emit(Array.from({ length: 50 }, (_, i) => `history line ${i}\n`).join(""));
     await tick();
     t.chunks.length = 0;
 
@@ -358,23 +358,23 @@ describe("DebateView — viewport plein écran", () => {
     await tick();
 
     const output = t.chunks.join("");
-    expect(output).toContain("ligne historique");
+    expect(output).toContain("history line");
     expect(output).toContain("‣");
 
     t.app.unmount();
   });
 
-  it("garde le header fixé après un agrandissement du terminal", async () => {
+  it("keeps the header pinned after the terminal grows", async () => {
     const t = mount();
     await vi.waitFor(() => expect(t.agents.claude.pending).toBe(true));
-    t.agents.claude.emit(Array.from({ length: 35 }, (_, i) => `ligne ${i}\n`).join(""));
+    t.agents.claude.emit(Array.from({ length: 35 }, (_, i) => `line ${i}\n`).join(""));
     await tick();
     t.chunks.length = 0;
 
     t.stdout.rows = 50;
     t.stdout.emit("resize");
     await tick();
-    t.agents.claude.emit("après agrandissement\n");
+    t.agents.claude.emit("after growth\n");
     await tick();
 
     for (const chunk of t.chunks) {
@@ -384,52 +384,52 @@ describe("DebateView — viewport plein écran", () => {
     t.app.unmount();
   });
 
-  it("garde chaque ligne du transcript visible dans la trame", async () => {
+  it("keeps every transcript line visible in the frame", async () => {
     const t = mount();
     await vi.waitFor(() => expect(t.agents.claude.pending).toBe(true));
 
-    t.agents.claude.emit("une phrase parfaitement reconnaissable\n");
+    t.agents.claude.emit("a perfectly recognizable sentence\n");
     await tick();
-    t.agents.claude.emit("et une seconde\n");
-    t.agents.claude.complete("fin");
+    t.agents.claude.emit("and a second one\n");
+    t.agents.claude.complete("end");
     await tick();
 
     const output = t.chunks.join("");
-    expect(output).toContain("une phrase parfaitement reconnaissable");
+    expect(output).toContain("a perfectly recognizable sentence");
 
     t.app.unmount();
   });
 
-  it("garde la ligne en cours hors du flux permanent jusqu'à ce qu'elle soit complète", async () => {
+  it("keeps the line in progress out of the permanent flow until it is complete", async () => {
     const t = mount();
     await vi.waitFor(() => expect(t.agents.claude.pending).toBe(true));
 
-    t.agents.claude.emit("phrase incomplete sans fin de ligne");
+    t.agents.claude.emit("incomplete sentence with no line end");
     await tick();
 
-    // Elle est visible (dans le pied de page redessinable), mais pas encore
-    // committée : la preuve, elle n'apparaît qu'une fois et disparaît du frame
-    // suivant plutôt que de rester dans le scrollback.
+    // It is visible (in the redrawable footer) but not committed yet: the proof
+    // is that it appears only once and disappears from the next frame rather
+    // than staying in the scrollback.
     const beforeCommit = t.chunks.join("");
-    expect(beforeCommit).toContain("phrase incomplete sans fin de ligne");
+    expect(beforeCommit).toContain("incomplete sentence with no line end");
 
     t.chunks.length = 0;
-    t.agents.claude.emit(" — maintenant terminée\n");
+    t.agents.claude.emit(" — now complete\n");
     await tick();
 
     const committed = t.chunks.join("");
-    expect(committed).toContain("phrase incomplete sans fin de ligne — maintenant terminée");
+    expect(committed).toContain("incomplete sentence with no line end — now complete");
 
     t.app.unmount();
   });
 
-  it("écrit uniquement le sujet sous le header, une seule fois au démarrage", async () => {
+  it("writes only the topic under the header, once at startup", async () => {
     const t = mount();
     await tick();
     const output = t.chunks.join("");
     expect(output.split("\u25b2 Claudex").length - 1).toBe(0);
-    expect(output).toContain("Topic: Sujet de test");
-    expect(output).not.toContain(":: Topic: Sujet de test");
+    expect(output).toContain("Topic: Test topic");
+    expect(output).not.toContain(":: Topic: Test topic");
 
     const footerFrame = [...t.chunks]
       .reverse()
@@ -447,37 +447,37 @@ describe("DebateView — viewport plein écran", () => {
     t.app.unmount();
   });
 
-  it("garde le transcript visible quand le sujet collé est très long", async () => {
-    const t = mount({ topic: "un sujet collé très long ".repeat(400) });
+  it("keeps the transcript visible when the pasted topic is very long", async () => {
+    const t = mount({ topic: "a very long pasted topic ".repeat(400) });
     await vi.waitFor(() => expect(t.agents.claude.pending).toBe(true));
 
-    t.agents.claude.emit("PREMIÈRE INTERVENTION\n");
+    t.agents.claude.emit("FIRST INTERVENTION\n");
     await tick();
 
-    const frame = [...t.chunks].reverse().find((chunk) => chunk.includes("PREMIÈRE INTERVENTION"));
+    const frame = [...t.chunks].reverse().find((chunk) => chunk.includes("FIRST INTERVENTION"));
     expect(frame).toBeDefined();
-    expect(frame!.replace(ANSI_SEQUENCE, "")).toContain("/sujet pour le voir en entier");
+    expect(frame!.replace(ANSI_SEQUENCE, "")).toContain("/topic to see it in full");
     for (const chunk of t.chunks) {
       expect((chunk.match(CURSOR_UP) ?? []).length).toBeLessThan(t.stdout.rows);
     }
     t.app.unmount();
   });
 
-  it("transmet aux agents un collage qui commence par une barre oblique", async () => {
+  it("forwards to the agents a paste that starts with a slash", async () => {
     const t = mount();
     await vi.waitFor(() => expect(t.agents.claude.pending).toBe(true));
     t.chunks.length = 0;
 
-    await press(t, "\u001b[200~// remarque collée\nsuite du code\u001b[201~");
+    await press(t, "\u001b[200~// pasted remark\nrest of the code\u001b[201~");
     await press(t, "\r");
 
     await vi.waitFor(() => {
-      expect(t.chunks.join("").replace(ANSI_SEQUENCE, "")).toContain("// remarque collée");
+      expect(t.chunks.join("").replace(ANSI_SEQUENCE, "")).toContain("// pasted remark");
     });
     t.app.unmount();
   });
 
-  it("réaffiche le sujet complet avec /sujet", async () => {
+  it("shows the full topic again with /topic", async () => {
     const t = mount();
     await vi.waitFor(() => expect(t.agents.claude.pending).toBe(true));
     t.chunks.length = 0;
@@ -487,13 +487,13 @@ describe("DebateView — viewport plein écran", () => {
 
     await vi.waitFor(() => {
       const output = t.chunks.join("").replace(ANSI_SEQUENCE, "");
-      expect(output).toContain("Sujet complet");
-      expect(output).toContain("Sujet de test");
+      expect(output).toContain("Full topic");
+      expect(output).toContain("Test topic");
     });
     t.app.unmount();
   });
 
-  it("affiche séparément l'occupation de contexte des deux agents", async () => {
+  it("shows the context usage of the two agents separately", async () => {
     const t = mount();
     await vi.waitFor(() => expect(t.agents.claude.pending).toBe(true));
     t.chunks.length = 0;
@@ -502,48 +502,48 @@ describe("DebateView — viewport plein écran", () => {
 
     await vi.waitFor(() => {
       const output = t.chunks.join("").replace(ANSI_SEQUENCE, "");
-      expect(output).toContain("fake-model · ctx 75% libre + fake-model · ctx —");
+      expect(output).toContain("fake-model · ctx 75% free + fake-model · ctx —");
     });
     t.app.unmount();
   });
 });
 
-describe("helpers d'amorçage", () => {
-  it("découpe les blocs du renderer sans perdre les lignes vides", () => {
-    expect(transcriptBlockLines("ligne 1\n\nligne 3\n")).toEqual(["ligne 1", "", "ligne 3"]);
+describe("bootstrap helpers", () => {
+  it("splits the renderer blocks without losing blank lines", () => {
+    expect(transcriptBlockLines("line 1\n\nline 3\n")).toEqual(["line 1", "", "line 3"]);
   });
 
-  it("sélectionne une fenêtre depuis le bas du transcript", () => {
-    const lines = Array.from({ length: 10 }, (_, index) => `ligne ${index}`);
-    expect(transcriptWindow(lines, 3, 0)).toEqual(["ligne 7", "ligne 8", "ligne 9"]);
-    expect(transcriptWindow(lines, 3, 2)).toEqual(["ligne 5", "ligne 6", "ligne 7"]);
-    expect(transcriptWindow(lines, 3, 99)).toEqual(["ligne 0", "ligne 1", "ligne 2"]);
+  it("selects a window from the bottom of the transcript", () => {
+    const lines = Array.from({ length: 10 }, (_, index) => `line ${index}`);
+    expect(transcriptWindow(lines, 3, 0)).toEqual(["line 7", "line 8", "line 9"]);
+    expect(transcriptWindow(lines, 3, 2)).toEqual(["line 5", "line 6", "line 7"]);
+    expect(transcriptWindow(lines, 3, 99)).toEqual(["line 0", "line 1", "line 2"]);
   });
 });
 
-describe("sujet dans le header", () => {
-  it("laisse un sujet court tel quel", () => {
-    expect(topicHeaderLines("Sujet de test", 60)).toEqual(["Topic: Sujet de test"]);
+describe("topic in the header", () => {
+  it("leaves a short topic as is", () => {
+    expect(topicHeaderLines("Test topic", 60)).toEqual(["Topic: Test topic"]);
   });
 
-  it("borne un long sujet à trois lignes qui renvoient vers /sujet", () => {
-    const lines = topicHeaderLines("mot ".repeat(500), 60);
+  it("caps a long topic at three rows that point to /topic", () => {
+    const lines = topicHeaderLines("word ".repeat(500), 60);
 
     expect(lines).toHaveLength(3);
-    expect(lines[2]).toMatch(/… \/sujet pour le voir en entier$/);
+    expect(lines[2]).toMatch(/… \/topic to see it in full$/);
     for (const line of lines) expect(displayWidth(line)).toBeLessThanOrEqual(60);
   });
 
-  it("garde un sujet d'exactement trois lignes sans renvoi", () => {
+  it("keeps a topic of exactly three rows without a pointer", () => {
     const lines = topicHeaderLines("x".repeat(60 * 3 - "Topic: ".length), 60);
 
     expect(lines).toHaveLength(3);
-    expect(lines.join("")).not.toContain("/sujet");
+    expect(lines.join("")).not.toContain("/topic");
   });
 
-  it("affiche un sujet multiligne sur une seule ligne logique", () => {
-    expect(topicHeaderLines("première\nseconde\r\n\ttroisième", 60)).toEqual([
-      "Topic: première seconde troisième",
+  it("shows a multiline topic on a single logical row", () => {
+    expect(topicHeaderLines("first\nsecond\r\n\tthird", 60)).toEqual([
+      "Topic: first second third",
     ]);
   });
 });

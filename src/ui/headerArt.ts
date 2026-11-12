@@ -33,15 +33,15 @@ const FLASH_WINDOW = 0.12;
 const FLASH_DENSITY = 0.8;
 
 export const HEADER_ANIMATIONS = [
-  { id: "plasma", label: "Plasma psychédélique", staticT: 0 },
-  { id: "interference", label: "Interférences", staticT: 0 },
-  { id: "lorenz", label: "Attracteur de Lorenz", staticT: 5 },
-  { id: "lissajous", label: "Courbes de Lissajous", staticT: 4 },
-  { id: "rule110", label: "Automate Rule 110", staticT: 24 },
-  { id: "perlin", label: "Bruit de Perlin", staticT: 7 },
-  { id: "fibonacci", label: "Spirale de Fibonacci", staticT: 4 },
-  { id: "weierstrass", label: "Fonction de Weierstrass", staticT: 2 },
-  { id: "heat", label: "Équation de la chaleur", staticT: 12 },
+  { id: "plasma", label: "Psychedelic plasma", staticT: 0 },
+  { id: "interference", label: "Interference", staticT: 0 },
+  { id: "lorenz", label: "Lorenz attractor", staticT: 5 },
+  { id: "lissajous", label: "Lissajous curves", staticT: 4 },
+  { id: "rule110", label: "Rule 110 automaton", staticT: 24 },
+  { id: "perlin", label: "Perlin noise", staticT: 7 },
+  { id: "fibonacci", label: "Fibonacci spiral", staticT: 4 },
+  { id: "weierstrass", label: "Weierstrass function", staticT: 2 },
+  { id: "heat", label: "Heat equation", staticT: 12 },
 ] as const;
 
 export type HeaderAnimationId = (typeof HEADER_ANIMATIONS)[number]["id"];

@@ -15,14 +15,14 @@ import {
 const ANSI_SEQUENCE = /\u001b\[[0-?]*[ -/]*[@-~]/g;
 
 describe("StatusBar activity formatting", () => {
-  it("aplatit les commandes multiligne et retire les séquences terminal", () => {
+  it("flattens multiline commands and strips terminal sequences", () => {
     expect(flattenActivityLabel("npm test\n  --run\t\u001b[2J maintenant")).toBe(
       "npm test --run maintenant",
     );
-    expect(flattenActivityLabel("✅ terminé 🚀")).toBe("[ok] terminé");
+    expect(flattenActivityLabel("✅ done 🚀")).toBe("[ok] done");
   });
 
-  it("résume plusieurs commandes sur la même ligne", () => {
+  it("summarizes several commands on the same row", () => {
     expect(
       describeActivity({
         kind: "command",
@@ -30,10 +30,10 @@ describe("StatusBar activity formatting", () => {
         label: "npm test",
         activeCount: 3,
       }),
-    ).toBe("3 commandes en cours · $ npm test");
+    ).toBe("3 commands running · $ npm test");
   });
 
-  it("garde un résultat compact jusqu'à l'activité suivante", () => {
+  it("keeps a compact result until the next activity", () => {
     expect(
       describeActivity({
         kind: "command",
@@ -42,15 +42,15 @@ describe("StatusBar activity formatting", () => {
         durationMs: 8_200,
         exitCode: 1,
       }),
-    ).toBe("$ npm test · 8,2 s · code 1");
+    ).toBe("$ npm test · 8.2 s · code 1");
   });
 
-  it("utilise les nouveaux noms et index ANSI des agents", () => {
+  it("uses the new agent names and ANSI indexes", () => {
     expect(AGENT_STYLE.claude).toEqual({ color: "ansi256(210)", badge: "Claude" });
     expect(AGENT_STYLE.codex).toEqual({ color: "ansi256(159)", badge: "Codex" });
   });
 
-  it("coupe une commande avant le bord droit du prompt avec trois points", () => {
+  it("cuts a command before the prompt right edge with three dots", () => {
     const width = 80;
     const fitted = fitActivityDescription(
       "debate",
@@ -58,7 +58,7 @@ describe("StatusBar activity formatting", () => {
       {
         kind: "command",
         status: "running",
-        label: "npm test --run une-suite-de-tests-particulièrement-longue ".repeat(3),
+        label: "npm test --run a-particularly-long-test-suite ".repeat(3),
       },
       width,
     );
@@ -70,20 +70,20 @@ describe("StatusBar activity formatting", () => {
     expect(fixedWidth + displayWidth(fitted)).toBeLessThanOrEqual(statusBarWidth(width));
   });
 
-  it("réserve la largeur du statut ASCII", () => {
+  it("reserves the width of the ASCII status", () => {
     const width = 50;
     const fitted = fitActivityDescription(
       "implementation",
       "codex",
-      { kind: "tool", status: "success", label: "une activité très longue ".repeat(5) },
+      { kind: "tool", status: "success", label: "a very long activity ".repeat(5) },
       width,
     );
-    const fixedWidth = displayWidth("Implémentation  ·  [ok] Codex ");
+    const fixedWidth = displayWidth("Implementation  ·  [ok] Codex ");
 
     expect(fixedWidth + displayWidth(fitted)).toBeLessThanOrEqual(statusBarWidth(width));
   });
 
-  it("n'affiche rien au repos pendant le débat", () => {
+  it("shows nothing at rest during the debate", () => {
     const output = renderToString(
       createElement(StatusBar, {
         phase: "debate",
@@ -99,7 +99,7 @@ describe("StatusBar activity formatting", () => {
     expect(output).not.toContain("Codex");
   });
 
-  it("commence directement par l'agent pendant une activité de débat", () => {
+  it("starts directly with the agent during a debate activity", () => {
     const output = renderToString(
       createElement(StatusBar, {
         phase: "debate",
@@ -111,10 +111,10 @@ describe("StatusBar activity formatting", () => {
     ).replace(ANSI_SEQUENCE, "");
 
     expect(output).toBe("[ok] Claude Read");
-    expect(output).not.toContain("Débat");
+    expect(output).not.toContain("Debate");
   });
 
-  it("conserve les agents dans la phase d'implémentation", () => {
+  it("keeps the agents in the implementation phase", () => {
     const output = renderToString(
       createElement(StatusBar, {
         phase: "implementation",
@@ -125,6 +125,6 @@ describe("StatusBar activity formatting", () => {
       }),
     ).replace(ANSI_SEQUENCE, "");
 
-    expect(output).toBe("Implémentation  ·  Claude + Codex");
+    expect(output).toBe("Implementation  ·  Claude + Codex");
   });
 });

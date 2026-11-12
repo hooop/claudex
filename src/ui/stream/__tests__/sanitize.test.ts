@@ -4,57 +4,58 @@ import { AnsiSanitizer, sanitizeForDisplay, TAB_WIDTH } from "../sanitize.js";
 const ESC = "\u001b";
 
 describe("sanitizeForDisplay", () => {
-  it("retire les séquences de couleur CSI", () => {
-    expect(sanitizeForDisplay(`${ESC}[31mrouge${ESC}[0m`)).toBe("rouge");
+  it("removes CSI color sequences", () => {
+    expect(sanitizeForDisplay(`${ESC}[31mred${ESC}[0m`)).toBe("red");
   });
 
-  it("retire un effacement d'écran", () => {
-    expect(sanitizeForDisplay(`avant${ESC}[2J${ESC}[3J${ESC}[Haprès`)).toBe("avantaprès");
+  it("removes a screen clear", () => {
+    expect(sanitizeForDisplay(`before${ESC}[2J${ESC}[3J${ESC}[Hafter`)).toBe("beforeafter");
   });
 
-  it("retire les séquences OSC et le BEL", () => {
-    expect(sanitizeForDisplay(`${ESC}]0;titre\u0007texte`)).toBe("texte");
-    expect(sanitizeForDisplay("bip\u0007")).toBe("bip");
+  it("removes OSC sequences and BEL", () => {
+    expect(sanitizeForDisplay(`${ESC}]0;title\u0007text`)).toBe("text");
+    expect(sanitizeForDisplay("beep\u0007")).toBe("beep");
   });
 
-  it("retire backspace et retour chariot isolé", () => {
+  it("removes backspace and a lone carriage return", () => {
     expect(sanitizeForDisplay("abc\bd")).toBe("abcd");
-    expect(sanitizeForDisplay("efface\rtout")).toBe("effacetout");
+    expect(sanitizeForDisplay("erase\rall")).toBe("eraseall");
   });
 
-  it("normalise CRLF en LF", () => {
-    expect(sanitizeForDisplay("une\r\ndeux")).toBe("une\ndeux");
+  it("normalizes CRLF to LF", () => {
+    expect(sanitizeForDisplay("one\r\ntwo")).toBe("one\ntwo");
   });
 
-  it("développe les tabulations", () => {
+  it("expands tabs", () => {
     expect(sanitizeForDisplay("a\tb")).toBe("a" + " ".repeat(TAB_WIDTH) + "b");
   });
 
-  it("préserve l'Unicode imprimable et le markdown", () => {
-    const text = "**gras** — café 日本語 🚀 `code`";
+  it("preserves printable Unicode and markdown", () => {
+    // Deliberate French input: the accented "café" must pass through untouched.
+    const text = "**bold** — café 日本語 🚀 `code`";
     expect(sanitizeForDisplay(text)).toBe(text);
   });
 
-  it("préserve les fins de ligne", () => {
-    expect(sanitizeForDisplay("une\ndeux\n")).toBe("une\ndeux\n");
+  it("preserves line ends", () => {
+    expect(sanitizeForDisplay("one\ntwo\n")).toBe("one\ntwo\n");
   });
 });
 
 describe("AnsiSanitizer", () => {
-  it("recolle une séquence coupée entre deux chunks", () => {
+  it("glues back a sequence split between two chunks", () => {
     const s = new AnsiSanitizer();
-    expect(s.push(`texte${ESC}[3`)).toBe("texte");
-    expect(s.push("1msuite")).toBe("suite");
+    expect(s.push(`text${ESC}[3`)).toBe("text");
+    expect(s.push("1mrest")).toBe("rest");
     expect(s.flush()).toBe("");
   });
 
-  it("recolle un ESC isolé en fin de chunk", () => {
+  it("glues back a lone ESC at the end of a chunk", () => {
     const s = new AnsiSanitizer();
     expect(s.push(`a${ESC}`)).toBe("a");
     expect(s.push("[0mb")).toBe("b");
   });
 
-  it("ne retient pas indéfiniment un ESC sans suite", () => {
+  it("does not hold a dangling ESC forever", () => {
     const s = new AnsiSanitizer();
     s.push(`a${ESC}`);
     expect(s.flush()).toBe("");

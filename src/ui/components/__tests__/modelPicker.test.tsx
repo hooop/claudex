@@ -74,7 +74,7 @@ async function press(terminal: ReturnType<typeof mount>, input: string): Promise
 }
 
 describe("ModelPicker", () => {
-  it("reprend la fenêtre et les contrôles de la palette de commandes", async () => {
+  it("reuses the command palette window and controls", async () => {
     const terminal = mount("claude");
     await ready(terminal);
 
@@ -82,11 +82,11 @@ describe("ModelPicker", () => {
     const lines = frame.split("\n");
     expect(lines).toHaveLength(MODEL_PICKER_ROWS);
     expect(frame).toContain("› Opus 5");
-    expect(frame).toContain("— le plus puissant, plus lent");
+    expect(frame).toContain("— most capable, slower");
     expect(frame).toContain("Sonnet 5");
-    expect(frame).toContain("— équilibré (recommandé)");
+    expect(frame).toContain("— balanced (recommended)");
     expect(frame).not.toContain("Fable 5");
-    expect(frame).toContain("↑↓ 1/4 · Tab ou Entrée choisir · Échap fermer");
+    expect(frame).toContain("↑↓ 1/4 · Tab or Enter to choose · Esc close");
 
     const describedLines = lines.filter((line) => line.includes(" — "));
     expect(describedLines).toHaveLength(3);
@@ -96,7 +96,7 @@ describe("ModelPicker", () => {
     terminal.app.unmount();
   });
 
-  it("fait défiler Claude et sélectionne avec Tab", async () => {
+  it("scrolls Claude and selects with Tab", async () => {
     const terminal = mount("claude");
     await ready(terminal);
 
@@ -109,22 +109,22 @@ describe("ModelPicker", () => {
     terminal.app.unmount();
   });
 
-  it("présente Codex dans la même palette et sélectionne avec Tab", async () => {
+  it("shows Codex in the same palette and selects with Tab", async () => {
     const terminal = mount("codex");
     await ready(terminal);
 
     const frame = terminal.output.join("").replace(ANSI_SEQUENCE, "");
-    expect(frame).toContain("› gpt-5.6-sol, effort max — défaut configuré");
-    expect(frame).toContain("↑↓ 1/2 · Tab ou Entrée choisir · Échap fermer");
+    expect(frame).toContain("› gpt-5.6-sol, effort max — configured default");
+    expect(frame).toContain("↑↓ 1/2 · Tab or Enter to choose · Esc close");
     await press(terminal, "\u001b[B");
     await press(terminal, "\t");
     expect(terminal.onSelect).toHaveBeenCalledWith("gpt-5.5");
     terminal.app.unmount();
   });
 
-  // La barre de saisie est inactive tant que le menu est ouvert : sans cela,
-  // Entrée sur un choix surligné ne déclencherait rien du tout.
-  it("sélectionne aussi avec Entrée", async () => {
+  // The input bar is inactive while the menu is open: without this,
+  // Enter on a highlighted choice would trigger nothing at all.
+  it("also selects with Enter", async () => {
     const terminal = mount("claude");
     await ready(terminal);
 
@@ -134,7 +134,7 @@ describe("ModelPicker", () => {
     terminal.app.unmount();
   });
 
-  it("ferme le menu avec Échap", async () => {
+  it("closes the menu with Escape", async () => {
     const terminal = mount("codex");
     await ready(terminal);
 

@@ -51,7 +51,7 @@ export function DecisionViewer(props: {
   return (
     <Box flexDirection="column" height={Math.max(3, height)} paddingX={1} overflow="hidden">
       <Text bold color={BRAND_COLOR} wrap="truncate-end">
-        Décisions actées
+        Settled decisions
       </Text>
       {Array.from({ length: bodyRows }, (_, index) => (
         <Text key={`${visibleOffset}-${index}`} wrap="truncate-end">
@@ -59,7 +59,7 @@ export function DecisionViewer(props: {
         </Text>
       ))}
       <Text color={MUTED_COLOR} wrap="truncate-end">
-        ↑↓ défiler · PgUp/PgDn page · Échap fermer · {first}-{last}/{lines.length}
+        ↑↓ scroll · PgUp/PgDn page · Esc close · {first}-{last}/{lines.length}
       </Text>
     </Box>
   );

@@ -9,8 +9,8 @@ import { INPUT_BAR_RIGHT_PADDING } from "./InputBar.js";
 
 const PHASE_LABEL: Record<Phase, string> = {
   debate: "",
-  implementation: "Implémentation",
-  ended: "Terminé",
+  implementation: "Implementation",
+  ended: "Ended",
 };
 
 /** Align status truncation with the prompt's outer edge and its right breathing room. */
@@ -26,17 +26,17 @@ export function flattenActivityLabel(label: string): string {
 }
 
 export function describeActivity(activity: AgentActivity): string {
-  if (activity.kind === "waiting") return "prépare sa réponse…";
-  if (activity.kind === "responding") return "répond…";
+  if (activity.kind === "waiting") return "preparing its answer…";
+  if (activity.kind === "responding") return "answering…";
 
-  const label = flattenActivityLabel(activity.label) || (activity.kind === "command" ? "commande" : "outil");
+  const label = flattenActivityLabel(activity.label) || (activity.kind === "command" ? "command" : "tool");
   const duration = formatDuration(activity.durationMs);
 
   if (activity.kind === "command") {
     if (activity.status === "running") {
       return (activity.activeCount ?? 1) > 1
-        ? `${activity.activeCount} commandes en cours · $ ${label}`
-        : `exécute : $ ${label}`;
+        ? `${activity.activeCount} commands running · $ ${label}`
+        : `running: $ ${label}`;
     }
     const exit = activity.status === "failure" && activity.exitCode != null ? ` · code ${activity.exitCode}` : "";
     return `$ ${label}${duration}${exit}`;
@@ -134,25 +134,25 @@ export function StatusBar(props: {
 }
 
 function lifecycleLabel(state: "closing" | "shutdown-failed" | "archive-failed"): string {
-  if (state === "closing") return "Fermeture quiescente en cours";
-  if (state === "shutdown-failed") return "Arrêt incomplet · /retry";
-  return "Archive en échec · /retry";
+  if (state === "closing") return "Quiescent shutdown in progress";
+  if (state === "shutdown-failed") return "Incomplete shutdown · /retry";
+  return "Archive failed · /retry";
 }
 
 function suspensionLabel(reason: SuspensionReason | null): string {
   switch (reason) {
     case "waiting-human":
-      return "Réponse humaine attendue";
+      return "Human answer awaited";
     case "autonomy-exhausted":
-      return "Fenêtre d'autonomie épuisée · /resume";
+      return "Autonomy window exhausted · /resume";
     case "protocol-error":
-      return "Protocole invalide · /resume";
+      return "Invalid protocol · /resume";
     case "failed":
-      return "Tour en échec · /resume";
+      return "Turn failed · /resume";
     case "cancelled":
-      return "Tour annulé · /resume";
+      return "Turn cancelled · /resume";
     default:
-      return "[pause] En pause";
+      return "[pause] Paused";
   }
 }
 
@@ -161,5 +161,5 @@ function formatDuration(durationMs: number | undefined): string {
   if (durationMs < 1000) return ` · ${Math.max(0, Math.round(durationMs))} ms`;
   const seconds = durationMs / 1000;
   const digits = seconds < 10 ? 1 : 0;
-  return ` · ${seconds.toFixed(digits).replace(".", ",")} s`;
+  return ` · ${seconds.toFixed(digits)} s`;
 }

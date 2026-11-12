@@ -26,16 +26,16 @@ function isHeaderCharacter(character: string): boolean {
   return " ░▒▓█#".includes(character) || (codePoint >= 0x2801 && codePoint <= 0x28ff);
 }
 
-describe("headerArt — galerie d'équations", () => {
-  it("expose les neuf animations dans un ordre stable, avec le plasma par défaut", () => {
+describe("headerArt — equation gallery", () => {
+  it("exposes the nine animations in a stable order, with plasma as the default", () => {
     expect(HEADER_ANIMATIONS).toHaveLength(9);
     expect(new Set(HEADER_ANIMATIONS.map(({ id }) => id))).toHaveLength(9);
     expect(HEADER_ANIMATIONS.every(({ label }) => label.trim().length > 0)).toBe(true);
     expect(DEFAULT_HEADER_ANIMATION).toBe("plasma");
-    expect(getHeaderAnimation(DEFAULT_HEADER_ANIMATION).label).toBe("Plasma psychédélique");
+    expect(getHeaderAnimation(DEFAULT_HEADER_ANIMATION).label).toBe("Psychedelic plasma");
   });
 
-  it.each([20, 40, 80, 200])("produit cinq lignes de largeur réelle exacte à %i colonnes", (width) => {
+  it.each([20, 40, 80, 200])("produces five rows of exact real width at %i columns", (width) => {
     const expectedWidth = Math.min(width, HEADER_MAX_WIDTH);
 
     for (const { id, staticT } of HEADER_ANIMATIONS) {
@@ -49,7 +49,7 @@ describe("headerArt — galerie d'équations", () => {
     }
   });
 
-  it("reste déterministe, temporellement animé et distinct à la phase canonique", () => {
+  it("stays deterministic, animated over time and distinct at the canonical phase", () => {
     const staticFrames = new Set<string>();
 
     for (const { id, staticT } of HEADER_ANIMATIONS) {
@@ -62,14 +62,14 @@ describe("headerArt — galerie d'équations", () => {
     expect(staticFrames).toHaveLength(HEADER_ANIMATIONS.length);
   });
 
-  it("dessine le plasma uniquement avec des caractères bloc", () => {
+  it("draws the plasma only with block characters", () => {
     for (const t of [0, 8, 24]) {
       const characters = [...fingerprint("plasma", t)].filter((character) => character !== "\n");
       expect(characters.every((character) => " ░▒▓█".includes(character))).toBe(true);
     }
   });
 
-  it("fait évoluer le plasma monochrome de façon pseudo-aléatoire et déterministe", () => {
+  it("evolves the monochrome plasma pseudo-randomly and deterministically", () => {
     const first = headerFrame(80, 0, "plasma").map((row) => row.map(({ color }) => color));
     const later = headerFrame(80, 8, "plasma").map((row) => row.map(({ color }) => color));
     const channels = first
@@ -83,7 +83,7 @@ describe("headerArt — galerie d'équations", () => {
     expect(headerFrame(80, 8, "plasma").map((row) => row.map(({ color }) => color))).toEqual(later);
   });
 
-  it("garde des impulsions colorées perceptibles même après une longue animation", () => {
+  it("keeps perceptible colored pulses even after a long animation", () => {
     const flashColors = new Set(["#2b55f7", "#5dd7c3", "#fdbabf", "#ef3240"]);
 
     for (const start of [0, 800, 2400, 6400]) {
@@ -101,7 +101,7 @@ describe("headerArt — galerie d'équations", () => {
   it.each([
     ["claude", CLAUDE_FLASH_COLOR],
     ["codex", CODEX_FLASH_COLOR],
-  ])("utilise uniquement la couleur de %s pendant sa réflexion", (_agent, flashColor) => {
+  ])("uses only the color of %s while it is thinking", (_agent, flashColor) => {
     const colors = Array.from({ length: 16 }, (_, index) =>
       headerFrame(80, index * 2, "plasma", flashColor),
     ).flat(3) as unknown as Array<{ color: string }>;
@@ -119,7 +119,7 @@ describe("headerArt — galerie d'équations", () => {
     ).toBe(true);
   });
 
-  it("reste entièrement gris entre deux réflexions", () => {
+  it("stays entirely gray between two thinking turns", () => {
     const colors = headerFrame(80, 24, "plasma", null).flat().map(({ color }) => color);
     expect(
       colors.every((color) => {
@@ -131,7 +131,7 @@ describe("headerArt — galerie d'équations", () => {
     ).toBe(true);
   });
 
-  it("enchaîne une rafale au même endroit puis fait dériver les points chauds", () => {
+  it("chains a burst in the same place then drifts the hot spots", () => {
     const counts = Array.from({ length: 10 }, () => 0);
     const currentRuns = Array.from({ length: 10 }, () => 0);
     const longestRuns = Array.from({ length: 10 }, () => 0);
@@ -153,7 +153,7 @@ describe("headerArt — galerie d'équations", () => {
     expect(longestRuns.every((run) => run >= 4)).toBe(true);
   });
 
-  it("n'utilise que les glyphes prévus et garde les autres couleurs immobiles", () => {
+  it("uses only the expected glyphs and keeps the other colors still", () => {
     for (const { id, staticT } of HEADER_ANIMATIONS) {
       const first = headerFrame(80, staticT, id);
       const later = headerFrame(80, staticT + 8, id);
@@ -177,7 +177,7 @@ describe("headerArt — galerie d'équations", () => {
     }
   });
 
-  it("boucle dans les deux sens avec les flèches", () => {
+  it("loops in both directions with the arrows", () => {
     expect(cycleHeaderAnimation("plasma", -1)).toBe("heat");
     expect(cycleHeaderAnimation("heat", 1)).toBe("plasma");
 

@@ -63,24 +63,24 @@ function verdictText(signal: Signal, from: AgentId, closesDebate: boolean): stri
   const me = AGENT_STYLE[from].badge;
   switch (signal) {
     case "continue":
-      return `-> poursuit · passe la main à ${AGENT_STYLE[other(from)].badge}`;
+      return `-> continues · hands over to ${AGENT_STYLE[other(from)].badge}`;
     // The two cases read very differently and must not share a wording: one
     // agreement leaves the debate running, the pair ends it. The scheduler
     // tells us which this is, since it compares the signals after the entry
     // has already been closed.
     case "consensus":
       return closesDebate
-        ? "[ok] Consensus approuvé — le débat est clos"
-        : `[ok] ${me} est prêt pour un consensus — au tour de ${AGENT_STYLE[other(from)].badge}`;
+        ? "[ok] Consensus approved — the debate is closed"
+        : `[ok] ${me} is ready for a consensus — over to ${AGENT_STYLE[other(from)].badge}`;
     case "wait-human":
-      return "[pause] attend ta réponse — débat en pause";
+      return "[pause] waiting for your answer — debate paused";
     // This used to be silent, back when a non-topic closed the session and the
     // return to the welcome screen said it. The conversation stays open now, so
     // the turn has to say what it decided and what happens next like any other.
     case "no-topic":
-      return "Aucun sujet à débattre — le débat démarrera sur ton prochain message";
+      return "No topic to debate — the debate will start on your next message";
     case null:
-      return "[!] aucune décision signalée";
+      return "[!] no decision signalled";
   }
 }
 
@@ -282,11 +282,11 @@ export class TranscriptStream {
     if (outcome.status === "error") {
       lines.push(
         chalk.hex(ERROR_STYLE.color)(
-          `${ERROR_STYLE.badge} Erreur : ${asciiSymbolsForDisplay(outcome.message)}`,
+          `${ERROR_STYLE.badge} Error: ${asciiSymbolsForDisplay(outcome.message)}`,
         ),
       );
     } else if (outcome.status === "cancelled") {
-      lines.push(chalk.dim("(Annulé)"));
+      lines.push(chalk.dim("(Cancelled)"));
     } else if (active.from === "claude" || active.from === "codex") {
       // Only a debater closes a turn with a decision. The synthesis is written
       // by an agent too, but it speaks as the system and signals nothing.
@@ -331,7 +331,7 @@ export class TranscriptStream {
 
   private headerLines(entry: TranscriptEntry, style: EntryStyle): string[] {
     const width = this.options.width();
-    const target = entry.to ? (entry.to === "both" ? " → les deux" : ` → ${entry.to}`) : "";
+    const target = entry.to ? (entry.to === "both" ? " → both" : ` → ${entry.to}`) : "";
     const clock = entry.kind === "summary" ? "" : clockOf(entry.timestamp);
     const isAgent = entry.from === "claude" || entry.from === "codex";
     const badge = isAgent ? style.badge : `* ${style.badge}`;

@@ -27,35 +27,35 @@ function harness(width = 60) {
 }
 
 describe("TranscriptStream", () => {
-  it("écrit un en-tête puis le corps du message", () => {
+  it("writes a header then the message body", () => {
     const { stream, output, plain } = harness();
     const e = entry({ from: "claude", kind: "message" });
     stream.entryStarted(e);
-    stream.chunk(e.id, "Bonjour.\n");
+    stream.chunk(e.id, "Hello.\n");
     stream.entryCompleted(e.id, { status: "ok", signal: "continue" });
 
     const lines = plain().split("\n");
     expect(lines[0]).toContain("Claude");
     expect(lines[0]).not.toContain("● Claude");
-    expect(lines).toContain("│ Bonjour.");
+    expect(lines).toContain("│ Hello.");
     expect(output()).toContain("\u001b[38;5;210m");
   });
 
-  it("termine chaque écriture par une fin de ligne", () => {
+  it("ends every write with a line end", () => {
     const { stream, writes } = harness();
     const e = entry({ from: "codex", kind: "message" });
     stream.entryStarted(e);
-    stream.chunk(e.id, "une ligne\n");
+    stream.chunk(e.id, "one line\n");
     stream.entryCompleted(e.id, { status: "ok", signal: "continue" });
     for (const write of writes) expect(write.endsWith("\n")).toBe(true);
   });
 
-  it("tronque le sujet affiché sur une ligne sans modifier l'entrée canonique", () => {
+  it("truncates the topic shown on one row without modifying the canonical entry", () => {
     const { stream, plain } = harness(40);
     const e = entry({
       from: "system",
       kind: "system",
-      text: `Topic: ${"architecture distribuée ".repeat(5)}\navec reprise`,
+      text: `Topic: ${"distributed architecture ".repeat(5)}\nwith resume`,
     });
     const canonicalText = e.text;
 
@@ -69,7 +69,7 @@ describe("TranscriptStream", () => {
     expect(e.text).toBe(canonicalText);
   });
 
-  it("laisse deux lignes vides entre le sujet et le premier tour de Claude", () => {
+  it("leaves two blank lines between the topic and Claude's first turn", () => {
     const { stream, plain } = harness();
     stream.entry(entry({ from: "system", kind: "system", text: "Topic: architecture" }));
     stream.entryStarted(entry({ from: "claude", kind: "message" }));
@@ -80,177 +80,177 @@ describe("TranscriptStream", () => {
     expect(lines.slice(subject + 1, claude)).toEqual(["", ""]);
   });
 
-  it("n'émet jamais de séquence d'effacement", () => {
+  it("never emits a clearing sequence", () => {
     const { stream, output } = harness();
     const e = entry({ from: "claude", kind: "message" });
     stream.entryStarted(e);
-    // Même si l'agent en produit une lui-même.
-    stream.chunk(e.id, "avant\u001b[2J\u001b[3Japrès\n");
+    // Even if the agent produces one itself.
+    stream.chunk(e.id, "before\u001b[2J\u001b[3Jafter\n");
     stream.entryCompleted(e.id, { status: "ok", signal: "continue" });
     expect(output()).not.toMatch(/\u001b\[[0-9]*[JH]/);
-    expect(output()).toContain("avantaprès");
+    expect(output()).toContain("beforeafter");
   });
 
-  it("remplace les pictogrammes de statut avant de replier la ligne", () => {
+  it("replaces status pictograms before wrapping the line", () => {
     const { stream, plain } = harness(40);
     const e = entry({ from: "claude", kind: "message" });
     stream.entryStarted(e);
-    stream.chunk(e.id, `${"✓".repeat(30)}${"texte assez long ".repeat(8)}\n`);
+    stream.chunk(e.id, `${"✓".repeat(30)}${"text rather long ".repeat(8)}\n`);
     stream.entryCompleted(e.id, { status: "ok", signal: null });
 
     const body = plain()
       .split("\n")
-      .filter((line) => line.includes("texte") || line.includes("assez long"));
+      .filter((line) => line.includes("text") || line.includes("rather long"));
     expect(body.length).toBeGreaterThan(1);
     for (const line of body) expect(displayWidth(line)).toBeLessThanOrEqual(40);
     expect(plain()).not.toContain("✓");
     expect(plain()).toContain("[ok][ok]");
   });
 
-  it("ne commit jamais un marqueur confirmé", () => {
+  it("never commits a confirmed marker", () => {
     const { stream, plain } = harness();
     const e = entry({ from: "claude", kind: "message" });
     stream.entryStarted(e);
-    stream.chunk(e.id, "D'accord.\n\n");
+    stream.chunk(e.id, "Agreed.\n\n");
     stream.chunk(e.id, "<<CONSENSUS>>");
     stream.entryCompleted(e.id, { status: "ok", signal: "consensus" });
     expect(plain()).not.toContain("CONSENSUS");
-    expect(plain()).toContain("D'accord.");
+    expect(plain()).toContain("Agreed.");
   });
 
-  it("garde le marqueur si le tour ne l'a pas confirmé", () => {
+  it("keeps the marker if the turn did not confirm it", () => {
     const { stream, plain } = harness();
     const e = entry({ from: "claude", kind: "message" });
     stream.entryStarted(e);
-    stream.chunk(e.id, "Texte\n<<CONSENSUS>>\nen fait non\n");
+    stream.chunk(e.id, "Text\n<<CONSENSUS>>\nactually no\n");
     stream.entryCompleted(e.id, { status: "ok", signal: null });
     expect(plain()).toContain("<<CONSENSUS>>");
-    expect(plain()).toContain("en fait non");
+    expect(plain()).toContain("actually no");
   });
 
-  it("garde la ligne incomplète hors du terminal, dans le tail", () => {
+  it("keeps the incomplete line out of the terminal, in the tail", () => {
     const { stream, plain, tails } = harness();
     const e = entry({ from: "claude", kind: "message" });
     stream.entryStarted(e);
-    stream.chunk(e.id, "une phrase sans fin");
+    stream.chunk(e.id, "a sentence with no end");
     stream.flush();
-    expect(plain()).not.toContain("une phrase sans fin");
-    expect(tails.at(-1)?.text).toBe("une phrase sans fin");
+    expect(plain()).not.toContain("a sentence with no end");
+    expect(tails.at(-1)?.text).toBe("a sentence with no end");
   });
 
-  it("intercale une note dans une réponse en cours, en fermant la ligne ouverte", () => {
+  it("interleaves a note into a running answer, closing the open line", () => {
     const { stream, plain } = harness();
     const e = entry({ from: "claude", kind: "message" });
     stream.entryStarted(e);
-    stream.chunk(e.id, "je regarde le fichier");
+    stream.chunk(e.id, "I am looking at the file");
     stream.entry(entry({ from: "claude", kind: "system", text: "Read src/cli.tsx" }));
-    stream.chunk(e.id, " et je continue\n");
+    stream.chunk(e.id, " and I continue\n");
     stream.entryCompleted(e.id, { status: "ok", signal: "continue" });
 
     const body = plain();
-    expect(body.indexOf("je regarde le fichier")).toBeLessThan(body.indexOf("Read src/cli.tsx"));
-    expect(body.indexOf("Read src/cli.tsx")).toBeLessThan(body.indexOf("et je continue"));
+    expect(body.indexOf("I am looking at the file")).toBeLessThan(body.indexOf("Read src/cli.tsx"));
+    expect(body.indexOf("Read src/cli.tsx")).toBeLessThan(body.indexOf("and I continue"));
   });
 
-  it("n'écrit rien pour une entrée qui n'est plus active", () => {
+  it("writes nothing for an entry that is no longer active", () => {
     const { stream, writes } = harness();
     const e = entry({ from: "claude", kind: "message" });
     stream.entryStarted(e);
     stream.entryCompleted(e.id, { status: "ok", signal: "continue" });
     const before = writes.length;
-    stream.chunk(e.id, "trop tard");
+    stream.chunk(e.id, "too late");
     stream.entryCompleted(e.id, { status: "ok", signal: "continue" });
     expect(writes.length).toBe(before);
   });
 
-  describe("verdict de fin de tour", () => {
-    // Le marqueur de protocole est filtré du transcript : sans cette ligne, on
-    // lit une réponse sans savoir ce que l'agent a décidé, ni pourquoi le débat
-    // s'arrête ou continue.
+  describe("end-of-turn verdict", () => {
+    // The protocol marker is filtered out of the transcript: without this line,
+    // one reads an answer without knowing what the agent decided, or why the
+    // debate stops or continues.
     const verdictOf = (from: "claude" | "codex", signal: Signal, closesDebate = false) => {
       const { stream, plain } = harness();
       const e = entry({ from, kind: "message" });
       stream.entryStarted(e);
-      stream.chunk(e.id, "Mon analyse.\n");
+      stream.chunk(e.id, "My analysis.\n");
       stream.entryCompleted(e.id, { status: "ok", signal, closesDebate });
       return plain();
     };
 
-    it("nomme la décision et à qui la main passe", () => {
-      expect(verdictOf("claude", "continue")).toContain("-> poursuit · passe la main à Codex");
-      expect(verdictOf("codex", "continue")).toContain("-> poursuit · passe la main à Claude");
+    it("names the decision and who gets the turn", () => {
+      expect(verdictOf("claude", "continue")).toContain("-> continues · hands over to Codex");
+      expect(verdictOf("codex", "continue")).toContain("-> continues · hands over to Claude");
     });
 
-    // Un accord isolé laisse le débat tourner, la paire l'arrête : les deux
-    // situations ne doivent pas se lire pareil.
-    it("distingue le premier accord de celui qui clôt le débat", () => {
-      const premier = verdictOf("claude", "consensus");
-      expect(premier).toContain("Claude est prêt pour un consensus");
-      expect(premier).toContain("au tour de Codex");
-      expect(premier).not.toContain("terminé");
+    // A lone agreement lets the debate run, the pair stops it: the two
+    // situations must not read the same.
+    it("tells the first agreement from the one that closes the debate", () => {
+      const first = verdictOf("claude", "consensus");
+      expect(first).toContain("Claude is ready for a consensus");
+      expect(first).toContain("over to Codex");
+      expect(first).not.toContain("approved");
 
-      const dernier = verdictOf("codex", "consensus", true);
-      expect(dernier).toContain("Consensus approuvé");
-      expect(dernier).toContain("le débat est clos");
+      const last = verdictOf("codex", "consensus", true);
+      expect(last).toContain("Consensus approved");
+      expect(last).toContain("the debate is closed");
     });
 
-    it("distingue un accord d'une attente humaine", () => {
-      expect(verdictOf("codex", "wait-human")).toContain("[pause] attend ta réponse");
+    it("tells an agreement from a human wait", () => {
+      expect(verdictOf("codex", "wait-human")).toContain("[pause] waiting for your answer");
     });
 
-    it("dit explicitement qu'un tour n'a rien signalé", () => {
-      expect(verdictOf("claude", null)).toContain("[!] aucune décision signalée");
+    it("says explicitly that a turn signalled nothing", () => {
+      expect(verdictOf("claude", null)).toContain("[!] no decision signalled");
     });
 
-    // Muet à l'origine, quand un non-sujet fermait la session : le retour à
-    // l'accueil le disait. La conversation reste ouverte désormais, donc ce
-    // tour doit annoncer sa décision et la suite comme tous les autres.
-    it("annonce qu'il n'y a pas de sujet, et ce qui va se passer", () => {
+    // Originally silent, when a non-topic closed the session: the return to the
+    // welcome screen said it. The conversation stays open now, so this turn
+    // must announce its decision and what follows like all the others.
+    it("announces that there is no topic, and what happens next", () => {
       const verdict = verdictOf("claude", "no-topic");
-      expect(verdict).toContain("Aucun sujet à débattre");
-      expect(verdict).toContain("prochain message");
+      expect(verdict).toContain("No topic to debate");
+      expect(verdict).toContain("next message");
     });
 
-    it("reste muet sur la synthèse, qui ne décide rien", () => {
+    it("stays silent on the synthesis, which decides nothing", () => {
       const { stream, plain } = harness();
       const e = entry({ from: "system", kind: "summary" });
       stream.entryStarted(e);
-      stream.chunk(e.id, "Spécification finale.\n");
+      stream.chunk(e.id, "Final specification.\n");
       stream.entryCompleted(e.id, { status: "ok", signal: null });
-      expect(plain()).not.toContain("aucune décision signalée");
+      expect(plain()).not.toContain("no decision signalled");
     });
 
-    it("laisse une erreur remplacer le verdict", () => {
+    it("lets an error replace the verdict", () => {
       const { stream, plain } = harness();
       const e = entry({ from: "claude", kind: "message" });
       stream.entryStarted(e);
-      stream.entryCompleted(e.id, { status: "error", message: "réseau coupé" });
-      expect(plain()).toContain("Erreur : réseau coupé");
-      expect(plain()).not.toContain("poursuit");
+      stream.entryCompleted(e.id, { status: "error", message: "network down" });
+      expect(plain()).toContain("Error: network down");
+      expect(plain()).not.toContain("continues");
     });
   });
 
-  it("signale une erreur et une annulation en fin de tour", () => {
+  it("reports an error and a cancellation at the end of a turn", () => {
     const err = harness();
     const e1 = entry({ from: "codex", kind: "message" });
     err.stream.entryStarted(e1);
-    err.stream.entryCompleted(e1.id, { status: "error", message: "réseau coupé" });
-    expect(err.plain()).toContain("Erreur : réseau coupé");
+    err.stream.entryCompleted(e1.id, { status: "error", message: "network down" });
+    expect(err.plain()).toContain("Error: network down");
 
     const cancelled = harness();
     const e2 = entry({ from: "codex", kind: "message" });
     cancelled.stream.entryStarted(e2);
     cancelled.stream.entryCompleted(e2.id, { status: "cancelled" });
-    expect(cancelled.plain()).toContain("(Annulé)");
+    expect(cancelled.plain()).toContain("(Cancelled)");
   });
 
-  it("distingue visuellement Claude, Codex et l'humain", () => {
+  it("visually tells Claude, Codex and the human apart", () => {
     const { stream, output, plain } = harness();
     for (const from of ["claude", "codex", "human"] as const) {
-      const e = entry({ from, kind: from === "human" ? "intervention" : "message", text: "salut" });
+      const e = entry({ from, kind: from === "human" ? "intervention" : "message", text: "hi" });
       stream.entry(e);
     }
-    // Une couleur distincte par auteur, sur le rail comme sur le badge.
+    // A distinct color per author, on the rail as on the badge.
     const colors = new Set(output().match(/\u001b\[38;(?:2;[0-9;]+|5;\d+)m/g) ?? []);
     expect(colors.size).toBeGreaterThanOrEqual(3);
     expect(output()).toContain("\u001b[38;5;210m");
@@ -260,31 +260,31 @@ describe("TranscriptStream", () => {
     expect(plain()).not.toMatch(/● (?:Claude|Codex)|CLAUDE|CODEX/);
   });
 
-  it("ne réécrit jamais ce qui est déjà écrit", () => {
+  it("never rewrites what is already written", () => {
     const { stream, writes } = harness();
     const e = entry({ from: "claude", kind: "message" });
     stream.entryStarted(e);
-    stream.chunk(e.id, "ligne un\n");
+    stream.chunk(e.id, "line one\n");
     const afterFirst = writes.join("");
-    stream.chunk(e.id, "ligne deux\n");
+    stream.chunk(e.id, "line two\n");
     stream.entryCompleted(e.id, { status: "ok", signal: "continue" });
     expect(writes.join("").startsWith(afterFirst)).toBe(true);
   });
 
-  it("garde un coût de mise à jour indépendant de la longueur de l'historique", () => {
+  it("keeps an update cost independent of the history length", () => {
     const { stream, writes } = harness();
     for (let i = 0; i < 200; i++) {
       const e = entry({ from: "claude", kind: "message" });
       stream.entryStarted(e);
-      stream.chunk(e.id, `tour ${i}\n`);
+      stream.chunk(e.id, `turn ${i}\n`);
       stream.entryCompleted(e.id, { status: "ok", signal: "continue" });
     }
-    // Chaque écriture ne porte que du texte neuf : la somme reste linéaire.
+    // Each write carries only new text: the sum stays linear.
     const total = writes.join("").length;
     expect(total).toBeLessThan(200 * 400);
   });
 
-  it("replie sur la largeur courante et applique un resize aux lignes suivantes", () => {
+  it("wraps at the current width and applies a resize to the following lines", () => {
     const writes: string[] = [];
     let width = 30;
     const stream = new TranscriptStream({
@@ -295,29 +295,29 @@ describe("TranscriptStream", () => {
     });
     const e = entry({ from: "claude", kind: "message" });
     stream.entryStarted(e);
-    stream.chunk(e.id, "un texte assez long pour devoir être replié plusieurs fois\n");
+    stream.chunk(e.id, "a text long enough to need wrapping several times\n");
     width = 80;
-    stream.chunk(e.id, "et une seconde ligne tout aussi longue mais qui tient maintenant\n");
+    stream.chunk(e.id, "and a second line just as long but which fits now\n");
     stream.entryCompleted(e.id, { status: "ok", signal: "continue" });
 
     const lines = writes.join("").replace(/\u001b\[[0-9;]*m/g, "").split("\n");
     for (const line of lines) expect(line.length).toBeLessThanOrEqual(80);
-    expect(lines.some((l) => l.includes("qui tient maintenant"))).toBe(true);
+    expect(lines.some((l) => l.includes("which fits now"))).toBe(true);
   });
 
-  it("vide la ligne en attente à la fermeture", () => {
+  it("flushes the pending line on dispose", () => {
     const { stream, plain, tails } = harness();
     const e = entry({ from: "claude", kind: "message" });
     stream.entryStarted(e);
-    stream.chunk(e.id, "coupé net");
+    stream.chunk(e.id, "cut short");
     stream.dispose();
-    expect(plain()).toContain("coupé net");
+    expect(plain()).toContain("cut short");
     expect(tails.at(-1)).toBeNull();
   });
 });
 
 describe("TranscriptStream — cadence", () => {
-  it("ne fait pas une écriture par token", () => {
+  it("does not write once per token", () => {
     vi.useFakeTimers();
     const writes: string[] = [];
     const stream = new TranscriptStream({
@@ -327,8 +327,8 @@ describe("TranscriptStream — cadence", () => {
     });
     const e = entry({ from: "claude", kind: "message" });
     stream.entryStarted(e);
-    for (let i = 0; i < 50; i++) stream.chunk(e.id, `mot ${i}\n`);
-    // Rien n'est parti tant que la cadence n'est pas atteinte.
+    for (let i = 0; i < 50; i++) stream.chunk(e.id, `word ${i}\n`);
+    // Nothing went out until the cadence is reached.
     const afterStart = writes.length;
     vi.advanceTimersByTime(32);
     expect(writes.length).toBe(afterStart + 1);
@@ -336,29 +336,29 @@ describe("TranscriptStream — cadence", () => {
   });
 });
 
-describe("TranscriptStream — lignes figées", () => {
-  it("valide le caractère retenu par le sanitizer avant de figer la ligne", () => {
+describe("TranscriptStream — frozen lines", () => {
+  it("commits the character held by the sanitizer before freezing the line", () => {
     const { stream, plain } = harness();
     const e = entry({ from: "claude", kind: "message" });
     stream.entryStarted(e);
-    // Le « 4 » final est retenu : un fragment suivant pourrait en faire un keycap.
-    stream.chunk(e.id, "budget de 4");
+    // The final "4" is held: a following fragment could turn it into a keycap.
+    stream.chunk(e.id, "budget of 4");
     stream.raw(["---"]);
-    stream.chunk(e.id, "2 euros\n");
+    stream.chunk(e.id, "2 dollars\n");
 
     const lines = plain().split("\n");
-    expect(lines).toContain("│ budget de 4");
-    expect(plain()).not.toContain("42 euros");
+    expect(lines).toContain("│ budget of 4");
+    expect(plain()).not.toContain("42 dollars");
   });
 
-  it("laisse le rail nu sur une ligne de clôture de bloc de code", () => {
+  it("leaves the rail bare on a code fence line", () => {
     const { stream, plain } = harness();
     const e = entry({ from: "claude", kind: "message" });
     stream.entryStarted(e);
     stream.chunk(e.id, "```ts\nconst a = 1;\n```\n");
     stream.entryCompleted(e.id, { status: "ok", signal: "continue" });
 
-    // « │ » suivi d'une espace serait recopié avec le texte à la sélection.
+    // "│" followed by a space would be copied along with the text on selection.
     expect(plain().split("\n")).not.toContain("│ ");
   });
 });

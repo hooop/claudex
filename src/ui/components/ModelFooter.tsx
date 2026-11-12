@@ -8,7 +8,7 @@ export const MODEL_FOOTER_ROWS = 1;
 /**
  * `null` means unmeasured, which is not the same as empty. `/model` clears the
  * reading because the window size may change, but neither agent resets its
- * session: the next turn replays the whole conversation. Claiming `100% libre`
+ * session: the next turn replays the whole conversation. Claiming `100% free`
  * there would retract the pressure warning exactly when the operator is acting
  * on it.
  */
@@ -34,7 +34,7 @@ export function ModelFooter(props: {
     const remaining = contextRemainingPercent(props.contextUsage?.[agent]);
     return remaining === null
       ? `${props.models[agent]} · ctx —`
-      : `${props.models[agent]} · ctx ${remaining} libre`;
+      : `${props.models[agent]} · ctx ${remaining} free`;
   };
 
   return (

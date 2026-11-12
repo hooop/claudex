@@ -79,7 +79,7 @@ export function SelectionPalette(props: {
       })}
       <Text> </Text>
       <Text color={MUTED_COLOR} wrap="truncate-end">
-        ↑↓ {position} · {props.actionLabel} · Échap fermer
+        ↑↓ {position} · {props.actionLabel} · Esc close
       </Text>
     </Box>
   );

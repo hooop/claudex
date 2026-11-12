@@ -2,79 +2,79 @@ import { describe, expect, it } from "vitest";
 import { classifyLine, markdownToPlainText, parseInline } from "../markdown.js";
 
 describe("parseInline", () => {
-  it("extrait gras, italique et code", () => {
-    expect(parseInline("un **gras**, un *ital*, un `code`")).toEqual([
-      { type: "text", value: "un " },
-      { type: "bold", value: "gras" },
-      { type: "text", value: ", un " },
+  it("extracts bold, italic and code", () => {
+    expect(parseInline("a **bold**, an *ital*, a `code`")).toEqual([
+      { type: "text", value: "a " },
+      { type: "bold", value: "bold" },
+      { type: "text", value: ", an " },
       { type: "italic", value: "ital" },
-      { type: "text", value: ", un " },
+      { type: "text", value: ", a " },
       { type: "code", value: "code" },
     ]);
   });
 
-  it("laisse les identifiants snake_case intacts", () => {
-    expect(parseInline("appelle drain_queue_now")).toEqual([{ type: "text", value: "appelle drain_queue_now" }]);
+  it("leaves snake_case identifiers intact", () => {
+    expect(parseInline("call drain_queue_now")).toEqual([{ type: "text", value: "call drain_queue_now" }]);
   });
 
-  it("ne prend pas une multiplication pour de l'italique", () => {
+  it("does not mistake a multiplication for italics", () => {
     expect(parseInline("2 * 3 * 4")).toEqual([{ type: "text", value: "2 * 3 * 4" }]);
   });
 
-  it("conserve l'URL des liens", () => {
-    expect(parseInline("voir [la doc](https://x.dev)")).toEqual([
-      { type: "text", value: "voir " },
-      { type: "link", value: "la doc", url: "https://x.dev" },
+  it("keeps the URL of links", () => {
+    expect(parseInline("see [the docs](https://x.dev)")).toEqual([
+      { type: "text", value: "see " },
+      { type: "link", value: "the docs", url: "https://x.dev" },
     ]);
   });
 
-  it("rend littéralement une emphase non terminée", () => {
-    expect(parseInline("un **gras en cours")).toEqual([{ type: "text", value: "un **gras en cours" }]);
+  it("renders an unterminated emphasis literally", () => {
+    expect(parseInline("an **bold in progress")).toEqual([{ type: "text", value: "an **bold in progress" }]);
   });
 
-  it("ne franchit jamais une frontière de ligne", () => {
-    // Le rendu append-only livre une ligne physique à la fois : un délimiteur
-    // dont le partenaire est sur la ligne suivante reste littéral pour toujours.
-    expect(parseInline("ouverture **ici")).toEqual([{ type: "text", value: "ouverture **ici" }]);
-    expect(parseInline("et fermeture** là")).toEqual([{ type: "text", value: "et fermeture** là" }]);
+  it("never crosses a line boundary", () => {
+    // The append-only rendering delivers one physical line at a time: a delimiter
+    // whose partner is on the next line stays literal forever.
+    expect(parseInline("opening **here")).toEqual([{ type: "text", value: "opening **here" }]);
+    expect(parseInline("and closing** there")).toEqual([{ type: "text", value: "and closing** there" }]);
   });
 });
 
 describe("classifyLine", () => {
-  it("reconnaît les titres avec leur niveau", () => {
-    expect(classifyLine("## Points bloquants")).toEqual({ kind: "heading", level: 2 });
-    expect(classifyLine("#### Détail")).toEqual({ kind: "heading", level: 4 });
-    expect(classifyLine("#pas-un-titre")).toEqual({ kind: "plain" });
+  it("recognizes headings with their level", () => {
+    expect(classifyLine("## Blocking points")).toEqual({ kind: "heading", level: 2 });
+    expect(classifyLine("#### Detail")).toEqual({ kind: "heading", level: 4 });
+    expect(classifyLine("#not-a-heading")).toEqual({ kind: "plain" });
   });
 
-  it("reconnaît les délimiteurs de bloc de code", () => {
+  it("recognizes code block delimiters", () => {
     expect(classifyLine("```ts")).toEqual({ kind: "fence" });
     expect(classifyLine("~~~")).toEqual({ kind: "fence" });
   });
 
-  it("sépare le marqueur de liste de son contenu", () => {
+  it("separates the list marker from its content", () => {
     expect(classifyLine("- point")).toEqual({ kind: "list", marker: "- ", body: "point" });
-    expect(classifyLine("  1. premier")).toEqual({ kind: "list", marker: "  1. ", body: "premier" });
+    expect(classifyLine("  1. first")).toEqual({ kind: "list", marker: "  1. ", body: "first" });
   });
 
-  it("reconnaît règles, citations et lignes de tableau", () => {
+  it("recognizes rules, quotes and table rows", () => {
     expect(classifyLine("---")).toEqual({ kind: "rule" });
-    expect(classifyLine("> une citation")).toEqual({ kind: "quote" });
+    expect(classifyLine("> a quote")).toEqual({ kind: "quote" });
     expect(classifyLine("| a | b |")).toEqual({ kind: "table" });
   });
 
-  it("traite tout le reste comme du texte", () => {
-    expect(classifyLine("une phrase normale")).toEqual({ kind: "plain" });
+  it("treats everything else as text", () => {
+    expect(classifyLine("a normal sentence")).toEqual({ kind: "plain" });
     expect(classifyLine("")).toEqual({ kind: "plain" });
   });
 });
 
 describe("markdownToPlainText", () => {
-  it("retire les marqueurs tout en conservant la structure lisible", () => {
+  it("removes the markers while keeping a readable structure", () => {
     expect(
       markdownToPlainText(
-        "## Décision\n\n- utiliser **Architecture C**\n\n> voir `decisions.md`\n\n```ts\nconst ok = true;\n```",
+        "## Decision\n\n- use **Architecture C**\n\n> see `decisions.md`\n\n```ts\nconst ok = true;\n```",
       ),
-    ).toBe("Décision\n\n- utiliser Architecture C\n\n| voir decisions.md\n\nconst ok = true;");
+    ).toBe("Decision\n\n- use Architecture C\n\n| see decisions.md\n\nconst ok = true;");
   });
 });

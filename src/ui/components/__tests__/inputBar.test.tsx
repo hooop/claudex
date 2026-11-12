@@ -21,9 +21,9 @@ function fakeTerminal() {
   const inputQueue: string[] = [];
   const output: string[] = [];
   const stdout = Object.assign(new EventEmitter(), {
-    // Ink 7 ne dessine de trame que si la sortie est un vrai terminal
-    // (`interactive` = !CI && stdout.isTTY). Sans ce drapeau, il n'écrit rien.
-    // isTTY ne suffit pas sous CI=true (GitHub Actions) : render() force donc
+    // Ink 7 only draws a frame when the output is a real terminal
+    // (`interactive` = !CI && stdout.isTTY). Without this flag, it writes nothing.
+    // isTTY is not enough under CI=true (GitHub Actions): render() therefore forces
     // aussi `interactive: true`.
     isTTY: true,
     columns: 80,
@@ -72,7 +72,7 @@ function mount(
   const app = render(
     <InputBar
       disabled={false}
-      placeholder="sujet"
+      placeholder="topic"
       width={60}
       commands={commands}
       onNavigate={onNavigate}
@@ -95,8 +95,8 @@ function mount(
 async function press(terminal: ReturnType<typeof fakeTerminal>, input: string): Promise<void> {
   await act(async () => {
     terminal.pushInput(input);
-    // Ink 7 régule ses rendus (`renderThrottleMs`, dérivé de maxFps) : une trame
-    // n'est plus écrite dans le même tour de boucle que la frappe.
+    // Ink 7 throttles its renders (`renderThrottleMs`, derived from maxFps): a frame
+    // is no longer written in the same event-loop turn as the keystroke.
     await new Promise((resolve) => setTimeout(resolve, 60));
   });
 }
@@ -112,7 +112,7 @@ async function ready(terminal: ReturnType<typeof fakeTerminal>): Promise<void> {
 }
 
 describe("InputBar — navigation contextuelle", () => {
-  it("ouvre et filtre la palette dès que la saisie commence par une barre oblique", async () => {
+  it("opens and filters the palette as soon as the input starts with a slash", async () => {
     const onPaletteChange = vi.fn();
     const terminal = mount(undefined, undefined, WELCOME_COMMANDS, onPaletteChange);
     await ready(terminal);
@@ -121,14 +121,14 @@ describe("InputBar — navigation contextuelle", () => {
     await press(terminal, "/mo");
 
     const output = terminal.output.join("").replace(ANSI_SEQUENCE, "");
-    expect(output).toContain("/model claude <nom>");
-    expect(output).toContain("/model codex <nom>");
+    expect(output).toContain("/model claude <name>");
+    expect(output).toContain("/model codex <name>");
     expect(output).not.toContain("/help —");
     expect(onPaletteChange).toHaveBeenLastCalledWith(true);
     terminal.app.unmount();
   });
 
-  it("sélectionne avec les flèches et complète avec Tab", async () => {
+  it("selects with the arrows and completes with Tab", async () => {
     const onPaletteChange = vi.fn();
     const terminal = mount(undefined, undefined, WELCOME_COMMANDS, onPaletteChange);
     await ready(terminal);
@@ -143,7 +143,7 @@ describe("InputBar — navigation contextuelle", () => {
     terminal.app.unmount();
   });
 
-  it("ferme la palette avec Échap sans effacer la commande commencée", async () => {
+  it("closes the palette with Escape without erasing the started command", async () => {
     const onPaletteChange = vi.fn();
     const terminal = mount(undefined, undefined, WELCOME_COMMANDS, onPaletteChange);
     await ready(terminal);
@@ -158,16 +158,16 @@ describe("InputBar — navigation contextuelle", () => {
     terminal.app.unmount();
   });
 
-  it("utilise l'index ANSI 233 pour le fond actif", () => {
+  it("uses ANSI index 233 for the active background", () => {
     expect(INPUT_BACKGROUND_COLOR).toBe("ansi256(233)");
   });
 
-  it("utilise l'index ANSI 195 pour le texte et 237 pour le placeholder", () => {
+  it("uses ANSI index 195 for the text and 237 for the placeholder", () => {
     expect(INPUT_TEXT_COLOR).toBe("ansi256(195)");
     expect(INPUT_PLACEHOLDER_COLOR).toBe("ansi256(240)");
   });
 
-  it("revient à la ligne deux colonnes avant le bord droit", async () => {
+  it("wraps two columns before the right edge", async () => {
     const onRowsChange = vi.fn();
     const terminal = mount(undefined, onRowsChange);
     await ready(terminal);
@@ -178,18 +178,18 @@ describe("InputBar — navigation contextuelle", () => {
     terminal.app.unmount();
   });
 
-  it("utilise les index ANSI 220 pour l'invite et 236 pour le curseur", async () => {
+  it("uses ANSI indexes 220 for the prompt and 236 for the cursor", async () => {
     const terminal = mount();
     await ready(terminal);
 
     const frame = terminal.output.join("").replace(ANSI_SEQUENCE, "");
     expect(INPUT_PROMPT_COLOR).toBe("ansi256(220)");
     expect(INPUT_CURSOR_COLOR).toBe("ansi256(236)");
-    expect(frame).toMatch(/‣ {3}sujet/);
+    expect(frame).toMatch(/‣ {3}topic/);
     terminal.app.unmount();
   });
 
-  it("fait clignoter le curseur avec un intervalle borné", async () => {
+  it("blinks the cursor at a bounded interval", async () => {
     const intervalSpy = vi.spyOn(globalThis, "setInterval");
     const terminal = mount();
     await ready(terminal);
@@ -199,12 +199,12 @@ describe("InputBar — navigation contextuelle", () => {
     intervalSpy.mockRestore();
   });
 
-  it("dessine trois lignes et place l'invite sur celle du milieu", async () => {
+  it("draws three rows and puts the prompt on the middle one", async () => {
     const terminal = mount();
     await ready(terminal);
 
-    // Ink 7 ouvre chaque trame par une séquence de mise à jour synchronisée :
-    // on retire l'ANSI avant de compter, sinon elle compte comme une ligne.
+    // Ink 7 opens each frame with a synchronized-update sequence:
+    // strip the ANSI before counting, otherwise it counts as a row.
     const frame = terminal.output.join("").replace(ANSI_SEQUENCE, "").replace(/\n$/, "");
     const lines = frame.split("\n");
     expect(lines).toHaveLength(INPUT_BAR_MIN_ROWS);
@@ -214,7 +214,7 @@ describe("InputBar — navigation contextuelle", () => {
     terminal.app.unmount();
   });
 
-  it("ajoute des lignes quand le texte dépasse la largeur disponible", async () => {
+  it("adds rows when the text exceeds the available width", async () => {
     const onRowsChange = vi.fn();
     const terminal = mount(undefined, onRowsChange);
     await ready(terminal);
@@ -235,7 +235,7 @@ describe("InputBar — navigation contextuelle", () => {
     terminal.app.unmount();
   });
 
-  it("réserve gauche/droite à la galerie lorsque le champ est vide", async () => {
+  it("reserves left/right for the gallery when the field is empty", async () => {
     const onNavigate = vi.fn();
     const terminal = mount(onNavigate);
     await ready(terminal);
@@ -248,7 +248,7 @@ describe("InputBar — navigation contextuelle", () => {
     terminal.app.unmount();
   });
 
-  it("rend les flèches au curseur dès que le champ contient du texte", async () => {
+  it("gives the arrows back to the cursor as soon as the field contains text", async () => {
     const onNavigate = vi.fn();
     const terminal = mount(onNavigate);
     await ready(terminal);
@@ -263,7 +263,7 @@ describe("InputBar — navigation contextuelle", () => {
     terminal.app.unmount();
   });
 
-  it("conserve le comportement d'édition historique sans callback de galerie", async () => {
+  it("keeps the historical editing behavior without a gallery callback", async () => {
     const terminal = mount();
     await ready(terminal);
 
@@ -279,7 +279,7 @@ describe("InputBar — navigation contextuelle", () => {
 });
 
 describe("InputBar — collage", () => {
-  it("garde chaque morceau d'un collage brut arrivé d'un seul bloc", async () => {
+  it("keeps every chunk of a raw paste that arrived in one block", async () => {
     const terminal = mount();
     await ready(terminal);
 
@@ -294,7 +294,7 @@ describe("InputBar — collage", () => {
     terminal.app.unmount();
   });
 
-  it("remplace un long collage par une étiquette et envoie le texte complet", async () => {
+  it("replaces a long paste with a label and submits the full text", async () => {
     const terminal = mount();
     await ready(terminal);
 
@@ -303,14 +303,14 @@ describe("InputBar — collage", () => {
     await paste(terminal, pasted);
 
     const frame = terminal.output.join("").replace(ANSI_SEQUENCE, "");
-    expect(frame).toContain("[Texte collé · 30 000 caractères]");
+    expect(frame).toContain("[Pasted text · 30,000 characters]");
     expect(frame).not.toContain("xxx");
     await press(terminal, "\r");
     expect(terminal.onSubmit).toHaveBeenCalledWith(pasted, { literal: true });
     terminal.app.unmount();
   });
 
-  it("conserve les retours à la ligne d'un collage multiligne", async () => {
+  it("keeps the line breaks of a multiline paste", async () => {
     const terminal = mount();
     await ready(terminal);
 
@@ -318,14 +318,14 @@ describe("InputBar — collage", () => {
     await paste(terminal, "a\r\nb\rc");
 
     expect(terminal.output.join("").replace(ANSI_SEQUENCE, "")).toContain(
-      "[Texte collé · 5 caractères]",
+      "[Pasted text · 5 characters]",
     );
     await press(terminal, "\r");
     expect(terminal.onSubmit).toHaveBeenCalledWith("a\nb\nc", { literal: true });
     terminal.app.unmount();
   });
 
-  it("insère tel quel un collage d'une ligne de 500 caractères", async () => {
+  it("inserts a one-line 500-character paste as is", async () => {
     const terminal = mount();
     await ready(terminal);
 
@@ -334,14 +334,14 @@ describe("InputBar — collage", () => {
     await paste(terminal, pasted);
 
     const frame = terminal.output.join("").replace(ANSI_SEQUENCE, "");
-    expect(frame).not.toContain("Texte collé");
+    expect(frame).not.toContain("Pasted text");
     expect(frame).toContain("yyy");
     await press(terminal, "\r");
     expect(terminal.onSubmit).toHaveBeenCalledWith(pasted);
     terminal.app.unmount();
   });
 
-  it("étiquette un collage d'une ligne de 501 caractères", async () => {
+  it("labels a one-line 501-character paste", async () => {
     const terminal = mount();
     await ready(terminal);
 
@@ -349,26 +349,26 @@ describe("InputBar — collage", () => {
     await paste(terminal, "y".repeat(501));
 
     expect(terminal.output.join("").replace(ANSI_SEQUENCE, "")).toContain(
-      "[Texte collé · 501 caractères]",
+      "[Pasted text · 501 characters]",
     );
     terminal.app.unmount();
   });
 
-  it("garde le texte tapé avant et après une étiquette", async () => {
+  it("keeps the text typed before and after a label", async () => {
     const terminal = mount();
     await ready(terminal);
 
     const pasted = "line one\nline two";
-    await press(terminal, "avant ");
+    await press(terminal, "before ");
     await paste(terminal, pasted);
-    await press(terminal, " après");
+    await press(terminal, " after");
     await press(terminal, "\r");
 
-    expect(terminal.onSubmit).toHaveBeenCalledWith(`avant ${pasted} après`);
+    expect(terminal.onSubmit).toHaveBeenCalledWith(`before ${pasted} after`);
     terminal.app.unmount();
   });
 
-  it("efface une étiquette entière d'un seul retour arrière", async () => {
+  it("erases a whole label with a single backspace", async () => {
     const terminal = mount();
     await ready(terminal);
 
@@ -381,7 +381,7 @@ describe("InputBar — collage", () => {
     terminal.app.unmount();
   });
 
-  it("numérote les étiquettes quand le brouillon en contient plusieurs", async () => {
+  it("numbers the labels when the draft contains several", async () => {
     const terminal = mount();
     await ready(terminal);
 
@@ -390,14 +390,14 @@ describe("InputBar — collage", () => {
     await paste(terminal, "second\npaste");
 
     const frame = terminal.output.join("").replace(ANSI_SEQUENCE, "");
-    expect(frame).toContain("[Texte collé #1 · 11 caractères]");
-    expect(frame).toContain("[Texte collé #2 · 12 caractères]");
+    expect(frame).toContain("[Pasted text #1 · 11 characters]");
+    expect(frame).toContain("[Pasted text #2 · 12 characters]");
     await press(terminal, "\r");
     expect(terminal.onSubmit).toHaveBeenCalledWith("first\npastesecond\npaste", { literal: true });
     terminal.app.unmount();
   });
 
-  it("oublie les collages effacés par Ctrl+U", async () => {
+  it("forgets the pastes erased by Ctrl+U", async () => {
     const terminal = mount();
     await ready(terminal);
 
@@ -410,7 +410,7 @@ describe("InputBar — collage", () => {
     terminal.app.unmount();
   });
 
-  it("signale qu'un brouillon ouvert par un collage n'est pas une commande", async () => {
+  it("flags that a draft opened by a paste is not a command", async () => {
     const terminal = mount();
     await ready(terminal);
 
@@ -421,7 +421,7 @@ describe("InputBar — collage", () => {
     terminal.app.unmount();
   });
 
-  it("ignore un collage vide", async () => {
+  it("ignores an empty paste", async () => {
     const terminal = mount();
     await ready(terminal);
 
@@ -433,7 +433,7 @@ describe("InputBar — collage", () => {
     terminal.app.unmount();
   });
 
-  it("ne laisse pas un caractère saisi se faire passer pour une étiquette", async () => {
+  it("does not let a typed character pass for a label", async () => {
     const terminal = mount();
     await ready(terminal);
 

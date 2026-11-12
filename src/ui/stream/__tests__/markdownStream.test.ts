@@ -3,9 +3,9 @@ import { describe, expect, it } from "vitest";
 import { displayWidth } from "../lineBuffer.js";
 import { MarkdownStreamer } from "../markdownStream.js";
 
-// Le runner n est pas un TTY : sans cela chalk se désactive et il n y a plus
-// rien à vérifier. Le terminal réel, lui, a toujours des couleurs (cli.tsx
-// refuse de démarrer hors TTY).
+// The runner is not a TTY: without this chalk disables itself and there is
+// nothing left to check. The real terminal always has colors (cli.tsx
+// refuses to start outside a TTY).
 chalk.level = 3;
 
 const line = (text: string, continuation = false) => ({ text, continuation });
@@ -14,92 +14,92 @@ const line = (text: string, continuation = false) => ({ text, continuation });
 const plain = (styled: string) => styled.replace(/\u001b\[[0-9;]*m/g, "");
 
 describe("MarkdownStreamer", () => {
-  it("ne dépasse jamais la largeur mesurée avant retrait des marqueurs", () => {
+  it("never exceeds the width measured before the markers are removed", () => {
     const s = new MarkdownStreamer();
-    for (const text of ["## Titre", "- un **point** clé", "> citation", ">citation", "du `code` inline", "| a | b |"]) {
+    for (const text of ["## Title", "- a key **point**", "> quote", ">quote", "some inline `code`", "| a | b |"]) {
       expect(displayWidth(s.style(line(text)))).toBeLessThanOrEqual(displayWidth(text));
     }
   });
 
-  it("stylise une emphase équilibrée sur la ligne", () => {
+  it("styles a balanced emphasis on the line", () => {
     const s = new MarkdownStreamer();
-    const out = s.style(line("un **gras** ici"));
-    expect(plain(out)).toBe("un gras ici");
-    expect(out).not.toBe("un **gras** ici");
+    const out = s.style(line("a **bold** here"));
+    expect(plain(out)).toBe("a bold here");
+    expect(out).not.toBe("a **bold** here");
   });
 
-  it("remplace la syntaxe des titres par une hiérarchie visuelle", () => {
+  it("replaces the heading syntax with a visual hierarchy", () => {
     const s = new MarkdownStreamer();
-    expect(plain(s.style(line("## Titre")))).toBe("Titre");
+    expect(plain(s.style(line("## Title")))).toBe("Title");
   });
 
-  it("retire aussi l'emphase à l'intérieur d'une citation", () => {
+  it("also removes the emphasis inside a quote", () => {
     const s = new MarkdownStreamer();
-    expect(plain(s.style(line("> une **idée**")))).toBe("| une idée");
+    expect(plain(s.style(line("> an **idea**")))).toBe("| an idea");
   });
 
-  // La barre remplace le chevron, elle ne s'y ajoute pas : LineBuffer a déjà
-  // découpé la ligne à la largeur de la source.
-  it("ne gagne pas une colonne sur une citation écrite sans espace", () => {
+  // The bar replaces the chevron, it is not added to it: LineBuffer has already
+  // split the line at the source width.
+  it("does not gain a column on a quote written without a space", () => {
     const s = new MarkdownStreamer();
-    expect(plain(s.style(line(">serré")))).toBe("|serré");
+    expect(plain(s.style(line(">tight")))).toBe("|tight");
   });
 
-  it("cache les clôtures de bloc de code", () => {
+  it("hides code block fences", () => {
     const s = new MarkdownStreamer();
     expect(s.style(line("```ts"))).toBe("");
     expect(plain(s.style(line("const answer = 42;")))).toBe("const answer = 42;");
     expect(s.style(line("```"))).toBe("");
   });
 
-  it("laisse littéral un délimiteur non fermé", () => {
+  it("leaves an unclosed delimiter literal", () => {
     const s = new MarkdownStreamer();
-    expect(s.style(line("un **gras jamais fermé"))).toBe("un **gras jamais fermé");
+    expect(s.style(line("a **bold never closed"))).toBe("a **bold never closed");
   });
 
-  it("laisse littérale une construction qui traverse une frontière de ligne", () => {
+  it("leaves literal a construct that crosses a line boundary", () => {
     const s = new MarkdownStreamer();
-    // La première ligne a déjà été écrite quand la seconde arrive : ni l'une
-    // ni l'autre ne peut être restylée après coup.
-    expect(s.style(line("ouverture **du gras"))).toBe("ouverture **du gras");
-    expect(s.style(line("et sa fermeture** ici", true))).toBe("et sa fermeture** ici");
+    // The first line has already been written when the second arrives: neither
+    // can be restyled afterwards.
+    expect(s.style(line("opening **of bold"))).toBe("opening **of bold");
+    expect(s.style(line("and its closing** here", true))).toBe("and its closing** here");
   });
 
-  it("colore chaque ligne d'un bloc de code sans attendre sa fermeture", () => {
+  it("colors every line of a code block without waiting for its closing", () => {
     const s = new MarkdownStreamer();
     const fence = s.style(line("```ts"));
     const body = s.style(line("const a = **1**;"));
     expect(plain(body)).toBe("const a = **1**;");
-    // Dans un bloc de code, le contenu est coloré en bloc, pas interprété.
+    // In a code block, the content is colored as a block, not interpreted.
     expect(body).not.toBe(fence);
     expect(body.startsWith("\u001b")).toBe(true);
   });
 
-  it("sort du bloc de code à la fermeture", () => {
+  it("leaves the code block at the closing fence", () => {
     const s = new MarkdownStreamer();
     s.style(line("```"));
     const inside = s.style(line("code"));
     s.style(line("```"));
-    const after = s.style(line("texte"));
-    expect(after).toBe("texte");
+    const after = s.style(line("text"));
+    expect(after).toBe("text");
     expect(inside).not.toBe("code");
   });
 
-  it("traite un bloc jamais fermé comme du code jusqu'au bout", () => {
+  it("treats a never-closed block as code until the end", () => {
     const s = new MarkdownStreamer();
     s.style(line("```"));
-    expect(plain(s.style(line("une ligne")))).toBe("une ligne");
-    expect(s.style(line("une ligne"))).not.toBe("une ligne");
+    expect(plain(s.style(line("a line")))).toBe("a line");
+    expect(s.style(line("a line"))).not.toBe("a line");
   });
 
-  it("rend les tableaux en texte brut, sans alignement rétroactif", () => {
+  it("renders tables as plain text, without retroactive alignment", () => {
     const s = new MarkdownStreamer();
     expect(plain(s.style(line("| a | b |")))).toBe("| a | b |");
     expect(plain(s.style(line("|---|---|")))).toBe("|---|---|");
   });
 
-  it("garde le marqueur de liste avec son contenu", () => {
+  it("keeps the list marker with its content", () => {
     const s = new MarkdownStreamer();
-    expect(plain(s.style(line("  - un point")))).toBe("  - un point");
+    expect(plain(s.style(line("  - a point")))).toBe("  - a point");
   });
 });

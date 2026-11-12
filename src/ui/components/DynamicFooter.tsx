@@ -103,7 +103,7 @@ export function DynamicFooter(props: {
   const mode = footerMode(columns, terminalRows, rows, preferredHeight);
 
   if (mode.kind === "too-small") {
-    return <Text wrap="truncate-end">Terminal trop petit — agrandissez la fenêtre</Text>;
+    return <Text wrap="truncate-end">Terminal too small — enlarge the window</Text>;
   }
   if (mode.kind === "hidden") return null;
 
