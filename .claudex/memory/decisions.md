@@ -42,8 +42,8 @@ mainteneur que Claude n'exécutait aucune commande avec la version précédente.
 - Linux/WSL sans mesure : la garantie est tout l'enjeu ; une branche à part avec une mesure Linux.
 - L'exécuteur `codex app-server` partagé du 2026-08-17 : inutile, chaque agent a son exécuteur sandboxé.
 
-**Ce qui n'est pas démontré :** la variante en dossier approuvé de la série S n'a pas été exécutée
-(en attente) ; une seule machine, un seul compte ; voir `limits.md`.
+**Ce qui n'est pas démontré :** un dossier jamais approuvé (seuls des dossiers neufs et approuvés sous
+`/` approuvé sont mesurés) ; une seule machine, un seul compte ; voir `limits.md`.
 
 ## 2026-11-11 — Les réglages porteurs de commande du dépôt demandent le consentement de l'humain
 

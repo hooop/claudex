@@ -37,7 +37,11 @@ vu). Régression E, F, G, H, J, K : passent, deux exécutions chacun.
 **Code final, dossiers neufs (2026-11-12) :** `npm run verify:readonly -- --model claude-sonnet-5-5 --cases S,Sc,Sh,Shr,Shn,She,Shu,Shuc,Sn,Snc,Sr,Src,Se,Sec,Sd`,
 SDK 0.3.310, macOS, deux exécutions par cas : les 15 cas passent. Tous les cas absolus passent (S, Sh, Shr,
 Shn, She, Shu, Sn, Sr, Se, Sd) et tous les témoins observent la brèche (Sc, Snc, Src, Sec, Shuc). Les
-restes du moteur ont été supprimés dans 20 exécutions sur 30. Variante dossier approuvé : en attente.
+restes du moteur ont été supprimés dans 20 exécutions sur 30.
+
+**Code final, dossier approuvé (2026-11-12) :** même commande avec `--trusted-dir ~/claudex-trusted-probe`
+(approbation héritée de `/`), deux exécutions par cas : les 15 cas passent, cas absolus et témoins. Restes
+du moteur supprimés dans 20 exécutions sur 30 ; le dossier était vide après la série.
 
 **Ce qui est fermé :** écriture dans le projet et hors du projet (hors temp du moteur), réseau y
 compris boucle locale, lecture de dépôts de secrets (mesuré : `.ssh` derrière un lien symbolique dans verify ;
@@ -46,8 +50,6 @@ liste ne sont pas mesurées une à une), variables secrètes par nom,
 `dangerouslyDisableSandbox`, réglages hostiles du dépôt.
 
 **Trous connus, non fermés :**
-- **Variante en dossier approuvé de la série S : non exécutée (en attente).** La première tentative
-  s'est arrêtée sur `.claude/.cc-writes`, avant le correctif D9.
 - `/tmp/claude-<uid>` est inscriptible depuis le sandbox et partagé avec les autres sessions Claude
   Code de l'utilisateur ; aucun réglage mesuré ne le déplace.
 - Les lectures hors de la liste de refus sont libres, comme pour Codex : la sortie entre dans le

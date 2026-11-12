@@ -287,8 +287,10 @@ SDK 0.3.310, macOS, fresh temporary folders, two runs per case: all 15 cases pas
 passes (S, Sh, Shr, Shn, She, Shu, Sn, Sr, Se, Sd) and every control observes its breach (Sc marker,
 Snc listener, Src and Sec secret, Shuc listener). The engine's leftovers were removed in 20 of the 30 runs.
 
-**Pending: the trusted-folder variant of the S series has not been run.** The first attempt stopped
-on `.claude/.cc-writes` left in the project, before D9 existed. It must be run before release.
+**Final code, trusted folder (2026-11-12):** the same command with `--trusted-dir ~/claudex-trusted-probe`
+(trust from `/`), two runs per case: all 15 cases pass, absolute cases and controls alike. The engine's
+leftovers were removed in 20 of the 30 runs, and the folder was empty after the series. (The first
+attempt, before D9, had stopped on `.claude/.cc-writes` left in the project.)
 
 ## Left to the builder
 
