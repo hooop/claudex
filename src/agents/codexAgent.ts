@@ -138,7 +138,7 @@ export class CodexAgent implements CodingAgent {
     this.cancelled = false;
     // Assumes Codex streams agentMessage items one after another: interleaved deltas
     // are not handled when a streamed note is removed. A held item that never
-    // completes stays in the answer, so no text is lost.
+    // completes stays in the answer and is shown when the turn ends, so no text is lost.
     const messages = new Map<string, MessageItem>();
     // Items whose commentary phase was known at item/started: their deltas are held back.
     const heldItems = new Set<string>();
@@ -149,6 +149,20 @@ export class CodexAgent implements CodingAgent {
         text: message.kind === "answer" ? message.prefix + message.text : message.text,
       }));
       return options.onNote ? composeTurnText(segments) : segments.map((segment) => segment.text).join("");
+    };
+    // A failed or cancelled turn keeps everything said so far, notes included.
+    const partialText = () =>
+      [...messages.values()].map((message) => message.prefix + message.text).join("") || undefined;
+    // Shows the held items that never completed, so the stream matches the turn text.
+    const flushHeldItems = () => {
+      for (const itemId of heldItems) {
+        const message = messages.get(itemId);
+        if (message?.text) {
+          if (message.prefix) options.onTextDelta?.(message.prefix);
+          options.onTextDelta?.(message.text);
+        }
+      }
+      heldItems.clear();
     };
     const messageOf = (itemId: string): MessageItem => {
       let message = messages.get(itemId);
@@ -313,8 +327,9 @@ export class CodexAgent implements CodingAgent {
               if (message.text) options.onNote(shown ? message.prefix + message.text : message.text, shown);
               return;
             }
-            if (!streamed || held) {
-              // Not shown yet: the text arrived whole, or was held back as a probable note.
+            // A held item always ends as a note above, since holding requires onNote.
+            if (!streamed) {
+              // Not shown yet: the text arrived whole.
               if (message.prefix && message.text) options.onTextDelta?.(message.prefix);
               if (message.text) options.onTextDelta?.(message.text);
             }
@@ -427,9 +442,10 @@ export class CodexAgent implements CodingAgent {
           throw connectionClosedError(info, connection.stderrSummary);
         }),
       ]);
+      flushHeldItems();
 
       if (this.cancelled || options.signal?.aborted || completion.turn.status === "interrupted") {
-        return { kind: "cancelled", partialText: currentText() || undefined };
+        return { kind: "cancelled", partialText: partialText() };
       }
 
       const turnError = completion.turn.error ?? terminalError;
@@ -437,19 +453,20 @@ export class CodexAgent implements CodingAgent {
         return {
           kind: "error",
           message: describeCodexError(turnError ?? { message: "Codex turn failed." }),
-          partialText: currentText() || undefined,
+          partialText: partialText(),
         };
       }
 
       return { kind: "success", text: currentText() };
     } catch (error) {
+      flushHeldItems();
       if (this.cancelled || options.signal?.aborted) {
-        return { kind: "cancelled", partialText: currentText() || undefined };
+        return { kind: "cancelled", partialText: partialText() };
       }
       return {
         kind: "error",
         message: describeCodexThrownError(error),
-        partialText: currentText() || undefined,
+        partialText: partialText(),
       };
     } finally {
       options.signal?.removeEventListener("abort", abortHandler);

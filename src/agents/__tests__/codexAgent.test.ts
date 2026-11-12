@@ -470,3 +470,56 @@ describe("CodexAgent notes and trace", () => {
     ]);
   });
 });
+
+describe("CodexAgent partial text and held items", () => {
+  beforeEach(() => spawnMock.mockReset());
+
+  const noteThenPartialAnswer = [
+    delta("c1", "Reading."),
+    completed(message("c1", "Reading.", "commentary")),
+    delta("a1", "Partial answer"),
+  ];
+
+  it("keeps a completed note in partialText when the turn fails", async () => {
+    const { result, notes } = await runScript(
+      [...noteThenPartialAnswer, note("error", { error: { message: "boom" }, willRetry: false })],
+      true,
+    );
+
+    expect(notes).toEqual([["Reading.", true]]);
+    expect(result).toEqual({ kind: "error", message: "boom", partialText: "Reading.Partial answer" });
+  });
+
+  it("keeps a completed note in partialText when the turn is cancelled", async () => {
+    spawnMock.mockReturnValue(new FakeAppServer("scripted", noteThenPartialAnswer));
+    const controller = new AbortController();
+
+    const result = await new CodexAgent().send("Topic", {
+      cwd: "/tmp",
+      writeAccess: false,
+      signal: controller.signal,
+      onNote: vi.fn(),
+      onTextDelta: (d) => {
+        if (d === "Partial answer") controller.abort();
+      },
+    });
+
+    expect(result).toEqual({ kind: "cancelled", partialText: "Reading.Partial answer" });
+  });
+
+  it("shows a held item that never completes before the turn ends", async () => {
+    const { result, deltas, notes } = await runScript(
+      [
+        delta("a1", "A"),
+        completed(message("a1", "A", "final_answer")),
+        started(message("c1", "", "commentary")),
+        delta("c1", "B"),
+      ],
+      true,
+    );
+
+    expect(notes).toEqual([]);
+    expect(result).toEqual({ kind: "success", text: "A\n\nB" });
+    expect(deltas).toEqual(["A", "\n\n", "B"]);
+  });
+});
