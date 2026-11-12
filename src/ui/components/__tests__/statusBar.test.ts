@@ -128,3 +128,17 @@ describe("StatusBar activity formatting", () => {
     expect(output).toBe("Implementation  ·  Claude + Codex");
   });
 });
+
+describe("StatusBar note activity", () => {
+  it("describes a note by its flattened text", () => {
+    expect(describeActivity({ kind: "note", status: "running", label: "Reading\n the  memory" })).toBe(
+      "Reading the memory",
+    );
+  });
+
+  it("strips control sequences from a note", () => {
+    expect(
+      describeActivity({ kind: "note", status: "running", label: "Reading \u001b[31mfiles" }),
+    ).not.toContain("\u001b");
+  });
+});

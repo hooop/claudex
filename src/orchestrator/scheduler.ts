@@ -1626,6 +1626,7 @@ function activitySignature(activity: AgentActivity): string {
   if (activity.kind === "waiting" || activity.kind === "responding") {
     return `${activity.kind}:${activity.status}`;
   }
+  if (activity.kind === "note") return `note:${activity.status}:${activity.label}`;
   return [
     activity.kind,
     activity.status,

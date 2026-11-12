@@ -43,6 +43,7 @@ export type AgentActivityStatus = "running" | "success" | "failure";
 export type AgentActivity =
   | { kind: "waiting"; status: "running" }
   | { kind: "responding"; status: "running" }
+  | { kind: "note"; status: "running"; label: string }
   | {
       kind: "command";
       status: AgentActivityStatus;
@@ -59,6 +60,23 @@ export type AgentActivity =
       durationMs?: number;
       exitCode?: number | null;
     };
+
+/** A finished tool or command, with its full output when the adapter has it. */
+export interface ToolTraceEvent {
+  kind: "tool";
+  label: string;
+  status: "success" | "failure";
+  exitCode?: number | null;
+  output?: string;
+}
+
+export type TraceEvent = { kind: "note"; text: string } | ToolTraceEvent;
+
+export interface TraceRecord {
+  agent: AgentId;
+  timestamp: number;
+  event: TraceEvent;
+}
 
 export type TranscriptKind =
   | "message"
