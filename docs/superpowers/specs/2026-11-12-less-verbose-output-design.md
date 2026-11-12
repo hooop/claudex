@@ -1,12 +1,13 @@
 # Less verbose debate output — design
 
-Date: 2026-11-12. Branch: `feat/less-verbose-output`.
+Date: 2026-11-12. Branch: `feat/less-verbose-output`. Approved by the maintainer on
+2026-11-12 with adjustments (sections 1 to 4 of their answer), integrated below.
 
 ## Why
 
-The maintainer finds the debate hard to follow: "the answers are too long". They
-delegated every choice ("the most professional choices"), so everything below that
-is not quoted from them is the designer's call.
+The maintainer finds the debate hard to follow: "the answers are too long". Their
+principle for this branch: **argue as briefly as possible, but as precisely as
+necessary**. The goal is information density, not a lower word count.
 
 Measured on the 42 archived transcripts in `.claudex/memory/transcripts/` (turns of
 more than 15 words, words split on whitespace):
@@ -16,186 +17,231 @@ more than 15 words, words split on whitespace):
 | Claude | 137   | 321    | 988             | 4129  |
 | Codex  | 162   | 58     | 876             | 3759  |
 
-Reading a transcript shows two separate causes:
+Reading the transcripts shows two separate causes:
 
 1. **Long answers by default.** Nothing in the debate rules asks for brevity. Claude
-   writes report-style answers: headings, numbered sections, a closing recap,
-   restating the other agent's position before answering it.
+   writes report-style answers: introductions, restating the other agent's position
+   before answering it, a closing recap.
 2. **Working notes glued into the answer.** Both adapters concatenate every text the
    model emits during a turn. Codex's progress notes ("I will first read the
-   memory...", "First measurement: ...") arrive as separate `agentMessage` items
-   with `phase: "commentary"` and are appended without even a line break
-   (`...files.The memory confirms...`). Claude does the same with the text it
-   writes before a tool call ("Let me look at the scheduler."). The human reads
-   them in the transcript and the other agent receives them as part of the message.
+   memory...") arrive as separate `agentMessage` items with `phase: "commentary"`
+   (the app-server schema of Codex 0.167.2 defines it as "mid-turn assistant text,
+   for example preamble/progress narration") and are appended without even a line
+   break (`...files.The memory confirms...`). Claude does the same with the text it
+   writes before a tool call ("Let me look at the scheduler."). The human reads them
+   in the transcript and the other agent receives them as part of the message.
 
 Tool calls and commands are not a cause: they already go to the one-line footer
 (`AgentActivity`), never to the transcript.
 
 ## Goals
 
-- G1. Debate messages are short and get to the point: position first, one or two
-  points per message, no restating, no headings, no closing recap.
-- G2. Working notes no longer appear in the transcript body and are no longer
-  delivered to the other agent. While the turn runs, the latest note is visible
-  in the footer, like a tool call, so the human still sees that work is happening.
-- G3. What the human reads in a message is exactly what the other agent receives.
-  This is a supervision property: the human must be able to audit the exchange.
+- G1. Debate messages are dense and direct: the position or main objection comes
+  first, one or two important arguments per message, no needless introduction,
+  restating or recap. A message may still develop an argument when a technical
+  demonstration needs it.
+- G2. Working notes no longer appear in the visible transcript and are no longer
+  delivered to the other agent. While the turn runs, the latest note shows in the
+  footer, like a command.
+- G3. The visible transcript is exactly the debate content exchanged between the
+  agents. Protocol metadata stays distinct from it (see D3).
+- G4. Nothing is lost for diagnosis: notes, and the full output of commands and
+  tools when the adapter has it, are written to a diagnostic log (D6).
+- G5. The separation removes nothing needed to understand an argument or check a
+  conclusion: the agent is told notes are private, so the message must stand on its
+  own (D1), and a turn that would be empty falls back to its full text (D4).
 
 ## Non-goals
 
 - The consensus summary (`SYNTHESIS_PROMPT`) and `/handoff`: they must stay complete.
-- Folding or collapsing long messages in the UI, a "show more", a summary line per
-  message: layout belongs to the CLI redesign branch that follows this one.
-- The `/implement` phase: the rules here are debate rules; implementation turns
-  keep their current output (notes included), since the human watches work there.
+- Any visual change: folding long messages, new layout, colours, a debate status
+  block. That is the CLI redesign, a separate branch (see "Compatibility with the
+  redesign").
+- The `/implement` phase output (D5).
 - A configurable verbosity level or a new slash command.
 
 ## Anti-goals
 
-- Truncating or cutting an agent's text in code. A hard cut would drop evidence or
-  the protocol marker on the last line, and would show the human something the
-  other agent did not receive (or the reverse). Brevity is asked for, not enforced.
-- Losing information: a turn whose answer would be empty after removing notes must
-  not become an empty message (see D4).
-- Weakening the evidence rule. Claims about the real behaviour of code still need a
-  command and its output; the change only allows quoting the relevant lines.
+- Truncating or cutting an agent's text in code. A cut would drop evidence or the
+  protocol marker, and would show the human something the other agent did not
+  receive (or the reverse). Brevity is asked for, never enforced.
+- A turn that becomes empty, or that breaks the protocol, because its text was
+  classified as notes (D4).
+- Weakening the evidence requirement, or treating the two agents differently.
 
 ## Decisions
 
-### D1. Concision rules in `CONSENSUS_INSTRUCTIONS`
+### D1. Debate rules: density, not a word limit
 
-Add to the debate rules (`src/orchestrator/scheduler.ts`), symmetric for both
-agents (the existing symmetry test must keep passing; no agent named outside the
-self/other roles):
+Add to `CONSENSUS_INSTRUCTIONS` (`src/orchestrator/scheduler.ts`), identical for both
+agents (no agent named outside the self/other roles; the symmetry test must pass):
 
-- Keep each debate message short: about 200 words at most, not counting quoted
-  command output, unless the human explicitly asks for more detail.
-- Start with your position or your answer. Make one or two points per message,
-  the most important first; keep the others for the next turns.
-- Do not restate or summarise the other's message, do not repeat what is already
-  agreed, do not end with a recap. No headings.
-- When you quote command output as evidence, quote only the lines that matter and
-  say what you left out.
-- Write your message after your last tool call. Any text written before a tool
-  call is a private working note: neither the human nor the other agent sees it in
-  the debate, so the message must stand on its own.
+- Argue as briefly as possible, but as precisely as necessary. Aim for about 200
+  words; this is a target, not a limit: go further when a technical demonstration
+  needs it.
+- Put your position or main objection first. Skip introductions, do not restate or
+  summarise the other's message, do not repeat what is already agreed, do not end
+  with a recap that adds nothing.
+- Prefer one or two important arguments per message; keep the others for later
+  turns.
+- Use headings or lists only when they make the message easier to follow.
+- Write your message after your last tool call. Text written before a tool call is
+  a private working note that neither the human nor the other agent sees in the
+  debate, so your message must contain everything needed to understand your
+  argument and check your conclusions.
 
-Why 200 words: it is below Claude's current median (321) and roughly a screen of
-text in a normal terminal; the exception for quoted output keeps the evidence rule
-intact; the exception for the human's request keeps the human in charge. The exact
-wording is left to the builder within these constraints, in English.
+The exact wording is left to the builder within these constraints, in English.
 
-The evidence rule sentence changes from "give the exact command and its raw output"
-to allow an excerpt: "give the exact command and the relevant lines of its raw
-output". This touches a settled rule (decisions.md, 2026-08-17, evidence stated
-symmetrically): the symmetry and the requirement are unchanged, only the quote may
-be partial. Record it in decisions.md.
+### D2. Evidence: excerpts allowed, under conditions
 
-### D2. Adapters separate notes from the answer
+The evidence rule keeps its requirement and its symmetry. It now allows an excerpt
+instead of the whole raw output, provided that:
 
-`AgentSendOptions` gains one callback:
+- the command that was run is given exactly;
+- the excerpt keeps the context needed to read it;
+- errors and meaningful exit codes are kept;
+- the excerpt never misrepresents the overall result (for example, quoting passing
+  tests while others failed), and says what was left out.
+
+Full outputs stay available in the diagnostic log when the adapter has them (D6).
+This amends the evidence rule of 2026-08-17 (decisions.md): record the amendment and
+its reason there.
+
+### D3. What the visible transcript contains
+
+The visible body of an agent message is exactly the text delivered to the other
+agent, apart from the protocol metadata Claudex already handles outside the body:
+the attribution line (`[Claude → Codex]`) that Claudex adds on delivery, and the end
+marker, which `extractSignal` already removes from the body. This is today's
+behaviour; it is pinned by a regression test (delivered text == entry text, for both
+agents).
+
+### D4. Adapters separate notes from the answer
+
+`AgentSendOptions` gains:
 
 ```ts
 /**
  * The text streamed since the last boundary was a working note, not part of the
- * answer. Receivers drop it from the message and may show `note` as activity.
+ * answer. Receivers drop it from the live message.
  */
 onNote?: (note: string) => void;
 ```
 
-and `AgentActivity` gains a `{ kind: "note"; status: "running"; label: string }`
-variant shown in the footer (first line of the note, truncated like other labels,
-sanitized like other agent text).
+`AgentActivity` gains `{ kind: "note"; status: "running"; label: string }` for the
+footer. The label is raw data (the note's first line); truncation and styling stay
+in the UI, like other activity labels.
 
-The answer (`AgentResult` success text) contains only the answer segments.
+The success text of `AgentResult` contains only the answer.
 
-- **Codex** (`src/agents/codexAgent.ts`): an `agentMessage` item whose `phase` is
-  `"commentary"` is a note. Its deltas stream as today (the phase may not be known
-  before `item/completed`); on `item/completed` with `phase: "commentary"`, the
-  adapter removes that item's text from the turn text and calls `onNote(text)`.
-  Any other phase, including `null` or missing (older Codex versions), stays an
-  answer, so behaviour on an older Codex is today's. Between two answer items the
-  adapter inserts a paragraph break (`\n\n`) instead of nothing, which fixes the
-  glued sentences.
+- **Codex** (`src/agents/codexAgent.ts`): an `agentMessage` item with
+  `phase: "commentary"` is a note. On `item/completed` with that phase, the adapter
+  removes the item's text from the turn text and calls `onNote`. Any other phase,
+  including `null` or missing (the schema says providers do not emit it
+  consistently), stays an answer: an unknown phase behaves as today. If
+  `item/started` carries the phase, the adapter may hold a commentary item's deltas
+  back from `onTextDelta` instead of streaming then removing them. Between two answer
+  items the adapter inserts a paragraph break (`\n\n`) instead of nothing.
 - **Claude** (`src/agents/claudeAgent.ts`): text streamed since the last boundary
-  becomes a note when a `tool_use` content block starts after it within the same
-  turn. The boundary is the start of the turn or the previous tool use. Text after
-  the last tool use is the answer. The non-streamed path (an `assistant` message
-  without prior stream events) applies the same rule to its content blocks.
+  becomes a note when a `tool_use` block starts after it in the same turn. Boundaries
+  are the start of the turn and each tool use. Text after the last tool use is the
+  answer. The non-streamed path (an `assistant` message without prior stream events)
+  applies the same rule to its content blocks.
 
-Builder's check: whether Codex's `item/started` carries `phase` for agent messages
-is not known (Codex 0.167.2 installed here). The design works without it. If the
-builder finds it does, holding the deltas of a known commentary item back from
-`onTextDelta` is allowed (it avoids text appearing then disappearing), but not
-required. Tests cover both orders with mocked `child_process.spawn`.
+**Fallback.** If, at the end of a successful turn, the answer is empty or holds only
+a protocol marker, the result text is every segment in order (notes and answer,
+separated by blank lines). Nothing is lost, the turn is never empty, and the marker
+is still read from the last line by `extractSignal`, unchanged. The adapter builds
+this text; the scheduler resets the entry body to the result text whenever it
+differs from what was streamed.
 
-### D3. Scheduler and UI drop the note from the live entry
-
-In `runJob` (`src/orchestrator/scheduler.ts`), `onNote` removes the note from
-`liveText` (it is always the suffix streamed since the last boundary), updates the
-entry and tells the UI to reset that entry's streamed body, then emits the `note`
-activity. The UI stream path (`src/ui/stream/`) needs a way to replace an entry's
-streamed body; the debate view owns all its lines (decisions.md, 2026-09-28), so a
-reset is possible. The builder picks the mechanism (for example a new
-`onOutputReset(entryId, text)` callback next to `onOutputChunk`).
-
-The final entry text, the text delivered to the other agent, and the archived
-transcript all come from the answer only. Notes are ephemeral, like tool activity:
-they are not archived. The `responding` activity replaces the note when answer text
-streams again.
-
-### D4. Fallback when the answer is empty
-
-If, at the end of a successful turn, the answer is empty or holds nothing but a
-protocol marker, the turn text becomes all segments in order (notes and answer,
-separated by blank lines), and the entry shows that. The adapter builds this text
-(it knows the segments); the scheduler, at the end of the turn, resets the entry's
-body to the result text whenever it differs from what was streamed. Nothing the agent wrote is
-lost; a misbehaving turn is merely as verbose as today. The marker is still read
-from the last line by `extractSignal`, unchanged.
-
-Cancelled and failed turns keep their current `partialText` behaviour (all text so
-far), since the human needs to see what happened.
+Cancelled and failed turns keep their `partialText` as today (all text so far).
 
 ### D5. Implementation phase unchanged
 
-During `/implement` (`writeAccess: true`) the adapters do not call `onNote`: notes
-stay in the message as today. The rules in D1 are part of the debate rules, which
-are sent only during the debate.
+With `writeAccess: true` the adapters never call `onNote`: notes stay in the message
+as today, since the human watches the work there. The D1 and D2 rules are part of the
+debate rules and are not sent in that phase. The diagnostic log (D6) still records
+both phases.
+
+### D6. Diagnostic log
+
+Claudex has no diagnostic log today. It gains one, as data separate from the
+transcript:
+
+- `AgentSendOptions` gains `onTrace?: (event: AgentTraceEvent) => void`. Events:
+  a note (its text), and a finished tool or command (name or command line, input,
+  status, exit code when known, and its full output when the adapter has it: Codex's
+  `aggregatedOutput` on `commandExecution` items, Claude's `tool_result` content).
+- The scheduler stamps each event with the agent, the transcript entry it belongs
+  to and a timestamp, and keeps them in a session trace next to the transcript.
+- The trace is written where and when the transcript archive is written (`/save`,
+  `/new`, `/quit`, the partial snapshot): a second file next to it in
+  `.claudex/memory/transcripts/`, same base name with a `.trace.md` suffix, plain
+  Markdown, each output in a fenced block. The `.claudex/.gitignore` allowlist
+  already keeps it out of commits.
+- Each output is capped at 64 KiB in the log, with the number of bytes left out
+  stated. This is a log, not the debate: capping it does not contradict the
+  no-truncation anti-goal.
+- Each fenced block uses a fence longer than any backtick run in its content, so an
+  output cannot close its block early.
+
+Security note: command outputs can hold sensitive project data that the agents
+read (the sandbox already denies credential stores). The log stays local, inside
+`.claudex/`, ignored by git, like the transcripts that may already quote the same
+outputs. The README says so.
+
+## Compatibility with the redesign
+
+The redesign is a separate branch with its own design. This branch must not make it
+harder, so it keeps data and presentation apart:
+
+- Notes, tool events and messages are distinct typed data (`onNote`, `AgentActivity`,
+  `AgentTraceEvent`, `TranscriptEntry`), never pre-formatted strings with colours or
+  symbols.
+- The scheduler gains no rendering concern: it emits events; `src/ui/` decides how
+  they look.
+- No change to `TranscriptEntry` kinds or the archive format of the visible
+  transcript.
 
 ## Tests (written first)
 
-- Rules: the new sentences are present for both agents, and the symmetry test
-  still passes; the evidence rule mentions the relevant lines.
-- Codex adapter: commentary item removed from the result and passed to `onNote`;
-  `phase` null/missing kept as answer; two answer items separated by `\n\n`;
-  commentary arriving before and after deltas; empty-answer fallback.
-- Claude adapter: text before a tool use becomes a note (streamed and non-streamed
-  paths); text after the last tool use is the answer; a turn with no tool use is
-  unchanged; a turn ending on a tool use with no text after falls back (D4);
-  `writeAccess: true` never calls `onNote`.
-- Scheduler (fake agent emitting notes): the delivered text and transcript entry
-  exclude notes; the `note` activity is emitted; the empty-answer fallback.
-- UI: a reset entry shows only the answer; the footer shows the note label.
+- Rules: the new sentences are present for both agents; the symmetry test passes;
+  the evidence rule mentions the excerpt conditions; the word target is phrased as
+  a target.
+- Codex adapter: commentary removed from the result and passed to `onNote`; phase
+  `null` or missing kept as answer; two answer items separated by `\n\n`; commentary
+  before and after deltas; only-commentary turn falls back to the full text; trace
+  events carry `aggregatedOutput`.
+- Claude adapter: text before a tool use becomes a note (streamed and non-streamed);
+  text after the last tool use is the answer; a turn without tools is unchanged; a
+  turn ending on a tool use with no text after falls back; `writeAccess: true` never
+  calls `onNote`; trace events carry the tool result.
+- Scheduler, with a fake agent (regression): delivered text equals the entry text
+  for both agents; notes neither delivered nor in the entry; a marker after notes
+  still yields the right signal and consensus; an only-notes turn is not empty and
+  keeps its signal; symmetric behaviour for Claude and Codex.
+- UI: an entry reset shows only the answer; the footer shows the note label.
+- Store: the trace file is written next to the transcript, output capped with the
+  omitted byte count, nothing written when the trace is empty.
 
 `npm run check` must pass.
 
 ## Success
 
 - The maintainer's manual smoke test (one debate in French, one in English) finds
-  the debate easy to follow.
-- Optional measurement: the same word-count script over new transcripts. Expected:
-  Claude's median well under 200 words and no more glued Codex notes. Models do not
-  always comply with length rules; that is accepted (anti-goal: no truncation).
+  the debate easy to follow, with no loss of argument or evidence.
+- Optional measurement with the same word-count script over new transcripts:
+  Claude's median below today's 321, and no glued Codex notes.
 
 ## Rollback
 
-Each part reverts on its own: D1 is prompt text; D2–D4 are adapter and scheduler
-changes behind a new optional callback. Reverting the branch's merge commit
-restores today's behaviour; no stored data changes format.
+D1 and D2 are prompt text; D4 to D6 sit behind new optional callbacks and a new
+file. Reverting the merge commit restores today's behaviour; existing archives are
+unchanged.
 
 ## Left to the builder
 
-The exact wording of the rules, the UI reset mechanism, footer truncation of the
-note, and the module organisation, within the constraints above.
+The exact rule wording, the UI reset mechanism (for example an `onOutputReset`
+callback next to `onOutputChunk`), the footer truncation of notes, and the layout of
+the trace file, within the constraints above.
