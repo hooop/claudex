@@ -496,7 +496,7 @@ describe("DebateView — full-screen viewport", () => {
     const output = t.chunks.join("");
     expect(output.split("\u25b2 Claudex").length - 1).toBe(0);
     expect(output).toContain("Topic  Test topic");
-    expect(output).not.toContain(":: Topic: Test topic");
+    expect(output).not.toContain("· Topic: Test topic");
 
     const footerFrame = [...t.chunks]
       .reverse()
@@ -645,7 +645,7 @@ function lastHistoryLine(t: ReturnType<typeof mount>): number {
   return Math.max(...numbers);
 }
 
-/** Drags from "beta" to the end of "delta" over two transcript lines, without releasing. */
+/** Drags from "beta" onto the last character of "delta" over two transcript lines, without releasing. */
 async function selectWords(t: ReturnType<typeof mount>) {
   t.agents.claude.emit("alpha beta gamma\ndelta epsilon\n");
   await tick();
@@ -653,7 +653,7 @@ async function selectWords(t: ReturnType<typeof mount>) {
   const first = rows.findIndex((row) => row.includes("alpha beta gamma"));
   const second = rows.findIndex((row) => row.includes("delta epsilon"));
   expect(second).toBe(first + 1);
-  const end = rows[second]!.indexOf("delta") + "delta".length;
+  const end = rows[second]!.indexOf("delta") + "delta".length - 1;
 
   t.mouse.emit({ kind: "press", x: rows[first]!.indexOf("beta"), y: first });
   t.mouse.emit({ kind: "drag", x: end - 3, y: second });
@@ -727,6 +727,35 @@ describe("DebateView — mouse", () => {
   );
 
   it(
+    "a backward drag ending on the first character copies the full words",
+    withColor(async () => {
+      const copies: string[] = [];
+      const t = mount({ onCopy: (text) => copies.push(text) });
+      await vi.waitFor(() => expect(t.agents.claude.pending).toBe(true));
+      t.agents.claude.emit("alpha beta gamma\n");
+      await tick();
+      const { rows } = lastFrame(t);
+      const row = rows.findIndex((text) => text.includes("alpha beta gamma"));
+      const start = rows[row]!.indexOf("beta");
+      const last = rows[row]!.indexOf("gamma") + "gamma".length - 1;
+
+      t.mouse.emit({ kind: "press", x: last, y: row });
+      t.mouse.emit({ kind: "drag", x: start, y: row });
+      t.mouse.emit({ kind: "release", x: start, y: row });
+      await vi.waitFor(() => expect(copies).toEqual(["beta gamma"]));
+      await vi.waitFor(() => expect(inverted(t)).toEqual(["beta gamma"]));
+
+      // A click without a drag clears the selection and copies nothing.
+      t.mouse.emit({ kind: "press", x: start, y: row });
+      t.mouse.emit({ kind: "release", x: start, y: row });
+      await vi.waitFor(() => expect(inverted(t)).toEqual([]));
+      expect(copies).toEqual(["beta gamma"]);
+
+      t.app.unmount();
+    }),
+  );
+
+  it(
     "copies the released selection and flashes the result",
     withColor(async () => {
       const t = mount();
@@ -761,9 +790,10 @@ describe("DebateView — mouse", () => {
       const rows = lastFrame(t).rows;
       const row = rows.findIndex((text) => text.endsWith("history line 40"));
       const x = rows[row]!.indexOf("history");
+      const last = x + "history line 40".length - 1;
       t.mouse.emit({ kind: "press", x, y: row });
-      t.mouse.emit({ kind: "drag", x: x + "history line 40".length, y: row });
-      t.mouse.emit({ kind: "release", x: x + "history line 40".length, y: row });
+      t.mouse.emit({ kind: "drag", x: last, y: row });
+      t.mouse.emit({ kind: "release", x: last, y: row });
 
       await vi.waitFor(() => expect(copies).toEqual(["history line 40"]));
       await vi.waitFor(() => expect(inverted(t)).toEqual(["history line 40"]));

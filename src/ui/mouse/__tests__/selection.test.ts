@@ -4,6 +4,7 @@ import { line } from "../../stream/streamController.js";
 import { LineBuffer } from "../../stream/lineBuffer.js";
 import {
   WHEEL_LINES,
+  dragSelection,
   highlightColumns,
   orderedRange,
   screenToCell,
@@ -145,6 +146,78 @@ describe("highlightColumns", () => {
   it("keeps a wide character straddling an edge, outside the inverse, in place", () => {
     expect(highlightColumns("a界b", [2, 4])).toBe(`a界${chalk.inverse("b")}`);
     expect(highlightColumns("a界b", [0, 2])).toBe(`${chalk.inverse("a")}界b`);
+  });
+});
+
+describe("dragSelection", () => {
+  function drag(anchorLine: number, anchorCol: number, focusLine: number, focusCol: number, moved = true) {
+    return { anchor: { line: anchorLine, col: anchorCol }, focus: { line: focusLine, col: focusCol }, moved };
+  }
+
+  /** What the viewport draws for line `index` and what a release copies. */
+  function drawnAndCopied(lines: ReturnType<typeof line>[], selection: Selection | null, index = 0) {
+    const columns = selection ? selectedColumns(selection, index, 80) : null;
+    return {
+      drawn: columns ? highlightColumns(lines[index]!.styled, columns) : lines[index]!.styled,
+      copied: selection ? selectedText(lines, selection) : "",
+    };
+  }
+
+  const words = [line("hello world")];
+
+  it("copies and highlights the full word when a forward drag ends on its last character", () => {
+    // "w" is column 6, "d" column 10.
+    expect(drawnAndCopied(words, dragSelection(words, drag(0, 6, 0, 10)))).toEqual({
+      drawn: `hello ${chalk.inverse("world")}`,
+      copied: "world",
+    });
+  });
+
+  it("includes the press cell when the drag goes backward", () => {
+    expect(drawnAndCopied(words, dragSelection(words, drag(0, 10, 0, 6)))).toEqual({
+      drawn: `hello ${chalk.inverse("world")}`,
+      copied: "world",
+    });
+  });
+
+  it("includes both end cells across lines", () => {
+    const lines = [line("alpha beta"), line("gamma delta")];
+    // From "b" of "beta" (column 6) to "a" ending "gamma" (column 4), both ways.
+    expect(selectedText(lines, dragSelection(lines, drag(0, 6, 1, 4))!)).toBe("beta\ngamma");
+    expect(selectedText(lines, dragSelection(lines, drag(1, 4, 0, 6))!)).toBe("beta\ngamma");
+  });
+
+  it("selects the one character under the pointer after a drag that came back to the press cell", () => {
+    expect(drawnAndCopied(words, dragSelection(words, drag(0, 4, 0, 4)))).toEqual({
+      drawn: `hell${chalk.inverse("o")} world`,
+      copied: "o",
+    });
+  });
+
+  it("selects nothing for a click without a drag", () => {
+    expect(dragSelection(words, drag(0, 4, 0, 4, false))).toBeNull();
+  });
+
+  it("covers a whole wide character under either end, in the highlight and the copy alike", () => {
+    // "a界b": "界" covers columns 1 and 2.
+    const wide = [line("a界b")];
+    // Ending on the second half of "界".
+    expect(drawnAndCopied(wide, dragSelection(wide, drag(0, 0, 0, 2)))).toEqual({
+      drawn: `${chalk.inverse("a界")}b`,
+      copied: "a界",
+    });
+    // Starting on the second half of "界", backward.
+    expect(drawnAndCopied(wide, dragSelection(wide, drag(0, 3, 0, 2)))).toEqual({
+      drawn: `a${chalk.inverse("界b")}`,
+      copied: "界b",
+    });
+  });
+
+  it("extends one column past the end of a line", () => {
+    expect(dragSelection(words, drag(0, 6, 0, 30))).toEqual({
+      anchor: { line: 0, col: 6 },
+      focus: { line: 0, col: 31 },
+    });
   });
 });
 

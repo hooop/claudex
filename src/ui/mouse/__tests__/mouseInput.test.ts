@@ -50,6 +50,15 @@ describe("parseMouseChunk — SGR decoding", () => {
     ]);
   });
 
+  it("ignores the horizontal wheel (buttons 66 and 67) without forwarding it", () => {
+    expect(parseMouseChunk(`a${ESC}[<66;5;5M${ESC}[<67;5;5M${ESC}[<70;5;5Mb`, false)).toEqual({
+      forward: "ab",
+      events: [],
+      rest: "",
+      inPaste: false,
+    });
+  });
+
   it("ignores the modifier bits (shift, meta, ctrl)", () => {
     expect(parseMouseChunk(`${ESC}[<28;2;2M${ESC}[<80;4;4M`, false).events).toEqual([
       { kind: "press", x: 1, y: 1 },

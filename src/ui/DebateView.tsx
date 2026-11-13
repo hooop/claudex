@@ -55,10 +55,12 @@ import { copyNotice, copyToClipboard } from "./mouse/clipboard.js";
 import type { MouseEvent } from "./mouse/mouseInput.js";
 import {
   WHEEL_LINES,
+  dragSelection,
   highlightColumns,
   screenToCell,
   selectedColumns,
   selectedText,
+  type Drag,
   type Selection,
 } from "./mouse/selection.js";
 import type { ProjectStatus } from "../util/projectStatus.js";
@@ -104,7 +106,7 @@ export function DebateView(props: {
   }));
   const [transcriptLines, setTranscriptLines] = useState<readonly TranscriptLine[]>(INITIAL_TRANSCRIPT_LINES);
   const [scrollOffset, setScrollOffset] = useState(0);
-  const [selection, setSelection] = useState<Selection | null>(null);
+  const [selection, setSelection] = useState<Drag | null>(null);
   const [tail, setTail] = useState<TailView | null>(null);
   const [debateStatus, setDebateStatus] = useState<DebateStatus>(INITIAL_STATUS);
   const [phase, setPhase] = useState<Phase>(session.phase);
@@ -140,10 +142,10 @@ export function DebateView(props: {
   const awaitingImplementFor = useRef<AgentId | null>(null);
   // Mouse events can arrive faster than React renders: a press and its release
   // in one stdin chunk must see each other, so the selection also lives in a ref.
-  const selectionRef = useRef<Selection | null>(null);
+  const selectionRef = useRef<Drag | null>(null);
   const draggingRef = useRef(false);
 
-  const updateSelection = useCallback((next: Selection | null) => {
+  const updateSelection = useCallback((next: Drag | null) => {
     selectionRef.current = next;
     if (next === null) draggingRef.current = false;
     setSelection(next);
@@ -627,7 +629,7 @@ export function DebateView(props: {
     const viewport = { top: DEBATE_HEADER_ROWS, height: transcriptRows, firstLine: firstVisibleLine(transcriptLines.length, transcriptRows, visibleScrollOffset) };
     if (event.kind === "press") {
       const cell = screenToCell(event.y, event.x, viewport);
-      updateSelection(cell ? { anchor: cell, focus: cell } : null);
+      updateSelection(cell ? { anchor: cell, focus: cell, moved: false } : null);
       draggingRef.current = cell !== null;
       return;
     }
@@ -648,12 +650,19 @@ export function DebateView(props: {
       ...viewport,
       firstLine: firstVisibleLine(transcriptLines.length, transcriptRows, offset),
     });
-    const next = focus ? { anchor: current.anchor, focus } : current;
+    const next = focus
+      ? {
+          anchor: current.anchor,
+          focus,
+          moved: current.moved || focus.line !== current.anchor.line || focus.col !== current.anchor.col,
+        }
+      : current;
     updateSelection(next);
 
     if (event.kind === "release") {
       draggingRef.current = false;
-      const text = selectedText(transcriptLinesRef.current, next);
+      const covered = dragSelection(transcriptLinesRef.current, next);
+      const text = covered ? selectedText(transcriptLinesRef.current, covered) : "";
       if (text !== "") copySelection(text);
     }
   }, mouseActive);
@@ -672,7 +681,7 @@ export function DebateView(props: {
           height={transcriptRows}
           columns={columns}
           scrollOffset={visibleScrollOffset}
-          selection={selection}
+          selection={selection ? dragSelection(transcriptLines, selection) : null}
         />
 
         {showTail && tail && (

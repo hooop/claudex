@@ -29,6 +29,8 @@ function decode(button: number, column: number, row: number, final: string): Mou
   if (b & WHEEL) {
     // Terminals send the wheel as presses only.
     if (final !== "M") return null;
+    // Bit 2 marks the horizontal wheel (66, 67): not a scroll of this view.
+    if (b & 2) return null;
     return { kind: "wheel", direction: b & 1 ? "down" : "up", x, y };
   }
   // Only the left button selects; the others are dropped.

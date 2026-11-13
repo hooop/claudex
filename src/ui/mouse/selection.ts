@@ -15,6 +15,16 @@ export interface Selection {
   focus: Cell;
 }
 
+/**
+ * A drag as the pointer made it. Once it has moved, both the press cell and
+ * the cell under the pointer are selected; a click alone selects nothing.
+ */
+export interface Drag {
+  anchor: Cell;
+  focus: Cell;
+  moved: boolean;
+}
+
 /** Lines scrolled per wheel notch. */
 export const WHEEL_LINES = 3;
 
@@ -34,6 +44,31 @@ export function orderedRange(selection: Selection): { start: Cell; end: Cell } {
   const { anchor, focus } = selection;
   const anchorFirst = anchor.line < focus.line || (anchor.line === focus.line && anchor.col <= focus.col);
   return anchorFirst ? { start: anchor, end: focus } : { start: focus, end: anchor };
+}
+
+/** Display columns `[start, end)` of the grapheme under `col`; one column past the text. */
+function graphemeColumns(styled: string | undefined, col: number): [number, number] {
+  let column = 0;
+  for (const { segment } of segmenter.segment(plainOf(styled ?? ""))) {
+    const width = displayWidth(segment);
+    if (col < column + width) return [column, column + width];
+    column += width;
+  }
+  return [col, col + 1];
+}
+
+/**
+ * The selection a drag covers: from the start of the grapheme under its first
+ * cell to the end of the grapheme under its last, so the highlight and the copy
+ * both include the characters at either end, wide ones whole.
+ */
+export function dragSelection(lines: readonly TranscriptLine[], drag: Drag): Selection | null {
+  if (!drag.moved) return null;
+  const { start, end } = orderedRange(drag);
+  return {
+    anchor: { line: start.line, col: graphemeColumns(lines[start.line]?.styled, start.col)[0] },
+    focus: { line: end.line, col: graphemeColumns(lines[end.line]?.styled, end.col)[1] },
+  };
 }
 
 /** The selected display columns of `line`, end exclusive, or null when none are. */
