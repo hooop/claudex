@@ -34,6 +34,8 @@ anyone changing Claudex itself, human or agent. User documentation is in README.
 - `src/ui/`: welcome screen, debate view, output rendering.
 - `src/util/`: small helpers (tool input formatting, project status).
 - `docs/demo/`: source of the README demo GIF; typechecked and linted like `src`.
+- `docs/diagram/`: the README diagram. `python3 docs/diagram/build.py` rebuilds it; it
+  needs the diagram-design Claude Code plugin and Chrome, and is not run by CI.
 - `scripts/`: maintainer tooling. `npm run verify:readonly` measures against a real SDK
   whether Claude stays read-only during a debate (run it after every SDK upgrade); that
   command is never run by `npm test` or CI, but its unit tests under
