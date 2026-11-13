@@ -261,7 +261,7 @@ describe("CodexAgent app-server streaming", () => {
     );
   });
 
-  it("sends the rules as developer instructions on start and resume", async () => {
+  it("sends the rules as developer instructions on start only, not on resume", async () => {
     const firstServer = new FakeAppServer("success");
     const secondServer = new FakeAppServer("success");
     spawnMock.mockReturnValueOnce(firstServer).mockReturnValueOnce(secondServer);
@@ -272,10 +272,11 @@ describe("CodexAgent app-server streaming", () => {
 
     const start = firstServer.requests.find((request) => request.method === "thread/start");
     const resume = secondServer.requests.find((request) => request.method === "thread/resume");
-    for (const request of [start, resume]) {
-      expect(request?.params).toEqual(expect.objectContaining({ developerInstructions: "RULES" }));
-      expect(request?.params).not.toHaveProperty("baseInstructions");
-    }
+    expect(start?.params).toEqual(expect.objectContaining({ developerInstructions: "RULES" }));
+    expect(start?.params).not.toHaveProperty("baseInstructions");
+    expect(resume).toBeDefined();
+    expect(resume?.params).not.toHaveProperty("developerInstructions");
+    expect(resume?.params).not.toHaveProperty("baseInstructions");
   });
 
   it.each(["invalid-completion", "mismatched-completion"] as const)(

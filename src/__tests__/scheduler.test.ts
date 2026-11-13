@@ -1119,6 +1119,19 @@ describe("Scheduler", () => {
       await vi.waitFor(() => expect(agents.codex.isPending()).toBe(true));
       expect(agents.codex.lastMessage).toContain("Useful analysis but no marker");
     });
+    it("refuses NO_TOPIC outside a topic qualification", async () => {
+      scheduler.start("Valid topic");
+      await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
+      agents.claude.complete("Let us analyse.\n\n<<CONTINUE>>");
+      await vi.waitFor(() => expect(agents.codex.isPending()).toBe(true));
+      agents.codex.complete("Nothing to debate.\n\n<<NO_TOPIC>>");
+
+      await vi.waitFor(() => expect(scheduler.suspension()).toBe("protocol-error"));
+      expect(callbacks.onTurnError).toHaveBeenLastCalledWith(
+        "codex",
+        expect.objectContaining({ message: "<<NO_TOPIC>> is only valid in answer to a topic qualification." }),
+      );
+    });
   });
 
   describe("WAIT_HUMAN inside immutable batches", () => {

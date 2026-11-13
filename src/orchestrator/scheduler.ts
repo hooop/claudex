@@ -993,7 +993,7 @@ export class Scheduler {
         }
 
         if (signal === "no-topic" && job.origin !== "initial") {
-          const message = `${NO_TOPIC_MARKER} is only valid for the initial qualification of the topic.`;
+          const message = `${NO_TOPIC_MARKER} is only valid in answer to a topic qualification.`;
           job.status = "failed";
           job.error = message;
           this.callbacks.onEntryCompleted(entry.id, { status: "error", message });
