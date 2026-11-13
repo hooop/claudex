@@ -256,8 +256,14 @@ answers overlap the footer.
   rewrite with curses is unnecessary.
 - During a session, `DebateView` owns all the formatted lines and writes nothing
   behind its frame. Header, transcript and footer each have a bounded area.
-- The transcript is scrolled with the mouse wheel (terminal mode 1007 when it is supported), the arrows,
+- The transcript is scrolled with the mouse wheel, the arrows,
   Page Up/Page Down and Home/End. The header and the footer never move.
+  **Amended 2026-11-12:** the wheel is read through SGR mouse reporting (modes 1000, 1002
+  and 1006), no longer through terminal mode 1007. Reason: 1007 is unreliable in
+  Terminal.app and cannot support selecting text to copy it. Claudex now filters the mouse
+  reports out of stdin, scrolls 3 lines per notch and copies a selection made inside the
+  transcript; native selection stays available with Option (Terminal.app, iTerm2) or Shift
+  (most Linux terminals). The rest of this decision stands.
 - Native scrollback is not available in the alternate screen. The durable record remains the
   canonical transcript archived in `.claudex/memory/transcripts/` on normal exit.
 

@@ -316,7 +316,7 @@ state to it, so later renders diff against what is really on screen.
 - `src/ui/theme.ts`: the only place for colours, glyphs (`◆ │ ━ ─ ✓ → ? ! ·`), widths
   and the thresholds (60 columns).
 - `src/ui/stream/transcriptStream.ts`: turn headers, verdicts, round labels, summary
-  framing; lines carry `{ styled, plain }`.
+  framing; lines carry `{ styled, softWrap, droppedSpace }`.
 - A new `src/ui/debateStatus.ts`: a pure reducer from session events to the status shown
   in the header and to the round counters. Unit-tested without Ink.
 - A new `src/ui/mouse/`: the stdin filter (pure, tested on byte chunks), the selection
@@ -367,7 +367,9 @@ native selection.
 - Exact column widths, the mini animation's preset and speed, the exact dim shades, as
   long as the palette stays limited and legible on light and dark themes.
 - How the soft-wrap flag is carried on lines. Built: each transcript line is
-  `{ styled, softWrap }`; the plain text is not carried but derived with
+  `{ styled, softWrap, droppedSpace }`. A soft-wrapped line is joined to the previous one
+  with a space only when the wrap dropped one (`droppedSpace`), and with nothing on a hard
+  cut inside a word, so URLs and paths copy back exactly. The plain text is not carried but derived with
   `util.stripVTControlCharacters`, which is equivalent because agent text has already
   been through `AnsiSanitizer` and only Claudex's own styling remains.
 - The order of tasks in the plan.
