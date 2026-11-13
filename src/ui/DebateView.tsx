@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import { Box, Text, useInput, useStdout } from "ink";
 import chalk from "chalk";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -50,6 +51,7 @@ import { sanitizeForDisplay } from "./stream/sanitize.js";
 import { markdownToPlainText } from "./markdown.js";
 import { setMouseReporting } from "./terminal.js";
 import { useMouse } from "./mouse/MouseContext.js";
+import { copyNotice, copyToClipboard } from "./mouse/clipboard.js";
 import type { MouseEvent } from "./mouse/mouseInput.js";
 import {
   WHEEL_LINES,
@@ -80,7 +82,7 @@ export function DebateView(props: {
   coordinatorNotice: string | null;
   onLifecycleRequest: (request: LifecycleRequest) => Promise<CoordinatorResponse>;
   onAutonomySelected: (budget: AutonomyBudget, remember: boolean) => Promise<void>;
-  /** Receives the text of a finished mouse selection. */
+  /** Observes the text of a finished mouse selection, which is copied to the clipboard regardless. */
   onCopy?: (text: string) => void;
 }) {
   const {
@@ -94,7 +96,7 @@ export function DebateView(props: {
     onAutonomySelected,
     onCopy,
   } = props;
-  const { stdout } = useStdout();
+  const { stdout, write } = useStdout();
 
   const [{ columns, terminalRows }, setTerminalSize] = useState(() => ({
     columns: stdout?.columns ?? 80,
@@ -152,6 +154,23 @@ export function DebateView(props: {
     setNotice(asciiSymbolsForDisplay(text));
     noticeTimer.current = setTimeout(() => setNotice(null), 4000);
   }, []);
+
+  const copySelection = useCallback(
+    (text: string) => {
+      onCopy?.(text);
+      // Ink's write keeps its frame bookkeeping intact when OSC 52 is emitted.
+      copyToClipboard(text, {
+        platform: process.platform,
+        env: process.env,
+        spawn,
+        writeTerminal: write,
+      }).then(
+        (result) => flash(copyNotice(result, [...text].length)),
+        (error: unknown) => flash(copyNotice({ kind: "failed", message: String(error) }, 0)),
+      );
+    },
+    [flash, onCopy, write],
+  );
 
   const appendTranscript = useCallback(
     (incoming: readonly TranscriptLine[]) => {
@@ -635,7 +654,7 @@ export function DebateView(props: {
     if (event.kind === "release") {
       draggingRef.current = false;
       const text = selectedText(transcriptLinesRef.current, next);
-      if (text !== "") onCopy?.(text);
+      if (text !== "") copySelection(text);
     }
   }, mouseActive);
 

@@ -24,6 +24,15 @@ import {
   transcriptWindow,
 } from "../DebateView.js";
 
+// Selections release into the clipboard: never let a test reach a real command.
+const clipboard = vi.hoisted(() => ({
+  copyToClipboard: vi.fn(() => Promise.resolve({ kind: "copied" as const })),
+}));
+vi.mock("../mouse/clipboard.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../mouse/clipboard.js")>()),
+  copyToClipboard: clipboard.copyToClipboard,
+}));
+
 const CLEAR_SCREEN = /\u001b\[[23]J/;
 const CURSOR_UP = /\u001b\[1A/g;
 const ANSI_SEQUENCE = /\u001b\[[0-?]*[ -/]*[@-~]/g;
@@ -712,6 +721,26 @@ describe("DebateView — mouse", () => {
       t.mouse.emit({ kind: "release", x: 0, y: 0 });
       await vi.waitFor(() => expect(inverted(t)).toEqual([]));
       expect(copies).toEqual(["beta gamma\ndelta"]);
+
+      t.app.unmount();
+    }),
+  );
+
+  it(
+    "copies the released selection and flashes the result",
+    withColor(async () => {
+      const t = mount();
+      await vi.waitFor(() => expect(t.agents.claude.pending).toBe(true));
+      const { end, second } = await selectWords(t);
+      clipboard.copyToClipboard.mockClear();
+
+      t.mouse.emit({ kind: "release", x: end, y: second });
+      await vi.waitFor(() => expect(lastFrame(t).rows.join("\n")).toContain("Copied 16 characters"));
+      expect(clipboard.copyToClipboard).toHaveBeenCalledTimes(1);
+      expect(clipboard.copyToClipboard.mock.calls[0]).toEqual([
+        "beta gamma\ndelta",
+        expect.objectContaining({ platform: process.platform, env: process.env }),
+      ]);
 
       t.app.unmount();
     }),
