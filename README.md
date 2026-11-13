@@ -4,7 +4,10 @@
 
 Claudex runs a structured debate between Claude Code and Codex on a technical question, inside a single terminal, with a human in control. It replaces the manual copy-paste of one agent's answer into the other and keeps the discussion attached to the project.
 
-<img src="docs/demo/claudex.gif" alt="Claudex demo: animated header, a topic typed into the prompt, then Claude and Codex debating an authentication migration" width="660">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/diagram/claudex-exploded-dark.png">
+  <img src="docs/diagram/claudex-exploded.png" alt="Exploded view of Claudex: your project at the base stays read-only, Claude Code and Codex sit side by side above it, Claudex relays their answers until both agree, and the terminal on top is where you follow and step in" width="760">
+</picture>
 
 ## How it works
 
