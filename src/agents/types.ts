@@ -13,6 +13,8 @@ export const AUTO_MODEL_LABEL = "auto (detected on the 1st turn)";
 export interface AgentSendOptions {
   cwd: string;
   writeAccess: boolean;
+  /** The debate rules for this agent. Adapters send them through the system channel; they are identical for every send of a session. */
+  instructions: string;
   onTextDelta?: (delta: string) => void;
   /** Latest occupancy of the resumed conversation's model context. */
   onContextUsage?: (usage: AgentContextUsage) => void;

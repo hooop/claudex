@@ -12,20 +12,38 @@ export const MODEL_FOOTER_ROWS = 1;
  * there would retract the pressure warning exactly when the operator is acting
  * on it.
  */
-export function contextRemainingPercent(
+export function contextFreePercent(
   usage: AgentContextUsage | null | undefined,
-): string | null {
+): number | null {
   if (!usage || usage.contextWindow <= 0) return null;
   const percent = Math.round(
     ((usage.contextWindow - usage.usedTokens) / usage.contextWindow) * 100,
   );
-  return `${Math.max(0, Math.min(100, percent))}%`;
+  return Math.max(0, Math.min(100, percent));
+}
+
+export function contextRemainingPercent(
+  usage: AgentContextUsage | null | undefined,
+): string | null {
+  const free = contextFreePercent(usage);
+  return free === null ? null : `${free}%`;
+}
+
+/** Below this share of free context the debate footer brings the model line back. */
+export const LOW_CONTEXT_FREE_PERCENT = 25;
+
+/** An unmeasured context is not low: there is nothing to warn about yet. */
+export function isContextLow(usage: AgentContextUsage | null | undefined): boolean {
+  const free = contextFreePercent(usage);
+  return free !== null && free < LOW_CONTEXT_FREE_PERCENT;
 }
 
 /** Stable line below the prompt, shared by the welcome and debate screens. */
 export function ModelFooter(props: {
   models: Record<AgentId, string>;
   contextUsage?: Partial<Record<AgentId, AgentContextUsage | null>>;
+  /** When false only `/help` is drawn; the row stays reserved so the layout does not move. */
+  showModels?: boolean;
 }) {
   const showContext = props.contextUsage !== undefined;
   const modelLabel = (agent: AgentId) => {
@@ -40,9 +58,11 @@ export function ModelFooter(props: {
   return (
     <Box paddingX={1}>
       <Box flexGrow={1} flexShrink={1} marginRight={1}>
-        <Text color={MODEL_FOOTER_COLOR} wrap="truncate-end">
-          {modelLabel("claude")} + {modelLabel("codex")}
-        </Text>
+        {(props.showModels ?? true) && (
+          <Text color={MODEL_FOOTER_COLOR} wrap="truncate-end">
+            {modelLabel("claude")} + {modelLabel("codex")}
+          </Text>
+        )}
       </Box>
       <Text color={BRAND_COLOR}>/help</Text>
     </Box>

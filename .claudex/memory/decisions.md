@@ -2,6 +2,41 @@
 
 Log of the decisions validated at the end of a Claude ↔ Codex debate.
 
+## 2026-11-13 — One short response style for every message; rules in the system channel
+
+**Nature:** maintainer feedback ("even an answer to a simple question must be less verbose");
+technical choices are Claude's, delegated by the maintainer. Design:
+`docs/superpowers/specs/2026-11-13-concise-answers-design.md`.
+
+**Reopening, stated as such:** the 2026-11-12 decision (about 200 words, for arguing only) is
+reopened. New reason: the maintainer found the target too high and its scope too narrow; plain
+answers and qualification replies were not covered.
+
+**Decisions:**
+- **D1:** `CONSENSUS_INSTRUCTIONS` is split into labelled sections (Role, Project memory, Response
+  style, Evidence, Working notes, End marker). Response style applies to every debate turn and
+  every answer to the human: answer first, about 120 words as a target and not a limit, no meta
+  commentary, no headings unless asked, no closing recap, no closing question or offer unless an answer is needed to go on, no
+  speculation. A
+  message asking for a summary, a specification or implementation work sets its own length.
+- **D2:** the qualification prompt answers a plain question directly and ends with `NO_TOPIC`; no
+  new marker.
+- **D3:** the rules are passed on every `send` (`AgentSendOptions.instructions`) and travel as
+  Claude's custom `systemPrompt` (`snapshot: true`) and Codex's `developerInstructions` (on
+  `thread/start` only: resending them on resume costs about 5 400 input tokens per turn); the
+  first-message prepending and its `instructed` state are removed. Measurements in limits.md
+  (2026-11-13).
+- **D4:** during the debate the model line shows only `/help`, unless one agent has under 25 % of
+  its context free.
+
+**Rejected:** keeping the rules in the first message (they read as part of the human's request and
+can be lost to compaction); resending them in every message (about 800 tokens per turn); the
+`claude_code` preset (about 2 200 tokens per call); a hard word limit (already rejected 2026-11-12).
+
+**Files involved:** `src/orchestrator/scheduler.ts`, `src/agents/types.ts`,
+`src/agents/claudeAgent.ts`, `src/agents/codexAgent.ts`, `src/ui/components/ModelFooter.tsx`,
+`src/ui/DebateView.tsx`.
+
 ## 2026-11-12 — Denser debate messages and evidence excerpts
 
 **Nature:** maintainer arbitration (less verbose debate output). Design:

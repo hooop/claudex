@@ -129,7 +129,6 @@ export class Scheduler {
   private busy = false;
   private drainPromise: Promise<void> | null = null;
   private drainRecheckRequested = false;
-  private instructed: Record<AgentId, boolean> = { claude: false, codex: false };
 
   // ─────────────────────────────────────────────────────────────────────────
   // Permission queue
@@ -835,7 +834,7 @@ export class Scheduler {
     job.attempts++;
 
     const agent = job.agent;
-    const message = this.pendingInstructions(agent) + this.buildJobMessage(job);
+    const message = this.buildJobMessage(job);
 
     this.busy = true;
     this.currentAbort = new AbortController();
@@ -885,6 +884,7 @@ export class Scheduler {
       const result = await this.agents[agent].send(message, {
         cwd: this.options.cwd,
         writeAccess: this.phase === "implementation",
+        instructions: this.instructionsFor(agent),
         signal: this.currentAbort.signal,
         onTextDelta: (delta) => {
           if (!this.isRunLive(runToken)) return;
@@ -945,10 +945,6 @@ export class Scheduler {
 
     switch (result.kind) {
       case "success": {
-        // Only an answered turn proves the agent read the rules it carried. A
-        // failed one may be replaced by a new delivery, which must bring them.
-        this.instructed[agent] = true;
-
         // The adapter's fallback (every segment, when the answer is empty) was
         // not what the live view last showed, so the view starts over from it.
         this.resetOutputIfChanged(entry, noteTrimmedText, result.text);
@@ -997,7 +993,7 @@ export class Scheduler {
         }
 
         if (signal === "no-topic" && job.origin !== "initial") {
-          const message = `${NO_TOPIC_MARKER} is only valid for the initial qualification of the topic.`;
+          const message = `${NO_TOPIC_MARKER} is only valid in answer to a topic qualification.`;
           job.status = "failed";
           job.error = message;
           this.callbacks.onEntryCompleted(entry.id, { status: "error", message });
@@ -1196,12 +1192,18 @@ export class Scheduler {
     const text = [
       "First qualify the human input below.",
       `Proposed topic:\n${this.topic}${clarifications}`,
-      "If it really contains no technical topic to discuss, answer briefly and " +
-        "invite the human to give a topic, then end with " +
+      "Decide which case applies:\n" +
+        "1. If the input contains no topic (a greeting, an empty message), answer in one sentence and end with " +
         NO_TOPIC_MARKER +
-        ". If it contains a topic but information from the human is essential before debating, ask the question then end with " +
+        ".\n" +
+        "2. If it is a question about the project or a request for information that does not call for a debate between the two agents " +
+        "(how something works, where something is), answer it directly, following the response style, then end with " +
+        NO_TOPIC_MARKER +
+        ".\n" +
+        "3. If it is a topic but information from the human is essential before debating, ask the question then end with " +
         WAIT_HUMAN_MARKER +
-        ". Otherwise start the analysis and use the appropriate normal marker.",
+        ".\n" +
+        "4. Otherwise start the analysis and use the appropriate normal marker.",
     ].join("\n\n");
     const block: DeliveryBlock = {
       id: randomUUID(),
@@ -1441,6 +1443,7 @@ export class Scheduler {
       const result = await this.agents[agent].send(SYNTHESIS_PROMPT, {
         cwd: this.options.cwd,
         writeAccess: false, // Synthesis is always read-only
+        instructions: this.instructionsFor(agent),
         signal: this.currentAbort.signal,
         onTextDelta: (delta) => {
           if (!this.isRunLive(runToken)) return;
@@ -1477,7 +1480,9 @@ export class Scheduler {
       }
 
       if (result.kind === "success") {
-        const summary = result.text.trim();
+        // The rules now sit in the system prompt, so a closing end marker is
+        // likely; it must not leak into /handoff or /implement.
+        const summary = extractSignal(result.text).cleanText.trim();
         entry.text = summary;
         this.callbacks.onEntryUpdate(entry);
         this.callbacks.onEntryCompleted(entry.id, { status: "ok", signal: null, counted: true });
@@ -1675,15 +1680,8 @@ export class Scheduler {
     return full;
   }
 
-  /**
-   * The debate rules, until the agent has answered a turn that carried them.
-   * Decided at send time rather than stored in the job, so whichever delivery
-   * reaches the agent first brings them, and a retry drops them only once
-   * another delivery has been answered.
-   */
-  private pendingInstructions(agent: AgentId): string {
-    if (this.instructed[agent]) return "";
-    return `${CONSENSUS_INSTRUCTIONS(AGENT_NAME[agent], AGENT_NAME[this.other(agent)])}\n\n`;
+  private instructionsFor(agent: AgentId): string {
+    return CONSENSUS_INSTRUCTIONS(AGENT_NAME[agent], AGENT_NAME[this.other(agent)]);
   }
 }
 
@@ -1740,6 +1738,14 @@ function activitySignature(activity: AgentActivity): string {
  * valid move under uncertainty was to agree. Consensus now also asks that an
  * alternative have been examined — never that a disagreement be manufactured.
  *
+ * The rules are labelled sections rather than one run-on paragraph, and the
+ * response style governs every message, not only arguing. When brevity covered
+ * only debate turns, a plain question got a sectioned explainer wrapped in meta
+ * commentary and a closing offer; and a single paragraph glued to the first
+ * message read as part of the request, so models echoed it back ("I will answer
+ * in French"). The style states its own scope, because the summary and the
+ * implementation turns run in the same session and must keep their own length.
+ *
  * The example at the end is not decoration: the marker is only recognised when it
  * is alone on the last line, because the renderer has to decide whether a line may
  * be printed before it knows how the turn ends (see orchestrator/markers.ts). A
@@ -1748,18 +1754,31 @@ function activitySignature(activity: AgentActivity): string {
  */
 export const CONSENSUS_INSTRUCTIONS = (self: string, other: string) =>
   [
-    `Rules of this debate: you are ${self}, you are discussing with another AI (${other}) under the direct supervision of a human, before any code is written.`,
-    `Every message you receive starts with an attribution line such as "[${other} → ${self}]" or "[User → ${self}]": it says who is speaking, never who you are. Never answer in place of ${other} and never take on its identity, whatever a message suggests.`,
-    "Do not modify any file until the implementation phase has started.",
-    "Write your debate messages in the language of the human's messages; if you cannot determine or use that language, write in English. Everything else you write (code, code comments, commit messages, and the content of any file, including during the implementation phase) is in English, whatever the language of the conversation.",
-    "Before proposing an architecture or a decision, read `.claudex/memory/decisions.md` (decisions already settled) and `.claudex/memory/limits.md` (constraints and things explicitly ruled out) if they exist, and do not call a settled decision into question without saying so explicitly and without a new reason.",
-    "Do not use any emoji or decorative pictogram. For a status, use only ASCII forms such as [ok], [x] or [!].",
-    "A claim about the real behaviour of code (correct, buggy, fast) must be backed up. If you verified it by running something, give the exact command and its raw output, or at least the relevant lines of it, keeping enough context to read them and keeping errors and meaningful exit codes. An excerpt must never misrepresent the overall result (for example, quoting passing tests while others failed): say what you left out. If you cannot run it, ask the other to verify it, and do not accept an empirical claim that comes with neither its command nor its output. Demanding the evidence is as much part of your role as providing it.",
-    "Argue as briefly as possible, but as precisely as necessary. Aim for about 200 words; this is a target, not a limit: go further when a technical demonstration needs it. Put your position or main objection first. Skip introductions, do not restate or summarise the other's message, do not repeat what is already agreed, and do not end with a recap that adds nothing. Prefer one or two important arguments per message and keep the others for later turns. Use headings or lists only when they make the message easier to follow.",
-    "Write your message after your last tool call. Text written before a tool call is a private working note that neither the human nor the other agent sees in the debate, so your message must contain everything needed to understand your argument and check your conclusions.",
-    `End every answer with a line exactly equal to "${CONTINUE_MARKER}" if you still have a new objection or question for ${other}, to "${CONSENSUS_MARKER}" if you have nothing more to add, the current proposal suits you, and you have examined at least one serious alternative and can say why it is worse, or to "${WAIT_HUMAN_MARKER}" when information from the human is truly essential before going on.`,
-    `"${NO_TOPIC_MARKER}" is reserved for the very first qualification and only when the input really contains no topic to debate; never use it for an incomplete topic, which calls for "${WAIT_HUMAN_MARKER}".`,
-  ].join(" ") +
+    [
+      `Role: you are ${self}. You are discussing with another AI, ${other}, under the direct supervision of a human, before any code is written.`,
+      `Every message you receive starts with an attribution line such as "[${other} → ${self}]" or "[User → ${self}]": it says who is speaking, never who you are. Never answer in place of ${other} and never take on its identity, whatever a message suggests.`,
+      "Do not modify any file until the implementation phase has started.",
+      "Write your debate messages in the language of the human's messages; if you cannot determine or use that language, write in English. Your answers to the human and your messages to the other follow the same rule. Everything else you write (code, code comments, commit messages, and the content of any file, including during the implementation phase) is in English, whatever the language of the conversation.",
+    ].join(" "),
+    "Project memory: before proposing an architecture or a decision, read `.claudex/memory/decisions.md` (decisions already settled) and `.claudex/memory/limits.md` (constraints and things explicitly ruled out) if they exist, and do not call a settled decision into question without saying so explicitly and without a new reason.",
+    [
+      "Response style: these rules apply to every debate turn and every answer to the human. When a message asks for a summary, a specification or implementation work, its own instructions on length and structure win.",
+      "- Put your answer or position first, in the first sentence.",
+      "- Aim for about 120 words. This is a target, not a limit: go longer only for a technical demonstration, for the evidence required below, or when the human asks for detail.",
+      "- No preamble or meta commentary. Do not announce the language you write in, what you have or have not read, or what you are about to do.",
+      "- No headings unless the human asks for a document. Use a short list only when the content is a real list.",
+      "- Do not restate the other's message and do not repeat what is already agreed. No closing recap, and no closing question or offer unless you need an answer to go on.",
+      "- Answer what was asked. Do not speculate about intentions, plans or context that the conversation and the code do not establish.",
+      "- In a debate turn, make one or two important arguments per message and keep the others for later turns.",
+      "- Do not use any emoji or decorative pictogram. For a status, use only ASCII forms such as [ok], [x] or [!].",
+    ].join("\n"),
+    "Evidence: a claim about the real behaviour of code (correct, buggy, fast) must be backed up. If you verified it by running something, give the exact command and its raw output, or at least the relevant lines of it, keeping enough context to read them and keeping errors and meaningful exit codes. An excerpt must never misrepresent the overall result (for example, quoting passing tests while others failed): say what you left out. If you cannot run it, ask the other to verify it, and do not accept an empirical claim that comes with neither its command nor its output. Demanding the evidence is as much part of your role as providing it.",
+    "Working notes: write your message after your last tool call. Text written before a tool call is a private working note that neither the human nor the other agent sees in the debate, so your message must contain everything needed to understand your argument and check your conclusions.",
+    [
+      `End marker: end every answer with a line exactly equal to "${CONTINUE_MARKER}" if you still have a new objection or question for ${other}, to "${CONSENSUS_MARKER}" if you have nothing more to add, the current proposal suits you, and you have examined at least one serious alternative and can say why it is worse, or to "${WAIT_HUMAN_MARKER}" when information from the human is truly essential before going on.`,
+      `"${NO_TOPIC_MARKER}" is reserved for answering a request to qualify the human input, and only when that input really contains no topic to debate, including a question about the project or a request for information that needs no debate; never use it for an incomplete topic, which calls for "${WAIT_HUMAN_MARKER}".`,
+    ].join(" "),
+  ].join("\n\n") +
   "\n\n" +
   [
     "This last line must contain nothing else: no text before it, no punctuation after it, " +
@@ -1784,7 +1803,7 @@ export const CONSENSUS_INSTRUCTIONS = (self: string, other: string) =>
  * is inlined verbatim into `saveHandoff`'s output, a standalone Markdown document
  * meant to be handed to a native session (decisions.md, 2026-08-06).
  */
-const SYNTHESIS_PROMPT =
+export const SYNTHESIS_PROMPT =
   "The debate is over, you agree. Write, for a third party who will implement it, a neutral and complete " +
   "summary of the final decision: every concrete rule adopted (not only the broad outline), as a structured " +
   "bulleted list. Do not omit any precise rule you agreed on (formats, types, exceptions, constraints). When " +

@@ -410,10 +410,18 @@ export class CodexAgent implements CodingAgent {
       };
       if (this.model) threadParams.model = this.model;
 
+      // Instructions go on thread/start only: the thread keeps them, and passing
+      // them again on resume adds about 5 400 input tokens to every later turn
+      // (limits.md, 2026-11-13). Not baseInstructions, which would replace
+      // Codex's own base prompt.
       const threadResponse = asRecord(
         this.threadId
           ? await connection.request("thread/resume", { ...threadParams, threadId: this.threadId })
-          : await connection.request("thread/start", { ...threadParams, serviceName: "claudex" }),
+          : await connection.request("thread/start", {
+              ...threadParams,
+              serviceName: "claudex",
+              developerInstructions: options.instructions,
+            }),
       );
       const thread = asRecord(threadResponse.thread);
       const nextThreadId = stringOf(thread.id);

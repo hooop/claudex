@@ -10,6 +10,7 @@ import type { AgentResult } from "../orchestrator/types.js";
 import type { AgentSendOptions, CodingAgent } from "../agents/types.js";
 import {
   CONSENSUS_INSTRUCTIONS,
+  SYNTHESIS_PROMPT,
   Scheduler,
   type SchedulerCallbacks,
 } from "../orchestrator/scheduler.js";
@@ -27,6 +28,8 @@ class FakeAgent implements CodingAgent {
   private sendCallCount = 0;
   private sendOptions: AgentSendOptions | null = null;
   lastMessage: string | null = null;
+  /** Every send, in order, to check what each delivery carried. */
+  readonly sends: Array<{ message: string; options: AgentSendOptions }> = [];
 
   constructor(id: AgentId) {
     this.id = id;
@@ -53,6 +56,7 @@ class FakeAgent implements CodingAgent {
     this.sendCallCount++;
     this.lastMessage = message;
     this.sendOptions = options;
+    this.sends.push({ message, options });
 
     return new Promise((resolve) => {
       this.pendingResolve = resolve;
@@ -228,18 +232,19 @@ describe("Scheduler", () => {
      * An agent that cannot tell who wrote what it is reading eventually answers
      * as if it were its counterpart — observed in a real session, where Claude
      * replied "my reply to Claude" and claimed a command-execution ability only
-     * Codex has. The debate rules are sent once, on the first turn, so nothing
-     * else keeps either party oriented over a long conversation.
+     * Codex has. The debate rules reach each agent with its session, as its
+     * system instructions, so nothing in the conversation itself keeps either
+     * party oriented over a long debate.
      */
     it("should name the writer and the reader on every delivered block", async () => {
       scheduler.start("Test topic");
 
       await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
-      expect(agents.claude.lastMessage).toContain("you are Claude");
+      expect(agents.claude.lastOptions()?.instructions).toBe(CONSENSUS_INSTRUCTIONS("Claude", "Codex"));
       agents.claude.complete("My question\n\n<<CONTINUE>>");
 
       await vi.waitFor(() => expect(agents.codex.isPending()).toBe(true));
-      expect(agents.codex.lastMessage).toContain("you are Codex");
+      expect(agents.codex.lastOptions()?.instructions).toBe(CONSENSUS_INSTRUCTIONS("Codex", "Claude"));
       expect(agents.codex.lastMessage).toContain("[Claude → Codex]\nMy question");
     });
 
@@ -589,6 +594,45 @@ describe("Scheduler", () => {
   });
 
   describe("Synthesis handling", () => {
+    it("passes the rules to the synthesis turn", async () => {
+      const bounded = new Scheduler(
+        agents,
+        { cwd: "/tmp", starter: "claude", autonomyBudget: { kind: "automatic-starts", maximum: 5 } },
+        callbacks,
+      );
+      bounded.start("Test topic");
+
+      await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
+      agents.claude.complete("Claude agrees\n\n<<CONSENSUS>>");
+      await vi.waitFor(() => expect(agents.codex.isPending()).toBe(true));
+      agents.codex.complete("Codex agrees\n\n<<CONSENSUS>>");
+
+      // Codex confirmed last, so it is handed the synthesis request.
+      await vi.waitFor(() => expect(agents.codex.getSendCount()).toBe(2));
+      const synthesis = agents.codex.sends[1];
+      expect(synthesis?.message).toBe(SYNTHESIS_PROMPT);
+      expect(synthesis?.options.instructions).toBe(CONSENSUS_INSTRUCTIONS("Codex", "Claude"));
+
+      await bounded.shutdown();
+    });
+
+    it("strips a trailing end marker from the consensus summary", async () => {
+      scheduler.start("Test topic");
+      await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
+      agents.claude.complete("Claude agrees\n\n<<CONSENSUS>>");
+      await vi.waitFor(() => expect(agents.codex.isPending()).toBe(true));
+      agents.codex.complete("Codex agrees\n\n<<CONSENSUS>>");
+      await vi.waitFor(() => expect(agents.codex.getSendCount()).toBe(2));
+
+      agents.codex.complete("Summary of decisions.\n\n<<CONSENSUS>>");
+
+      await vi.waitFor(() => expect(callbacks.onSynthesisReady).toHaveBeenCalledOnce());
+      expect(callbacks.onSynthesisReady).toHaveBeenCalledWith("Summary of decisions.");
+      expect(scheduler.implementationSummary).toBe("Summary of decisions.");
+      const lastUpdate = vi.mocked(callbacks.onEntryUpdate).mock.calls.at(-1)?.[0];
+      expect(lastUpdate?.text).toBe("Summary of decisions.");
+    });
+
     it("should trigger synthesis after consensus", async () => {
       scheduler.start("Test topic");
 
@@ -674,26 +718,7 @@ describe("Scheduler", () => {
       expect(agents.claude.lastMessage).toBe(originalMessage);
     });
 
-    /**
-     * A failed first turn never reached the agent, so the debate rules it
-     * carried were never read. Typing a message instead of /resume replaces
-     * that turn, and the replacement must carry the rules in its place.
-     */
-    it("should send the debate rules again when a failed first qualification is replaced", async () => {
-      scheduler.start("Test topic");
-
-      await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
-      agents.claude.fail("spawn claude ENOENT");
-      await vi.waitFor(() => expect(scheduler.isPaused()).toBe(true));
-
-      scheduler.intervene("Precision", "both");
-
-      await vi.waitFor(() => expect(agents.claude.getSendCount()).toBe(2));
-      expect(agents.claude.lastMessage).toContain("Precision");
-      expect(agents.claude.lastMessage).toContain("you are Claude");
-    });
-
-    it("should send the debate rules with an intervention that follows a failed first turn", async () => {
+    it("passes the rules on every send and never in the message", async () => {
       scheduler.start("Test topic");
 
       await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
@@ -703,39 +728,31 @@ describe("Scheduler", () => {
       await vi.waitFor(() => expect(scheduler.isPaused()).toBe(true));
 
       scheduler.intervene("Use the default model", "codex");
-
       await vi.waitFor(() => expect(agents.codex.getSendCount()).toBe(2));
       expect(agents.codex.lastMessage).toContain("Use the default model");
-      expect(agents.codex.lastMessage).toContain("you are Codex");
+
+      const expected: Record<AgentId, string> = {
+        claude: CONSENSUS_INSTRUCTIONS("Claude", "Codex"),
+        codex: CONSENSUS_INSTRUCTIONS("Codex", "Claude"),
+      };
+      expect(agents.claude.sends).toHaveLength(1);
+      expect(agents.codex.sends).toHaveLength(2);
+      for (const id of ["claude", "codex"] as const) {
+        for (const { message, options } of agents[id].sends) {
+          expect(options.instructions).toBe(expected[id]);
+          expect(message).not.toContain("Role:");
+        }
+      }
     });
 
-    it("should not repeat the debate rules when a failed turn is retried after a delivered one", async () => {
-      scheduler.start("Test topic");
-
-      await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
-      agents.claude.complete("Qualification\n\n<<CONTINUE>>");
-      await vi.waitFor(() => expect(agents.codex.isPending()).toBe(true));
-      agents.codex.fail("turn/start rejected: unknown model");
-      await vi.waitFor(() => expect(scheduler.isPaused()).toBe(true));
-
-      scheduler.intervene("Use the default model", "codex");
-      await vi.waitFor(() => expect(agents.codex.getSendCount()).toBe(2));
-      agents.codex.complete("Switched model\n\n<<CONTINUE>>");
-
-      // The failed turn is retried next; the rules already arrived with the intervention.
-      await vi.waitFor(() => expect(agents.codex.getSendCount()).toBe(3));
-      expect(agents.codex.lastMessage).toContain("[Claude → Codex]\nQualification");
-      expect(agents.codex.lastMessage).not.toContain("you are Codex");
-    });
-
-    it("should not repeat the debate rules when retrying an answer that lacked a marker", async () => {
+    it("should keep the rules out of a retried message", async () => {
       scheduler.start("Test topic");
 
       await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
       agents.claude.complete("Qualification without a marker");
       await vi.waitFor(() => expect(scheduler.isPaused()).toBe(true));
 
-      // The agent answered, so it read the rules even though the answer is rejected.
+      // The rules travel with the session, never in a delivery, retries included.
       scheduler.resume();
 
       await vi.waitFor(() => expect(agents.claude.getSendCount()).toBe(2));
@@ -743,7 +760,7 @@ describe("Scheduler", () => {
       expect(agents.claude.lastMessage).not.toContain("you are Claude");
     });
 
-    it("should send the debate rules only once to an agent whose turn succeeded", async () => {
+    it("should keep the rules out of later messages", async () => {
       scheduler.start("Test topic");
 
       await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
@@ -999,6 +1016,62 @@ describe("Scheduler", () => {
       await vi.waitFor(() => expect(callbacks.onTopicAccepted).toHaveBeenCalledOnce());
     });
 
+    it("offers a plain-question exit in the qualification prompt", async () => {
+      scheduler.start("how does it work ?");
+      await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
+      const msg = agents.claude.lastMessage ?? "";
+
+      expect(msg).toMatch(
+        /question about the project or a request for information that does not call for a debate between the two agents/i,
+      );
+      expect(msg).toMatch(/answer it directly/i);
+      expect(msg).not.toMatch(/invite the human to give a topic/i);
+      // The four cases appear in this order.
+      const order = [
+        "contains no topic",
+        "does not call for a debate",
+        "essential before debating",
+        "start the analysis",
+      ].map((s) => msg.indexOf(s));
+      expect(order.every((i, k) => i > -1 && (k === 0 || i > (order[k - 1] ?? 0)))).toBe(true);
+    });
+
+    it("keeps the session open after a plain answer", async () => {
+      scheduler.start("how does it work ?");
+      await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
+      agents.claude.complete("It works like this.\n\n<<NO_TOPIC>>");
+
+      await vi.waitFor(() => expect(scheduler.suspension()).toBe("waiting-human"));
+      expect(scheduler.topicStatus()).toBe("provisional");
+      expect(callbacks.onTopicAccepted).not.toHaveBeenCalled();
+      expect(agents.codex.getSendCount()).toBe(0);
+      expect(scheduler.lifecycleState()).toBe("open");
+
+      scheduler.intervene("Real topic", "both");
+      await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
+      const message = agents.claude.lastMessage ?? "";
+      expect(message).toContain("Proposed topic:\nReal topic");
+      expect(message).not.toContain("how does it work ?");
+    });
+
+    it("accepts NO_TOPIC again when a new message is qualified after a plain answer", async () => {
+      scheduler.start("how does it work ?");
+      await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
+      agents.claude.complete("It works like this.\n\n<<NO_TOPIC>>");
+      await vi.waitFor(() => expect(scheduler.suspension()).toBe("waiting-human"));
+
+      scheduler.intervene("and where is the config ?", "both");
+      await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
+      agents.claude.complete("In config.ts.\n\n<<NO_TOPIC>>");
+
+      await vi.waitFor(() => expect(scheduler.suspension()).toBe("waiting-human"));
+      expect(callbacks.onTurnError).not.toHaveBeenCalled();
+      expect(scheduler.topicStatus()).toBe("provisional");
+      expect(callbacks.onTopicAccepted).not.toHaveBeenCalled();
+      expect(agents.codex.getSendCount()).toBe(0);
+      expect(scheduler.lifecycleState()).toBe("open");
+    });
+
     it("distinguishes a real topic needing clarification and waits for the human", async () => {
       scheduler.start("Architecture choice");
       await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
@@ -1045,6 +1118,20 @@ describe("Scheduler", () => {
       expect(scheduler.acceptTopic()).toBe(true);
       await vi.waitFor(() => expect(agents.codex.isPending()).toBe(true));
       expect(agents.codex.lastMessage).toContain("Useful analysis but no marker");
+    });
+
+    it("refuses NO_TOPIC outside a topic qualification", async () => {
+      scheduler.start("Valid topic");
+      await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
+      agents.claude.complete("Let us analyse.\n\n<<CONTINUE>>");
+      await vi.waitFor(() => expect(agents.codex.isPending()).toBe(true));
+      agents.codex.complete("Nothing to debate.\n\n<<NO_TOPIC>>");
+
+      await vi.waitFor(() => expect(scheduler.suspension()).toBe("protocol-error"));
+      expect(callbacks.onTurnError).toHaveBeenLastCalledWith(
+        "codex",
+        expect.objectContaining({ message: "<<NO_TOPIC>> is only valid in answer to a topic qualification." }),
+      );
     });
   });
 

@@ -125,7 +125,7 @@ describe("debate frame at every supported height", () => {
       await screen.resize({ columns: 100, rows });
       const frame = screen.frame();
       expectWholeFrame(frame, rows);
-      expect(frame.at(-1), `at ${rows} rows`).toContain("fake-model");
+      expect(frame.at(-1), `at ${rows} rows`).toContain("/help");
       expect(transcript(frame).length, `at ${rows} rows`).toBeGreaterThanOrEqual(1);
     }
   });
@@ -151,7 +151,7 @@ describe("debate frame at every supported height", () => {
       await screen.resize({ columns: 100, rows });
       const frame = screen.frame();
       expectWholeFrame(frame, rows);
-      expect(frame.at(-1), `at ${rows} rows`).toContain("fake-model");
+      expect(frame.at(-1), `at ${rows} rows`).toContain("/help");
       expect(frame.join("\n"), `at ${rows} rows`).toContain("Bash");
     }
   });

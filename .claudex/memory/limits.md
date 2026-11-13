@@ -2,6 +2,60 @@
 
 Constraints, boundaries and things explicitly ruled out.
 
+## 2026-11-13 — System channels for the debate rules (measured)
+
+**Finding:** on SDK 0.3.310, an omitted `systemPrompt` is an empty one. Measured on this machine
+with the debate options (`debateQueryOptions(null)`, model `sonnet`, prompt `Answer exactly: ok`),
+first-response `input_tokens + cache_creation + cache_read` (method of 2026-08-17):
+
+| Claude `systemPrompt` | Tokens |
+| --- | --- |
+| omitted | 3 219 – 3 242 |
+| `[]` | 3 219 |
+| `"Reply in lowercase."` | 3 228 |
+| `{ type: "preset", preset: "claude_code" }` | 5 469 |
+
+So a custom prompt adds only its own text, while the `claude_code` preset adds about 2 200 tokens
+of instructions to every call.
+
+**Applied and kept across resume:** a custom prompt "End every reply with a last line exactly equal
+to BANANA." was followed on turn 1, on a resume that passed it again, and on a resume that did not
+(the SDK records it with the session, `snapshot`).
+
+**Codex 0.167.2:** `ThreadStartParams` and `ThreadResumeParams` (from `codex app-server
+generate-json-schema`) both carry `developerInstructions` and `baseInstructions`.
+`baseInstructions` replaces Codex's own base prompt; `developerInstructions` adds to it. The same
+BANANA instruction as `developerInstructions` was followed on `thread/start`, on a `thread/resume`
+that passed it again, and on one that did not: the thread keeps it.
+
+**Resending on resume is not free (Codex):** a thread started with about 2 700 tokens of
+`developerInstructions`, then resumed three times (one app-server process per turn, as Claudex
+does), `last.inputTokens` per turn:
+
+| Resume passes `developerInstructions` | Turn 1 | Turn 2 | Turn 3 | Turn 4 |
+| --- | --- | --- | --- | --- |
+| yes | 22 848 | 28 231 | 28 249 | 28 295 |
+| no | 22 673 | 22 691 | 22 709 | 22 727 |
+
+Passing them again on resume added about 5 400 input tokens to every later turn. So Claudex passes
+them on `thread/start` only.
+
+**Claude, project CLAUDE.md:** in a folder whose `CLAUDE.md` says "end every reply with KIWI", both
+an omitted `systemPrompt` (3 412 tokens) and `{ type: "custom", prompt, snapshot: true }` (3 421)
+ended with KIWI: a custom prompt does not drop the project's CLAUDE.md, which the debate keeps on
+purpose. The token table above used the bare-string form; the object form adds the same: its own
+text only.
+
+**Not covered:** per the SDK, `snapshot` has no effect where system-prompt recording is not yet
+enabled (Bedrock, Vertex, Foundry). Claudex passes the rules on every Claude `send`, so they still
+arrive there, rendered on each request.
+
+**How to apply:** the debate rules travel as Claude's custom `systemPrompt`, on every query
+(`src/agents/claudeAgent.ts`), and as Codex's `developerInstructions`, on `thread/start` only
+(`src/agents/codexAgent.ts`).
+Re-measure at every SDK or Codex upgrade; never switch to the preset or to `baseInstructions`, and
+never resend the Codex instructions on resume, without measuring.
+
 ## 2026-11-11 — Claude's sandboxed Bash during the debate (measured, macOS)
 
 **Finding:** SDK 0.3.310 (Claude Code 2.1.310), `claude-sonnet-5-5`, macOS, one machine and one account

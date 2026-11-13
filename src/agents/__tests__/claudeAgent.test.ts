@@ -71,7 +71,7 @@ describe("ClaudeAgent streaming", () => {
 
     const result = await agent.send("Topic", {
       cwd: "/tmp",
-      writeAccess: false,
+      writeAccess: false, instructions: "RULES",
       onTextDelta: (delta) => deltas.push(delta),
       onContextUsage: (usage) => contexts.push(usage),
     });
@@ -117,7 +117,7 @@ describe("ClaudeAgent streaming", () => {
     );
 
     const agent = new ClaudeAgent("opus", "Opus 5");
-    await agent.send("Topic", { cwd: "/tmp", writeAccess: false });
+    await agent.send("Topic", { cwd: "/tmp", writeAccess: false, instructions: "RULES" });
 
     expect(agent.currentModel()).toBe("Opus 5.5");
   });
@@ -148,7 +148,7 @@ describe("ClaudeAgent streaming", () => {
     const deltas: string[] = [];
     const result = await new ClaudeAgent().send("Topic", {
       cwd: "/tmp",
-      writeAccess: false,
+      writeAccess: false, instructions: "RULES",
       onTextDelta: (delta) => deltas.push(delta),
     });
 
@@ -170,7 +170,7 @@ describe("ClaudeAgent streaming", () => {
       ]) as never,
     );
 
-    const result = await new ClaudeAgent().send("Topic", { cwd: "/tmp", writeAccess: false });
+    const result = await new ClaudeAgent().send("Topic", { cwd: "/tmp", writeAccess: false, instructions: "RULES" });
 
     expect(result).toMatchObject({ kind: "error" });
     if (result.kind === "error") {
@@ -192,7 +192,7 @@ describe("ClaudeAgent — settings per phase", () => {
   it("loads user settings only during implementation", async () => {
     queryMock.mockReturnValue(messages([successResult()]));
     const agent = new ClaudeAgent();
-    await agent.send("Apply the specification", { cwd: "/tmp", writeAccess: true });
+    await agent.send("Apply the specification", { cwd: "/tmp", writeAccess: true, instructions: "RULES" });
 
     const options = queryMock.mock.calls[0]?.[0]?.options;
     expect(options.settingSources).toEqual(["project", "user"]);
@@ -201,10 +201,23 @@ describe("ClaudeAgent — settings per phase", () => {
     expect(options).not.toHaveProperty("settings");
   });
 
+  it("sends the rules as a recorded custom system prompt", async () => {
+    queryMock.mockReturnValue(messages([successResult()]));
+    const agent = new ClaudeAgent();
+    await agent.send("Topic", { cwd: "/tmp", writeAccess: false, instructions: "RULES" });
+    queryMock.mockReturnValue(messages([successResult()]));
+    await agent.send("Apply the specification", { cwd: "/tmp", writeAccess: true, instructions: "RULES" });
+
+    const expected = { type: "custom", prompt: "RULES", snapshot: true };
+    expect(queryMock.mock.calls[0]?.[0]?.options.systemPrompt).toEqual(expected);
+    expect(queryMock.mock.calls[1]?.[0]?.options.systemPrompt).toEqual(expected);
+    expect(queryMock.mock.calls[0]?.[0]?.prompt).toBe("Topic");
+  });
+
   it("passes the SDK the configured model that Claudex read itself", async () => {
     queryMock.mockReturnValue(messages([successResult()]));
     const agent = new ClaudeAgent("opus");
-    await agent.send("Topic", { cwd: "/tmp", writeAccess: false });
+    await agent.send("Topic", { cwd: "/tmp", writeAccess: false, instructions: "RULES" });
 
     expect(queryMock.mock.calls[0]?.[0]?.options.model).toBe("opus");
   });
@@ -220,7 +233,7 @@ describe("ClaudeAgent — settings per phase", () => {
     const agent = new ClaudeAgent();
     await agent.send("Topic", {
       cwd: "/tmp",
-      writeAccess: false,
+      writeAccess: false, instructions: "RULES",
       onPermissionRequest: async () => ({ behavior: "deny" }),
     });
 
@@ -244,7 +257,7 @@ describe("ClaudeAgent — settings per phase", () => {
       .mockResolvedValueOnce({ behavior: "deny" });
     const onActivity = vi.fn();
     const agent = new ClaudeAgent();
-    await agent.send("Topic", { cwd: "/tmp", writeAccess: false, onPermissionRequest, onActivity });
+    await agent.send("Topic", { cwd: "/tmp", writeAccess: false, instructions: "RULES", onPermissionRequest, onActivity });
 
     const canUseTool = queryMock.mock.calls[0]?.[0]?.options.canUseTool as (
       name: string,
@@ -281,7 +294,7 @@ describe("ClaudeAgent settings guard", () => {
   it.each([false, true])("refuses the turn without calling query (writeAccess %s)", async (writeAccess) => {
     const guard = vi.fn(async () => SETTINGS_CHANGED_MESSAGE);
     const agent = new ClaudeAgent(undefined, undefined, guard);
-    const result = await agent.send("Topic", { cwd: "/project", writeAccess });
+    const result = await agent.send("Topic", { cwd: "/project", writeAccess, instructions: "RULES" });
     expect(result).toEqual({ kind: "error", message: SETTINGS_CHANGED_MESSAGE });
     expect(guard).toHaveBeenCalledWith("/project");
     expect(queryMock).not.toHaveBeenCalled();
@@ -291,7 +304,7 @@ describe("ClaudeAgent settings guard", () => {
     const agent = new ClaudeAgent(undefined, undefined, async () => {
       throw new Error("boom");
     });
-    const result = await agent.send("Topic", { cwd: "/project", writeAccess: false });
+    const result = await agent.send("Topic", { cwd: "/project", writeAccess: false, instructions: "RULES" });
     expect(result).toEqual({ kind: "error", message: SETTINGS_CHANGED_MESSAGE });
     expect(queryMock).not.toHaveBeenCalled();
   });
@@ -301,14 +314,14 @@ describe("ClaudeAgent settings guard", () => {
     const controller = new AbortController();
     controller.abort();
     const agent = new ClaudeAgent(undefined, undefined, guard);
-    const result = await agent.send("Topic", { cwd: "/project", writeAccess: false, signal: controller.signal });
+    const result = await agent.send("Topic", { cwd: "/project", writeAccess: false, instructions: "RULES", signal: controller.signal });
     expect(result).toEqual({ kind: "cancelled" });
     expect(guard).not.toHaveBeenCalled();
   });
 
   it("sends the turn when the guard returns null, with the same options as without a guard", async () => {
     queryMock.mockReturnValue(messages([successResult()]) as never);
-    await new ClaudeAgent().send("Topic", { cwd: "/project", writeAccess: false });
+    await new ClaudeAgent().send("Topic", { cwd: "/project", writeAccess: false, instructions: "RULES" });
     const unguarded = queryMock.mock.calls[0]?.[0];
 
     queryMock.mockReset();
@@ -316,7 +329,7 @@ describe("ClaudeAgent settings guard", () => {
     const guard = vi.fn(async () => null);
     const result = await new ClaudeAgent(undefined, undefined, guard).send("Topic", {
       cwd: "/project",
-      writeAccess: false,
+      writeAccess: false, instructions: "RULES",
     });
     expect(result).toMatchObject({ kind: "success" });
     expect(guard).toHaveBeenCalledWith("/project");
@@ -335,7 +348,7 @@ describe("ClaudeAgent debate sandbox", () => {
     const resolver = vi.fn(async () => sandbox);
     const result = await new ClaudeAgent(undefined, undefined, undefined, resolver).send("Topic", {
       cwd: "/project",
-      writeAccess: false,
+      writeAccess: false, instructions: "RULES",
     });
     expect(result).toMatchObject({ kind: "success" });
     expect(resolver).toHaveBeenCalledWith("/project");
@@ -346,7 +359,7 @@ describe("ClaudeAgent debate sandbox", () => {
 
   it("without a resolver, adds neither sandbox nor Bash", async () => {
     queryMock.mockReturnValue(messages([successResult()]) as never);
-    await new ClaudeAgent().send("Topic", { cwd: "/project", writeAccess: false });
+    await new ClaudeAgent().send("Topic", { cwd: "/project", writeAccess: false, instructions: "RULES" });
     const options = queryMock.mock.calls[0]?.[0].options;
     expect("sandbox" in options).toBe(false);
     expect(options.tools).toEqual(["Read", "Grep", "Glob"]);
@@ -358,7 +371,7 @@ describe("ClaudeAgent debate sandbox", () => {
     });
     const result = await new ClaudeAgent(undefined, undefined, undefined, resolver).send("Topic", {
       cwd: "/project",
-      writeAccess: false,
+      writeAccess: false, instructions: "RULES",
     });
     expect(result).toEqual({ kind: "error", message: DEBATE_SANDBOX_ERROR });
     expect(queryMock).not.toHaveBeenCalled();
@@ -370,7 +383,7 @@ describe("ClaudeAgent debate sandbox", () => {
     });
     const result = await new ClaudeAgent(undefined, undefined, undefined, resolver).send("Topic", {
       cwd: "/project",
-      writeAccess: false,
+      writeAccess: false, instructions: "RULES",
     });
     expect(result).toEqual({ kind: "error", message: DEBATE_SANDBOX_ERROR });
     expect(queryMock).not.toHaveBeenCalled();
@@ -381,7 +394,7 @@ describe("ClaudeAgent debate sandbox", () => {
     const resolver = vi.fn(async () => sandbox);
     await new ClaudeAgent(undefined, undefined, undefined, resolver).send("Topic", {
       cwd: "/project",
-      writeAccess: true,
+      writeAccess: true, instructions: "RULES",
     });
     expect(resolver).not.toHaveBeenCalled();
     const options = queryMock.mock.calls[0]?.[0].options;
@@ -397,7 +410,7 @@ describe("ClaudeAgent debate sandbox", () => {
     });
     const result = await new ClaudeAgent(undefined, undefined, undefined, resolver).send("Topic", {
       cwd: "/project",
-      writeAccess: false,
+      writeAccess: false, instructions: "RULES",
       signal: controller.signal,
     });
     expect(result).toEqual({ kind: "cancelled" });
@@ -431,7 +444,7 @@ describe("ClaudeAgent — engine leftovers", () => {
       calls.push("query");
       return messages([successResult()]);
     });
-    const result = await agent.send("Topic", { cwd: "/project", writeAccess: false });
+    const result = await agent.send("Topic", { cwd: "/project", writeAccess: false, instructions: "RULES" });
     expect(result).toMatchObject({ kind: "success" });
     expect(calls).toEqual(["snapshot:/project", "query", "remove:/project"]);
     expect(remove).toHaveBeenCalledWith("/project", await snapshot.mock.results[0]?.value);
@@ -443,7 +456,7 @@ describe("ClaudeAgent — engine leftovers", () => {
       yield { type: "system" };
       throw new Error("broken stream");
     });
-    const result = await agent.send("Topic", { cwd: "/project", writeAccess: false });
+    const result = await agent.send("Topic", { cwd: "/project", writeAccess: false, instructions: "RULES" });
     expect(result).toMatchObject({ kind: "error" });
     expect(remove).toHaveBeenCalledTimes(1);
   });
@@ -454,11 +467,11 @@ describe("ClaudeAgent — engine leftovers", () => {
     queryMock.mockImplementation(() => messages([successResult()]));
     await new ClaudeAgent(undefined, undefined, undefined, async () => null, { snapshot, remove }).send("Topic", {
       cwd: "/project",
-      writeAccess: false,
+      writeAccess: false, instructions: "RULES",
     });
     await new ClaudeAgent(undefined, undefined, undefined, resolver, { snapshot, remove }).send("Topic", {
       cwd: "/project",
-      writeAccess: true,
+      writeAccess: true, instructions: "RULES",
     });
     expect(snapshot).not.toHaveBeenCalled();
     expect(remove).not.toHaveBeenCalled();
@@ -473,7 +486,7 @@ describe("ClaudeAgent — engine leftovers", () => {
     });
     queryMock.mockImplementation(() => messages([successResult()]));
     const agent = new ClaudeAgent(undefined, undefined, undefined, resolver, { snapshot, remove });
-    const result = await agent.send("Topic", { cwd: "/project", writeAccess: false });
+    const result = await agent.send("Topic", { cwd: "/project", writeAccess: false, instructions: "RULES" });
     expect(result).toMatchObject({ kind: "success" });
   });
 });
@@ -502,7 +515,7 @@ describe("ClaudeAgent notes and trace", () => {
       content: [{ type: "tool_result", tool_use_id: "tool-1", content, is_error: isError }],
     },
   });
-  const sdkOptions = { cwd: "/tmp", writeAccess: false };
+  const sdkOptions = { cwd: "/tmp", writeAccess: false, instructions: "RULES" };
 
   function checkedStream(finalText: string) {
     return [textDelta("Let me check."), toolStart, toolResult("file body"), textDelta(finalText), successResult()];

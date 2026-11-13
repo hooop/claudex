@@ -503,15 +503,11 @@ describe("DebateView — full-screen viewport", () => {
       .reverse()
       .find(
         (chunk) =>
-          chunk.includes("fake-model · ctx — + fake-model · ctx —") &&
-          chunk.includes("‣"),
+          chunk.includes("/help") && chunk.includes("‣"),
       );
     expect(footerFrame).toBeDefined();
     const footer = footerFrame!.replace(ANSI_SEQUENCE, "");
-    expect(footer).toContain("/help");
-    expect(
-      footer.indexOf("fake-model · ctx — + fake-model · ctx —"),
-    ).toBeGreaterThan(footer.indexOf("‣"));
+    expect(footer.lastIndexOf("/help")).toBeGreaterThan(footer.indexOf("‣"));
     t.app.unmount();
   });
 
@@ -594,16 +590,70 @@ describe("DebateView — full-screen viewport", () => {
     t.app.unmount();
   });
 
-  it("shows the context usage of the two agents separately", async () => {
+  it("hides the model line during the debate while contexts have room", async () => {
+    const t = mount();
+    await vi.waitFor(() => expect(t.agents.claude.pending).toBe(true));
+
+    t.agents.claude.emitContext(50_000, 200_000);
+    t.agents.codex.emitContext(50_000, 200_000);
+    await tick(20);
+
+    const output = t.chunks.join("").replace(ANSI_SEQUENCE, "");
+    expect(output).toContain("/help");
+    expect(output).not.toContain("fake-model");
+    t.app.unmount();
+  });
+
+  it("shows the context usage of the two agents separately once one runs low", async () => {
     const t = mount();
     await vi.waitFor(() => expect(t.agents.claude.pending).toBe(true));
     t.chunks.length = 0;
 
-    t.agents.claude.emitContext(51_000, 200_000);
+    t.agents.claude.emitContext(180_000, 200_000);
 
     await vi.waitFor(() => {
       const output = t.chunks.join("").replace(ANSI_SEQUENCE, "");
-      expect(output).toContain("fake-model · ctx 75% free + fake-model · ctx —");
+      expect(output).toContain("fake-model · ctx 10% free + fake-model · ctx —");
+    });
+    t.app.unmount();
+  });
+
+  it("keeps the low-context warning through /model until a new measurement", async () => {
+    const t = mount();
+    await vi.waitFor(() => expect(t.agents.claude.pending).toBe(true));
+
+    t.agents.claude.emitContext(180_000, 200_000);
+    await vi.waitFor(() => {
+      expect(lastFrame(t).rows.join("\n")).toContain("fake-model · ctx 10% free");
+    });
+
+    await press(t, "/model claude sonnet");
+    await press(t, "\r");
+    await vi.waitFor(() => {
+      expect(lastFrame(t).rows.join("\n")).toContain("fake-model · ctx — + fake-model · ctx —");
+    });
+
+    t.agents.claude.emitContext(40_000, 200_000);
+    await vi.waitFor(() => {
+      const frame = lastFrame(t).rows.join("\n");
+      expect(frame).toContain("/help");
+      expect(frame).not.toContain("fake-model");
+    });
+    t.app.unmount();
+  });
+
+  it("shows the model line when only Codex runs low", async () => {
+    const t = mount();
+    await vi.waitFor(() => expect(t.agents.claude.pending).toBe(true));
+    t.agents.claude.complete("First view.\n<<CONTINUE>>");
+    await vi.waitFor(() => expect(t.agents.codex.pending).toBe(true));
+    t.chunks.length = 0;
+
+    t.agents.codex.emitContext(180_000, 200_000);
+
+    await vi.waitFor(() => {
+      const output = t.chunks.join("").replace(ANSI_SEQUENCE, "");
+      expect(output).toContain("fake-model · ctx — + fake-model · ctx 10% free");
     });
     t.app.unmount();
   });
