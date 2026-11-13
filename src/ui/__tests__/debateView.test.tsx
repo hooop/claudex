@@ -14,6 +14,7 @@ import type { AgentSendOptions, CodingAgent } from "../../agents/types.js";
 import { DebateSession } from "../../orchestrator/session.js";
 import type { AgentResult } from "../../orchestrator/types.js";
 import type { AgentId } from "../../types.js";
+import { MOUSE_OFF, MOUSE_ON } from "../terminal.js";
 import {
   DebateView,
   transcriptBlockLines,
@@ -561,6 +562,22 @@ describe("DebateView — full-screen viewport", () => {
       expect(output).toContain("fake-model · ctx 75% free + fake-model · ctx —");
     });
     t.app.unmount();
+  });
+});
+
+describe("DebateView — mouse reporting", () => {
+  it("turns mouse reporting on while mounted and off when it unmounts", async () => {
+    const t = mount({ fromFullScreen: true });
+    await tick(20);
+    expect(t.chunks.join("")).not.toContain(MOUSE_ON);
+
+    t.startDebate();
+    await vi.waitFor(() => expect(t.chunks.filter((chunk) => chunk === MOUSE_ON)).toHaveLength(1));
+    expect(t.chunks.join("")).not.toContain(MOUSE_OFF);
+
+    t.app.unmount();
+    expect(t.chunks.filter((chunk) => chunk === MOUSE_OFF)).toHaveLength(1);
+    expect(t.chunks.lastIndexOf(MOUSE_OFF)).toBeGreaterThan(t.chunks.lastIndexOf(MOUSE_ON));
   });
 });
 

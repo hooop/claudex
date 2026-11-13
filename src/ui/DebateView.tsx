@@ -48,6 +48,7 @@ import { asciiSymbolsForDisplay } from "./stream/asciiSymbols.js";
 import { wrapAll } from "./stream/lineBuffer.js";
 import { sanitizeForDisplay } from "./stream/sanitize.js";
 import { markdownToPlainText } from "./markdown.js";
+import { setMouseReporting } from "./terminal.js";
 import type { ProjectStatus } from "../util/projectStatus.js";
 
 const INITIAL_TRANSCRIPT_LINES: readonly TranscriptLine[] = [line("")];
@@ -159,6 +160,13 @@ export function DebateView(props: {
     debateStatusRef.current = next;
     setDebateStatus(next);
   }, []);
+
+  // Only the debate screen uses the mouse: the welcome screen keeps the
+  // terminal's own selection, and leaving the debate (/new, quit) gives it back.
+  useEffect(() => {
+    setMouseReporting(stdout, true);
+    return () => setMouseReporting(stdout, false);
+  }, [stdout]);
 
   useEffect(() => {
     if (!stdout) return;

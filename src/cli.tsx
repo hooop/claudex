@@ -4,7 +4,10 @@ import type { SettingsFinding } from "./agents/projectSettings.js";
 import { prepareLaunch, SETTINGS_REFUSED_MESSAGE } from "./launch.js";
 import { hasInteractiveTerminal, RENDER_OPTIONS } from "./renderOptions.js";
 import { CONSENT_RENDER_OPTIONS, formatConsentText, SettingsConsent } from "./ui/components/SettingsConsent.js";
+import { createMouseFilteredStdin } from "./ui/mouse/mouseInput.js";
+import { MouseProvider } from "./ui/mouse/MouseContext.js";
 import { Root } from "./ui/Root.js";
+import { installExitGuards, setMouseReporting } from "./ui/terminal.js";
 
 // The list is printed as plain text so it stays in scrollback however long it
 // is; Ink then draws only a short prompt in the normal screen. That instance is
@@ -46,17 +49,21 @@ async function main() {
     console.log(`Project memory initialised: ${decision.created.join(", ")}`);
   }
 
-  // Mode 1007 asks compatible terminals to translate the wheel into arrow keys
-  // in the alternate screen.
+  const mouse = createMouseFilteredStdin(process.stdin);
+  const removeExitGuards = installExitGuards(process.stdout);
   const app = render(
-    <Root cwd={cwd} initialTopic={topic || undefined} approvedSettings={decision.approved} />,
-    RENDER_OPTIONS,
+    <MouseProvider source={mouse}>
+      <Root cwd={cwd} initialTopic={topic || undefined} approvedSettings={decision.approved} />
+    </MouseProvider>,
+    { ...RENDER_OPTIONS, stdin: mouse.stdin },
   );
-  if (process.stdout.isTTY) process.stdout.write("\u001b[?1007h");
   try {
     await app.waitUntilExit();
   } finally {
-    if (process.stdout.isTTY) process.stdout.write("\u001b[?1007l");
+    // DebateView turns reporting off when it unmounts; this covers an exit
+    // that skipped the unmount.
+    setMouseReporting(process.stdout, false);
+    removeExitGuards();
   }
 }
 

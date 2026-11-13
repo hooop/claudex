@@ -1,10 +1,11 @@
+import { spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { stripVTControlCharacters } from "node:util";
 import { Box, render, Text, useStdout } from "ink";
 import { useEffect, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { RENDER_OPTIONS } from "../../renderOptions.js";
-import { installResizeClear } from "../terminal.js";
+import { installExitGuards, installResizeClear, MOUSE_OFF, MOUSE_ON, setMouseReporting } from "../terminal.js";
 
 // Erase the whole visible screen. Whatever the terminal did to the old frame on
 // resize (reflow, anchoring to the bottom), nothing of it survives this.
@@ -149,5 +150,159 @@ describe("installResizeClear", () => {
 
     expect(write).not.toHaveBeenCalled();
     expect(stdout.listenerCount("resize")).toBe(0);
+  });
+});
+
+function fakeStdout(isTTY = true) {
+  const writes: string[] = [];
+  return { stdout: { isTTY, write: (data: string) => writes.push(data) }, writes };
+}
+
+describe("setMouseReporting", () => {
+  it("uses SGR reporting with drag, and turns it off in reverse order", () => {
+    expect(MOUSE_ON).toBe("\u001b[?1000h\u001b[?1002h\u001b[?1006h");
+    expect(MOUSE_OFF).toBe("\u001b[?1006l\u001b[?1002l\u001b[?1000l");
+  });
+
+  it("writes MOUSE_ON once even if called twice", () => {
+    const { stdout, writes } = fakeStdout();
+    setMouseReporting(stdout, true);
+    setMouseReporting(stdout, true);
+    expect(writes).toEqual([MOUSE_ON]);
+  });
+
+  it("writes MOUSE_OFF once, and only after it was turned on", () => {
+    const { stdout, writes } = fakeStdout();
+    setMouseReporting(stdout, false);
+    setMouseReporting(stdout, true);
+    setMouseReporting(stdout, false);
+    setMouseReporting(stdout, false);
+    expect(writes).toEqual([MOUSE_ON, MOUSE_OFF]);
+  });
+
+  it("can be turned on again after being turned off", () => {
+    const { stdout, writes } = fakeStdout();
+    setMouseReporting(stdout, true);
+    setMouseReporting(stdout, false);
+    setMouseReporting(stdout, true);
+    expect(writes).toEqual([MOUSE_ON, MOUSE_OFF, MOUSE_ON]);
+  });
+
+  it("writes nothing to an output that is not a terminal", () => {
+    const { stdout, writes } = fakeStdout(false);
+    setMouseReporting(stdout, true);
+    setMouseReporting(stdout, false);
+    expect(writes).toEqual([]);
+  });
+});
+
+function fakeProcess() {
+  return new EventEmitter();
+}
+
+describe("installExitGuards", () => {
+  it("writes MOUSE_OFF on SIGTERM, then exits with 143", () => {
+    const { stdout, writes } = fakeStdout();
+    const proc = fakeProcess();
+    const exit = vi.fn<(code: number) => void>(() => {
+      writes.push("<exit>");
+    });
+    installExitGuards(stdout, exit, proc);
+    setMouseReporting(stdout, true);
+
+    proc.emit("SIGTERM", "SIGTERM");
+
+    expect(writes).toEqual([MOUSE_ON, MOUSE_OFF, "<exit>"]);
+    expect(exit).toHaveBeenCalledExactlyOnceWith(143);
+  });
+
+  it("writes MOUSE_OFF on SIGHUP, then exits with 129", () => {
+    const { stdout, writes } = fakeStdout();
+    const proc = fakeProcess();
+    const exit = vi.fn<(code: number) => void>();
+    installExitGuards(stdout, exit, proc);
+    setMouseReporting(stdout, true);
+
+    proc.emit("SIGHUP", "SIGHUP");
+
+    expect(writes).toEqual([MOUSE_ON, MOUSE_OFF]);
+    expect(exit).toHaveBeenCalledExactlyOnceWith(129);
+  });
+
+  it("writes MOUSE_OFF on a fatal error without handling it or exiting itself", () => {
+    const { stdout, writes } = fakeStdout();
+    const proc = fakeProcess();
+    const exit = vi.fn<(code: number) => void>();
+    installExitGuards(stdout, exit, proc);
+    setMouseReporting(stdout, true);
+
+    proc.emit("uncaughtExceptionMonitor", new Error("boom"), "uncaughtException");
+
+    expect(writes).toEqual([MOUSE_ON, MOUSE_OFF]);
+    expect(exit).not.toHaveBeenCalled();
+    // A listener on these events would replace Node's own printing and exit code.
+    expect(proc.listenerCount("uncaughtException")).toBe(0);
+    expect(proc.listenerCount("unhandledRejection")).toBe(0);
+  });
+
+  it("removes every listener it added", () => {
+    const { stdout } = fakeStdout();
+    const proc = fakeProcess();
+    const remove = installExitGuards(stdout, vi.fn(), proc);
+    remove();
+    expect(proc.eventNames()).toEqual([]);
+  });
+});
+
+// Runs a real Node process, so Node's own handling of fatal errors and signals
+// is what is measured. Its stdout is a pipe; the guard gets a terminal-like
+// writer onto it.
+function runGuarded(body: string) {
+  const terminalUrl = new URL("../terminal.ts", import.meta.url).href;
+  const script = `
+    import { writeSync } from "node:fs";
+    import { installExitGuards, setMouseReporting } from ${JSON.stringify(terminalUrl)};
+    const stdout = { isTTY: true, write: (data) => writeSync(1, data) };
+    installExitGuards(stdout);
+    setMouseReporting(stdout, true);
+    ${body}
+  `;
+  return new Promise<{ code: number | null; signal: NodeJS.Signals | null; stdout: string; stderr: string }>(
+    (resolve, reject) => {
+      const child = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", script], {
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      let out = "";
+      let err = "";
+      child.stdout.on("data", (data: Buffer) => {
+        out += data.toString();
+        if (out.includes("ready") && body.includes("ready")) child.kill("SIGTERM");
+      });
+      child.stderr.on("data", (data: Buffer) => (err += data.toString()));
+      child.on("error", reject);
+      child.on("close", (code, signal) => resolve({ code, signal, stdout: out, stderr: err }));
+    },
+  );
+}
+
+describe("installExitGuards — real process", () => {
+  it("turns the mouse off on an uncaught error, which is still printed with exit code 1", async () => {
+    const result = await runGuarded(`setTimeout(() => { throw new Error("guarded boom"); });`);
+    expect(result.stdout).toBe(MOUSE_ON + MOUSE_OFF);
+    expect(result.stderr).toContain("guarded boom");
+    expect(result.code).toBe(1);
+  });
+
+  it("turns the mouse off on an unhandled rejection, which is still printed with exit code 1", async () => {
+    const result = await runGuarded(`Promise.reject(new Error("rejected boom"));`);
+    expect(result.stdout).toBe(MOUSE_ON + MOUSE_OFF);
+    expect(result.stderr).toContain("rejected boom");
+    expect(result.code).toBe(1);
+  });
+
+  it("turns the mouse off on SIGTERM and exits with 143", async () => {
+    const result = await runGuarded(`writeSync(1, "ready"); setInterval(() => {}, 1000);`);
+    expect(result.stdout).toBe(`${MOUSE_ON}ready${MOUSE_OFF}`);
+    expect(result.code).toBe(143);
   });
 });
