@@ -109,8 +109,9 @@ The qualification prompt gets a fourth case, worded as a sequence:
 
 1. no topic at all (a greeting, an empty message): answer in one sentence and
    end with `NO_TOPIC`;
-2. a question or request that does not call for a debate between the two
-   agents (how something works, where something is): answer it directly,
+2. a question about the project or a request for information that does not
+   call for a debate between the two agents (how something works, where
+   something is; a change request still goes to the debate): answer it directly,
    following the response style, and end with `NO_TOPIC`;
 3. a topic that needs information from the human first: ask, end with
    `WAIT_HUMAN`;

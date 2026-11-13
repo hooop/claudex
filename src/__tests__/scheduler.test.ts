@@ -1119,6 +1119,7 @@ describe("Scheduler", () => {
       await vi.waitFor(() => expect(agents.codex.isPending()).toBe(true));
       expect(agents.codex.lastMessage).toContain("Useful analysis but no marker");
     });
+
     it("refuses NO_TOPIC outside a topic qualification", async () => {
       scheduler.start("Valid topic");
       await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));

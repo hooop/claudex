@@ -50,8 +50,9 @@ text only.
 enabled (Bedrock, Vertex, Foundry). Claudex passes the rules on every Claude `send`, so they still
 arrive there, rendered on each request.
 
-**How to apply:** the debate rules travel as Claude's custom `systemPrompt` and Codex's
-`developerInstructions` on `thread/start` only (`src/agents/claudeAgent.ts`, `src/agents/codexAgent.ts`).
+**How to apply:** the debate rules travel as Claude's custom `systemPrompt`, on every query
+(`src/agents/claudeAgent.ts`), and as Codex's `developerInstructions`, on `thread/start` only
+(`src/agents/codexAgent.ts`).
 Re-measure at every SDK or Codex upgrade; never switch to the preset or to `baseInstructions`, and
 never resend the Codex instructions on resume, without measuring.
 
