@@ -16,12 +16,14 @@ answers and qualification replies were not covered.
 - **D1:** `CONSENSUS_INSTRUCTIONS` is split into labelled sections (Role, Project memory, Response
   style, Evidence, Working notes, End marker). Response style applies to every debate turn and
   every answer to the human: answer first, about 120 words as a target and not a limit, no meta
-  commentary, no headings unless asked, no closing recap, question or offer, no speculation. A
+  commentary, no headings unless asked, no closing recap, no closing question or offer unless an answer is needed to go on, no
+  speculation. A
   message asking for a summary, a specification or implementation work sets its own length.
 - **D2:** the qualification prompt answers a plain question directly and ends with `NO_TOPIC`; no
   new marker.
 - **D3:** the rules are passed on every `send` (`AgentSendOptions.instructions`) and travel as
-  Claude's custom `systemPrompt` (`snapshot: true`) and Codex's `developerInstructions`; the
+  Claude's custom `systemPrompt` (`snapshot: true`) and Codex's `developerInstructions` (on
+  `thread/start` only: resending them on resume costs about 5 400 input tokens per turn); the
   first-message prepending and its `instructed` state are removed. Measurements in limits.md
   (2026-11-13).
 - **D4:** during the debate the model line shows only `/help`, unless one agent has under 25 % of

@@ -26,11 +26,34 @@ to BANANA." was followed on turn 1, on a resume that passed it again, and on a r
 generate-json-schema`) both carry `developerInstructions` and `baseInstructions`.
 `baseInstructions` replaces Codex's own base prompt; `developerInstructions` adds to it. The same
 BANANA instruction as `developerInstructions` was followed on `thread/start`, on a `thread/resume`
-that passed it again, and on one that did not.
+that passed it again, and on one that did not: the thread keeps it.
+
+**Resending on resume is not free (Codex):** a thread started with about 2 700 tokens of
+`developerInstructions`, then resumed three times (one app-server process per turn, as Claudex
+does), `last.inputTokens` per turn:
+
+| Resume passes `developerInstructions` | Turn 1 | Turn 2 | Turn 3 | Turn 4 |
+| --- | --- | --- | --- | --- |
+| yes | 22 848 | 28 231 | 28 249 | 28 295 |
+| no | 22 673 | 22 691 | 22 709 | 22 727 |
+
+Passing them again on resume added about 5 400 input tokens to every later turn. So Claudex passes
+them on `thread/start` only.
+
+**Claude, project CLAUDE.md:** in a folder whose `CLAUDE.md` says "end every reply with KIWI", both
+an omitted `systemPrompt` (3 412 tokens) and `{ type: "custom", prompt, snapshot: true }` (3 421)
+ended with KIWI: a custom prompt does not drop the project's CLAUDE.md, which the debate keeps on
+purpose. The token table above used the bare-string form; the object form adds the same: its own
+text only.
+
+**Not covered:** per the SDK, `snapshot` has no effect where system-prompt recording is not yet
+enabled (Bedrock, Vertex, Foundry). Claudex passes the rules on every Claude `send`, so they still
+arrive there, rendered on each request.
 
 **How to apply:** the debate rules travel as Claude's custom `systemPrompt` and Codex's
-`developerInstructions` (`src/agents/claudeAgent.ts`, `src/agents/codexAgent.ts`). Re-measure at
-every SDK or Codex upgrade; never switch to the preset or to `baseInstructions` without measuring.
+`developerInstructions` on `thread/start` only (`src/agents/claudeAgent.ts`, `src/agents/codexAgent.ts`).
+Re-measure at every SDK or Codex upgrade; never switch to the preset or to `baseInstructions`, and
+never resend the Codex instructions on resume, without measuring.
 
 ## 2026-11-11 — Claude's sandboxed Bash during the debate (measured, macOS)
 

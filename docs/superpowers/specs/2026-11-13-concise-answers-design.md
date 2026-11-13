@@ -132,17 +132,19 @@ including a plain question).
   measured below, an omitted `systemPrompt` is an empty one today, and the
   preset would add about 2 200 tokens of instructions to every call. The SDK
   records the prompt on a session's first request and reuses it on resume.
-- **Codex:** `developerInstructions` on `thread/start`, and the same value on
-  `thread/resume`.
+- **Codex:** `developerInstructions` on `thread/start` only. Measured after the
+  final review: the thread keeps them across resumes, and passing them again on
+  `thread/resume` adds about 5 400 input tokens to every later turn (Claudex
+  resumes once per turn). See limits.md 2026-11-13.
 - `pendingInstructions`, the `instructed` state and the first-delivery
   prepending are removed. The rules now arrive with the session, so the case
   they handled (a failed first turn must not lose the rules) no longer exists.
 - `AgentSendOptions` gets a required `instructions: string`: the scheduler,
   which already builds the rules from the self/other names, passes them on
   every `send` (debate turns, synthesis, implementation). Each adapter maps
-  them to its system channel. Passing them every time costs nothing (both
-  channels are recorded per session) and keeps one source of truth, with no
-  per-agent "already instructed" state.
+  them to its system channel: Claude passes them on every query (the SDK
+  records the prompt with the session), Codex only when it starts a thread.
+  One source of truth, with no per-agent "already instructed" state.
 
 **Measured on 2026-11-13, before writing the plan** (scripts in the session
 scratchpad, debate options, model `sonnet`; first-response
