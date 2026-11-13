@@ -1,6 +1,7 @@
-import { Box, Text, useStdout } from "ink";
+import { Box, Text } from "ink";
 import { useEffect, useState } from "react";
 import { headerFrame, HEADER_MAX_WIDTH, type HeaderAnimationId } from "../headerArt.js";
+import { useTerminalSize } from "../useTerminalSize.js";
 
 const FRAME_MS = 90;
 
@@ -12,8 +13,8 @@ const FRAME_MS = 90;
  */
 export function AnimatedHeader(props: { active?: boolean; animation: HeaderAnimationId }) {
   const { active = true, animation } = props;
-  const { stdout } = useStdout();
-  const width = Math.min(stdout?.columns || 80, HEADER_MAX_WIDTH);
+  const { columns } = useTerminalSize();
+  const width = Math.min(columns, HEADER_MAX_WIDTH);
   const [clock, setClock] = useState(() => ({ animation, t: 0 }));
 
   useEffect(() => {

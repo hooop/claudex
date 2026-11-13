@@ -1,4 +1,4 @@
-import { Box, Text, useApp, useStdout } from "ink";
+import { Box, Text, useApp } from "ink";
 import { useState } from "react";
 import type { CodingAgent } from "../../agents/types.js";
 import { parseCommand } from "../../orchestrator/commands.js";
@@ -11,6 +11,8 @@ import {
 } from "../headerArt.js";
 import { BRAND_COLOR } from "../theme.js";
 import { displayWidth, truncateEnd } from "../stream/lineBuffer.js";
+import { FittedScreen } from "../screenVisibility.js";
+import { useTerminalSize } from "../useTerminalSize.js";
 import { AnimatedHeader } from "./AnimatedHeader.js";
 import { WELCOME_COMMANDS } from "./CommandPalette.js";
 import { DecisionViewer } from "./DecisionViewer.js";
@@ -80,9 +82,8 @@ export function WelcomeScreen(props: {
 }) {
   const { agents, status, headerAnimation, onHeaderAnimationChange, onStart } = props;
   const { exit } = useApp();
-  const { stdout } = useStdout();
-  const rows = stdout?.rows || 24;
-  const memoryWidth = Math.max(1, Math.min(stdout?.columns ?? 80, HEADER_MAX_WIDTH));
+  const { columns, rows } = useTerminalSize();
+  const memoryWidth = Math.max(1, Math.min(columns, HEADER_MAX_WIDTH));
   const memoryDivider = welcomeDivider(memoryWidth);
   const memoryLine = welcomeMemoryLine(status, memoryWidth);
   const [, bump] = useState(0);
@@ -146,85 +147,92 @@ export function WelcomeScreen(props: {
   }
 
   return (
-    <Box flexDirection="column" height={Math.max(1, rows - 1)}>
-      <Box flexDirection="column" flexGrow={1}>
-        {decisionViewerOpen && status.decisionsText ? (
-          <DecisionViewer
-            markdown={status.decisionsText}
-            width={stdout?.columns ?? 80}
-            height={Math.max(3, rows - 5)}
-            onClose={() => setDecisionViewerOpen(false)}
-          />
-        ) : (
-          <>
-            <AnimatedHeader animation={headerAnimation} />
+    <FittedScreen columns={columns} rows={rows}>
+      <Box flexDirection="column" height={Math.max(1, rows - 1)}>
+        {/* The only region that gives up rows: a short window clips its bottom
+            instead of pushing the prompt below the screen. */}
+        <Box flexDirection="column" flexGrow={1} flexShrink={1} minHeight={0} overflow="hidden">
+          {decisionViewerOpen && status.decisionsText ? (
+            <DecisionViewer
+              markdown={status.decisionsText}
+              width={columns}
+              height={Math.max(3, rows - 5)}
+              onClose={() => setDecisionViewerOpen(false)}
+            />
+          ) : (
+            <>
+              <AnimatedHeader animation={headerAnimation} />
 
-            <Box flexDirection="column">
-              <Text color={WELCOME_MEMORY_COLOR}>{memoryDivider}</Text>
-              <Text color={WELCOME_MEMORY_COLOR}>{memoryLine}</Text>
-              <Text color={WELCOME_MEMORY_COLOR}>{memoryDivider}</Text>
-            </Box>
-
-            <Box marginTop={1} marginBottom={1}>
-              <Text color={WELCOME_TAGLINE_COLOR} wrap="truncate-end">
-                {WELCOME_TAGLINE}
-              </Text>
-            </Box>
-
-            {!selectionPaletteOpen && notice && (
-              <Box marginTop={1}>
-                <Text color="#f5c542">{notice}</Text>
+              <Box flexDirection="column">
+                <Text color={WELCOME_MEMORY_COLOR}>{memoryDivider}</Text>
+                <Text color={WELCOME_MEMORY_COLOR}>{memoryLine}</Text>
+                <Text color={WELCOME_MEMORY_COLOR}>{memoryDivider}</Text>
               </Box>
-            )}
 
-            {!selectionPaletteOpen && showHelp && (
-              <Box flexDirection="column" marginTop={1}>
-                <Text bold color={BRAND_COLOR}>
-                  Commands
+              <Box marginTop={1} marginBottom={1}>
+                <Text color={WELCOME_TAGLINE_COLOR} wrap="truncate-end">
+                  {WELCOME_TAGLINE}
                 </Text>
-                {WELCOME_HELP_LINES.map((line) => (
-                  <Text key={line} dimColor wrap="truncate-end">
-                    {line}
-                  </Text>
-                ))}
               </Box>
-            )}
-          </>
-        )}
+
+              {!selectionPaletteOpen && notice && (
+                <Box marginTop={1}>
+                  <Text color="#f5c542">{notice}</Text>
+                </Box>
+              )}
+
+              {!selectionPaletteOpen && showHelp && (
+                <Box flexDirection="column" marginTop={1}>
+                  <Text bold color={BRAND_COLOR}>
+                    Commands
+                  </Text>
+                  {WELCOME_HELP_LINES.map((line) => (
+                    <Text key={line} dimColor wrap="truncate-end">
+                      {line}
+                    </Text>
+                  ))}
+                </Box>
+              )}
+            </>
+          )}
+        </Box>
+
+        <Box flexDirection="column" flexShrink={0}>
+          {modelPickerAgent && (
+            <ModelPicker
+              key={modelPickerAgent}
+              agent={modelPickerAgent}
+              width={inputBarWidth(columns)}
+              onSelect={(model) => {
+                agents[modelPickerAgent].setModel(model);
+                setModelPickerAgent(null);
+                bump((v) => v + 1);
+              }}
+              onCancel={() => setModelPickerAgent(null)}
+            />
+          )}
+
+          <InputBar
+            disabled={false}
+            width={columns}
+            inputActive={modelPickerAgent === null && !decisionViewerOpen}
+            placeholder="Describe the technical problem"
+            commands={WELCOME_COMMANDS}
+            onCommandPaletteChange={setCommandPaletteOpen}
+            onSubmit={handleSubmit}
+            onNavigate={(direction) =>
+              onHeaderAnimationChange(cycleHeaderAnimation(headerAnimation, direction))
+            }
+          />
+
+          <ModelFooter
+            models={{
+              claude: agents.claude.currentModel(),
+              codex: agents.codex.currentModel(),
+            }}
+          />
+        </Box>
       </Box>
-
-      {modelPickerAgent && (
-        <ModelPicker
-          key={modelPickerAgent}
-          agent={modelPickerAgent}
-          width={inputBarWidth(stdout?.columns ?? 80)}
-          onSelect={(model) => {
-            agents[modelPickerAgent].setModel(model);
-            setModelPickerAgent(null);
-            bump((v) => v + 1);
-          }}
-          onCancel={() => setModelPickerAgent(null)}
-        />
-      )}
-
-      <InputBar
-        disabled={false}
-        inputActive={modelPickerAgent === null && !decisionViewerOpen}
-        placeholder="Describe the technical problem"
-        commands={WELCOME_COMMANDS}
-        onCommandPaletteChange={setCommandPaletteOpen}
-        onSubmit={handleSubmit}
-        onNavigate={(direction) =>
-          onHeaderAnimationChange(cycleHeaderAnimation(headerAnimation, direction))
-        }
-      />
-
-      <ModelFooter
-        models={{
-          claude: agents.claude.currentModel(),
-          codex: agents.codex.currentModel(),
-        }}
-      />
-    </Box>
+    </FittedScreen>
   );
 }
