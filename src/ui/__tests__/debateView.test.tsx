@@ -18,6 +18,7 @@ import type { AgentId } from "../../types.js";
 import { MouseProvider } from "../mouse/MouseContext.js";
 import type { MouseEvent } from "../mouse/mouseInput.js";
 import { MOUSE_OFF, MOUSE_ON } from "../terminal.js";
+import { contentWidthFor } from "../theme.js";
 import {
   DebateView,
   transcriptBlockLines,
@@ -859,9 +860,9 @@ describe("DebateView — mouse", () => {
       await vi.waitFor(() => expect(t.agents.claude.pending).toBe(true));
       await selectWords(t);
 
-      t.stdout.columns = 90;
+      t.stdout.columns = 70;
       t.stdout.emit("resize");
-      await vi.waitFor(() => expect(lastFrame(t).rows[3]).toBe("━".repeat(90)));
+      await vi.waitFor(() => expect(lastFrame(t).rows[3]).toBe("━".repeat(contentWidthFor(70))));
       expect(inverted(t)).toEqual([]);
 
       t.app.unmount();
@@ -895,6 +896,24 @@ describe("bootstrap helpers", () => {
     expect(transcriptWindow(lines, 3, 0)).toEqual(["line 7", "line 8", "line 9"]);
     expect(transcriptWindow(lines, 3, 2)).toEqual(["line 5", "line 6", "line 7"]);
     expect(transcriptWindow(lines, 3, 99)).toEqual(["line 0", "line 1", "line 2"]);
+  });
+
+  it("draws the header, its rule, turn headers and the bottom rule at the transcript content width", async () => {
+    const t = mount();
+    await vi.waitFor(() => expect(t.agents.claude.pending).toBe(true));
+    t.agents.claude.emit("Hello.\n");
+    await vi.waitFor(() => expect(lastFrame(t).rows.join("\n")).toContain("Hello."));
+
+    const width = contentWidthFor(100);
+    expect(width).toBeLessThan(100);
+    const { rows } = lastFrame(t);
+    expect(rows[3]).toBe("━".repeat(width));
+    expect(rows.filter((row) => /^─+$/.test(row))).toEqual(["─".repeat(width)]);
+    // Right-aligned rows end on the same column as the rules.
+    expect(rows[0]!.trimEnd()).toHaveLength(width);
+    expect(rows.find((row) => row.startsWith("◆ CLAUDE"))!.trimEnd()).toHaveLength(width);
+
+    t.app.unmount();
   });
 
   it.each([24, 40])(

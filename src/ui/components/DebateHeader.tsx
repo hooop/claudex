@@ -1,9 +1,8 @@
 import { Box, Text } from "ink";
 import { CLAUDEX_VERSION } from "../../version.js";
 import { stageOf, statusLine, type DebateStatus } from "../debateStatus.js";
-import { HEADER_MAX_WIDTH } from "../headerArt.js";
 import { displayWidth, truncateEnd } from "../stream/lineBuffer.js";
-import { BRAND_COLOR, GLYPH, NARROW_COLUMNS } from "../theme.js";
+import { BRAND_COLOR, GLYPH, NARROW_COLUMNS, contentWidthFor } from "../theme.js";
 import type { ProjectStatus } from "../../util/projectStatus.js";
 import { welcomeMemoryLine } from "./WelcomeScreen.js";
 
@@ -26,7 +25,8 @@ export function DebateHeader(props: {
   memory: Pick<ProjectStatus, "decisionsCount" | "lastSession">;
 }) {
   const { columns, topic, status, memory } = props;
-  const width = Math.max(1, Math.min(columns, HEADER_MAX_WIDTH));
+  // The transcript's width, so the header's rule and right edge line up with the turns below.
+  const width = Math.max(1, Math.min(columns, contentWidthFor(columns)));
   const meta = ` ${CLAUDEX_VERSION} ${GLYPH.dot} ${stageOf(status)}`;
   const segments = statusLine(status);
   const statusWidth = segments.reduce((sum, { text }) => sum + displayWidth(text), 0);
@@ -79,6 +79,8 @@ const MEMORY_PREFIX = "Memory: ";
  */
 function memoryRow(memory: Pick<ProjectStatus, "decisionsCount" | "lastSession">, width: number): string {
   const line = welcomeMemoryLine(memory, width + MEMORY_PREFIX.length).replace(MEMORY_PREFIX, "");
+  // Too narrow for the prefix: welcomeMemoryLine kept only the last session, at the wider width.
+  if (displayWidth(line) > width) return truncateEnd(line, width);
   const missing = width - displayWidth(line);
   if (missing <= 0) return line;
   return line.replace(/ +(?=last session: |no previous session$)/u, (gap) => gap + " ".repeat(missing));

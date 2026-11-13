@@ -3,12 +3,14 @@ import { createElement } from "react";
 import { describe, expect, it } from "vitest";
 import { CLAUDEX_VERSION } from "../../../version.js";
 import { INITIAL_STATUS, reduceStatus } from "../../debateStatus.js";
-import { HEADER_MAX_WIDTH } from "../../headerArt.js";
 import { displayWidth } from "../../stream/lineBuffer.js";
-import { NARROW_COLUMNS } from "../../theme.js";
+import { MAX_CONTENT_WIDTH, NARROW_COLUMNS, contentWidthFor } from "../../theme.js";
 import { DEBATE_HEADER_ROWS, DebateHeader } from "../DebateHeader.js";
 
 const MEMORY = { decisionsCount: 2, lastSession: "2026-08-10T11:42:17.288Z" };
+
+/** The debate screen's one width: the transcript's content width. */
+const widthAt = (columns: number) => Math.min(columns, contentWidthFor(columns));
 
 function rows(columns: number, topic = "Test topic", status = INITIAL_STATUS): string[] {
   return renderToString(
@@ -26,7 +28,7 @@ describe("DebateHeader", () => {
     const lines = rows(columns, "word ".repeat(300));
     expect(lines).toHaveLength(DEBATE_HEADER_ROWS);
     for (const line of lines) {
-      expect(displayWidth(line)).toBeLessThanOrEqual(Math.min(columns, HEADER_MAX_WIDTH));
+      expect(displayWidth(line)).toBeLessThanOrEqual(widthAt(columns));
     }
   });
 
@@ -40,9 +42,9 @@ describe("DebateHeader", () => {
     expect(rows(80)[0]!.trimEnd().endsWith("Codex ·")).toBe(true);
   });
 
-  it("right-aligns the status", () => {
+  it("right-aligns the status to the content width", () => {
     const first = rows(80)[0]!;
-    expect(displayWidth(first)).toBe(80);
+    expect(displayWidth(first.trimEnd())).toBe(widthAt(80));
   });
 
   it("shows consensus stage after consensus-reached", () => {
@@ -55,7 +57,7 @@ describe("DebateHeader", () => {
   it("the topic takes one row", () => {
     const lines = rows(80, "first\nsecond\r\n\tthird " + "x".repeat(400));
     expect(lines[1]).toMatch(/^Topic {2}first second third x+… \/topic$/);
-    expect(displayWidth(lines[1]!)).toBe(80);
+    expect(displayWidth(lines[1]!)).toBe(widthAt(80));
   });
 
   it("keeps a short topic whole", () => {
@@ -65,14 +67,14 @@ describe("DebateHeader", () => {
   it("shows the memory line and a heavy rule", () => {
     const lines = rows(80);
     expect(lines[2]).toMatch(/^Memory 2 settled decisions +last session: /);
-    expect(lines[3]).toBe("━".repeat(80));
+    expect(lines[3]).toBe("━".repeat(widthAt(80)));
   });
 
   it.each([60, 80, 96, 120])("the memory row reaches the content width at %i columns", (columns) => {
-    expect(displayWidth(rows(columns)[2]!)).toBe(Math.min(columns, HEADER_MAX_WIDTH));
+    expect(displayWidth(rows(columns)[2]!)).toBe(widthAt(columns));
   });
 
-  it("caps the width at the header maximum", () => {
-    expect(rows(200)[3]).toBe("━".repeat(HEADER_MAX_WIDTH));
+  it("caps the width at the transcript's content width", () => {
+    expect(rows(200)[3]).toBe("━".repeat(MAX_CONTENT_WIDTH));
   });
 });

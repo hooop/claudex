@@ -687,7 +687,7 @@ export function DebateView(props: {
         {showTail && tail && (
           <Box width={columns}>
             <Text wrap="truncate-end">
-              {tail.rail ? <Text color={tail.color}>{"│ "}</Text> : null}
+              {tail.rail ? <Text color={tail.color}>{`${GLYPH.rail} `}</Text> : null}
               <Text dimColor>{tail.text}</Text>
             </Text>
           </Box>
@@ -696,7 +696,7 @@ export function DebateView(props: {
         <Box flexGrow={1} />
 
         {/* The one row of the frame budget that the header animation used to pay for. */}
-        <Text dimColor>{GLYPH.rule.repeat(columns)}</Text>
+        <Text dimColor>{GLYPH.rule.repeat(Math.min(columns, contentWidthFor(columns)))}</Text>
 
         {!paletteVisible && visibleBanner && (
           <Box width={columns}>
@@ -852,7 +852,7 @@ function TranscriptViewport(props: {
   if (height <= 0) return null;
 
   const firstLine = firstVisibleLine(lines.length, height, scrollOffset);
-  const visible = lines.slice(firstLine, firstLine + height);
+  const visible = transcriptWindow(lines, height, scrollOffset);
   return (
     <Box flexDirection="column" width={columns} height={height} overflow="hidden">
       {Array.from({ length: height }, (_, index) => {
