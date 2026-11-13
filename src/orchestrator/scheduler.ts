@@ -1196,7 +1196,7 @@ export class Scheduler {
         "1. If the input contains no topic (a greeting, an empty message), answer in one sentence and end with " +
         NO_TOPIC_MARKER +
         ".\n" +
-        "2. If it is a question or request that does not call for a debate between the two agents " +
+        "2. If it is a question about the project or a request for information that does not call for a debate between the two agents " +
         "(how something works, where something is), answer it directly, following the response style, then end with " +
         NO_TOPIC_MARKER +
         ".\n" +
@@ -1774,7 +1774,7 @@ export const CONSENSUS_INSTRUCTIONS = (self: string, other: string) =>
     "Working notes: write your message after your last tool call. Text written before a tool call is a private working note that neither the human nor the other agent sees in the debate, so your message must contain everything needed to understand your argument and check your conclusions.",
     [
       `End marker: end every answer with a line exactly equal to "${CONTINUE_MARKER}" if you still have a new objection or question for ${other}, to "${CONSENSUS_MARKER}" if you have nothing more to add, the current proposal suits you, and you have examined at least one serious alternative and can say why it is worse, or to "${WAIT_HUMAN_MARKER}" when information from the human is truly essential before going on.`,
-      `"${NO_TOPIC_MARKER}" is reserved for the very first qualification and only when the input really contains no topic to debate, including a plain question or request that needs no debate; never use it for an incomplete topic, which calls for "${WAIT_HUMAN_MARKER}".`,
+      `"${NO_TOPIC_MARKER}" is reserved for answering a request to qualify the human input, and only when that input really contains no topic to debate, including a question about the project or a request for information that needs no debate; never use it for an incomplete topic, which calls for "${WAIT_HUMAN_MARKER}".`,
     ].join(" "),
   ].join("\n\n") +
   "\n\n" +

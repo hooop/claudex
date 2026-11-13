@@ -1005,7 +1005,9 @@ describe("Scheduler", () => {
       await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
       const msg = agents.claude.lastMessage ?? "";
 
-      expect(msg).toMatch(/question or request that does not call for a debate/i);
+      expect(msg).toMatch(
+        /question about the project or a request for information that does not call for a debate between the two agents/i,
+      );
       expect(msg).toMatch(/answer it directly/i);
       expect(msg).not.toMatch(/invite the human to give a topic/i);
       // The four cases appear in this order.
@@ -1034,6 +1036,24 @@ describe("Scheduler", () => {
       const message = agents.claude.lastMessage ?? "";
       expect(message).toContain("Proposed topic:\nReal topic");
       expect(message).not.toContain("how does it work ?");
+    });
+
+    it("accepts NO_TOPIC again when a new message is qualified after a plain answer", async () => {
+      scheduler.start("how does it work ?");
+      await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
+      agents.claude.complete("It works like this.\n\n<<NO_TOPIC>>");
+      await vi.waitFor(() => expect(scheduler.suspension()).toBe("waiting-human"));
+
+      scheduler.intervene("and where is the config ?", "both");
+      await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
+      agents.claude.complete("In config.ts.\n\n<<NO_TOPIC>>");
+
+      await vi.waitFor(() => expect(scheduler.suspension()).toBe("waiting-human"));
+      expect(callbacks.onTurnError).not.toHaveBeenCalled();
+      expect(scheduler.topicStatus()).toBe("provisional");
+      expect(callbacks.onTopicAccepted).not.toHaveBeenCalled();
+      expect(agents.codex.getSendCount()).toBe(0);
+      expect(scheduler.lifecycleState()).toBe("open");
     });
 
     it("distinguishes a real topic needing clarification and waits for the human", async () => {

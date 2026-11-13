@@ -134,6 +134,13 @@ describe("CONSENSUS_INSTRUCTIONS", () => {
     expect(prompt).toContain("exact command");
   });
 
+  it("ties NO_TOPIC to any qualification of the human input, not only the first", () => {
+    const line = prompt.split("\n").find((l) => l.includes('"<<NO_TOPIC>>"')) ?? "";
+    expect(line).not.toBe("");
+    expect(prompt).not.toMatch(/very first/i);
+    expect(line).toMatch(/request to qualify the human input/i);
+  });
+
   it("shows a correct example that the parser really recognises", () => {
     expect(extractSignal(exampleAfter("Correct end of answer:")).signal).toBe("consensus");
   });
