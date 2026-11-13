@@ -32,13 +32,13 @@ The topic is not restricted to architecture. Anything settled before code gets w
 
 **Human intervention at any point.** A message can be addressed to both agents, or to a single one.
 
-**Topic qualification.** The first message is assessed before it becomes the official topic. An off-topic or incomplete request receives an answer and waits for clarification. Nothing is written to project memory until a topic has been accepted.
+**Topic qualification.** The first message is assessed before it becomes the official topic. A plain question about the project gets a direct answer without starting a debate, and the session waits for your next message. A message with no topic receives a one-sentence answer, and an incomplete topic a question back. Nothing is written to project memory until a topic has been accepted.
 
 **Persistent project memory.** Decisions and constraints are stored in `.claudex/memory/`. The debate rules sent to both agents point them at those files, so every new debate starts from what was already settled.
 
 **Your instruction files stay yours.** Claudex never creates or modifies `CLAUDE.md` or `AGENTS.md`. If you already have them, both agents keep reading them during a debate. Earlier versions of Claudex appended a section titled "Mémoire du projet (Claudex)" (French text, quoted as it was written) to these files, or created them; that section, or the whole file if Claudex created it, can be deleted safely.
 
-**Full-screen terminal interface.** A fixed four-row header shows the version and the stage of the debate, the protocol status of each agent (`✓` ready, `→` continues, `?` asks you, `✓ Consensus` once both agree), the topic and the project memory. A pulse in the agent's colour shows which one is thinking. Each turn starts with a `◆ CLAUDE` or `◆ CODEX` line with its round and time, and consensus is framed in green. The header and input stay fixed while the transcript scrolls independently; the complete transcript is archived in `.claudex/memory/transcripts/`. Resizing the window redraws a clean frame.
+**Full-screen terminal interface.** A fixed four-row header shows the version and the stage of the debate, the protocol status of each agent (`✓` ready, `→` continues, `?` asks you, `✓ Consensus` once both agree), the topic and the project memory. A pulse in the agent's colour shows which one is thinking. Each turn starts with a `◆ CLAUDE` or `◆ CODEX` line with its round and time, and consensus is framed in green. The header and input stay fixed while the transcript scrolls independently. Below the input, the line with each agent's model and free context appears during a debate only when one agent has less than 25 % of its context free; the welcome screen always shows the models. The complete transcript is archived in `.claudex/memory/transcripts/`. Resizing the window redraws a clean frame.
 
 **Scrolling and copying.** The mouse wheel scrolls the transcript 3 lines at a time; `↑`/`↓`, `Page Up`/`Page Down` and `Home`/`End` work too. Press and drag inside the transcript to select text: the selection is copied when you release the button, and a notice tells you how many characters were copied. Claudex uses `pbcopy` on macOS and `wl-copy` (Wayland), `xclip` or `xsel` (X11, only when `DISPLAY` is set) on Linux when one is installed (all optional); otherwise it asks the terminal to set the clipboard (OSC 52), which not every terminal allows. To use your terminal's own selection instead, hold `Fn` or `Option` on macOS (depending on the terminal), or `Shift` in most Linux terminals, while dragging.
 
@@ -232,7 +232,7 @@ src/
 
 ## Status
 
-Claudex is usable today and under active development. The current release includes topic qualification, the autonomous debate loop, human interventions, project memory, transcript archives, context-usage indicators, model selection, handoffs, and an optional implementation phase.
+Claudex is usable today and under active development. The current release includes topic qualification (with direct answers to plain questions), the autonomous debate loop, human interventions, project memory, transcript archives, context-usage warnings, model selection, handoffs, and an optional implementation phase.
 
 ## Contributing
 

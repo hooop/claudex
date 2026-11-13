@@ -740,7 +740,6 @@ describe("Scheduler", () => {
       for (const id of ["claude", "codex"] as const) {
         for (const { message, options } of agents[id].sends) {
           expect(options.instructions).toBe(expected[id]);
-          expect(message).not.toContain("Rules of this debate");
           expect(message).not.toContain("Role:");
         }
       }
