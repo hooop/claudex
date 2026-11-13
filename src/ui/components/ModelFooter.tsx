@@ -22,10 +22,21 @@ export function contextRemainingPercent(
   return `${Math.max(0, Math.min(100, percent))}%`;
 }
 
+/** Below this share of free context the debate footer brings the model line back. */
+export const LOW_CONTEXT_FREE_PERCENT = 25;
+
+/** An unmeasured context is not low: there is nothing to warn about yet. */
+export function isContextLow(usage: AgentContextUsage | null | undefined): boolean {
+  const remaining = contextRemainingPercent(usage);
+  return remaining !== null && parseInt(remaining, 10) < LOW_CONTEXT_FREE_PERCENT;
+}
+
 /** Stable line below the prompt, shared by the welcome and debate screens. */
 export function ModelFooter(props: {
   models: Record<AgentId, string>;
   contextUsage?: Partial<Record<AgentId, AgentContextUsage | null>>;
+  /** When false only `/help` is drawn; the row stays reserved so the layout does not move. */
+  showModels?: boolean;
 }) {
   const showContext = props.contextUsage !== undefined;
   const modelLabel = (agent: AgentId) => {
@@ -40,9 +51,11 @@ export function ModelFooter(props: {
   return (
     <Box paddingX={1}>
       <Box flexGrow={1} flexShrink={1} marginRight={1}>
-        <Text color={MODEL_FOOTER_COLOR} wrap="truncate-end">
-          {modelLabel("claude")} + {modelLabel("codex")}
-        </Text>
+        {(props.showModels ?? true) && (
+          <Text color={MODEL_FOOTER_COLOR} wrap="truncate-end">
+            {modelLabel("claude")} + {modelLabel("codex")}
+          </Text>
+        )}
       </Box>
       <Text color={BRAND_COLOR}>/help</Text>
     </Box>

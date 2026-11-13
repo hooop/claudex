@@ -29,7 +29,7 @@ import {
 } from "./components/DynamicFooter.js";
 import { DEBATE_COMMANDS } from "./components/CommandPalette.js";
 import { INPUT_BAR_MIN_ROWS, inputBarWidth, InputBar } from "./components/InputBar.js";
-import { ModelFooter } from "./components/ModelFooter.js";
+import { ModelFooter, isContextLow } from "./components/ModelFooter.js";
 import { ModelPicker } from "./components/ModelPicker.js";
 import { PermissionModal } from "./components/PermissionModal.js";
 import { StatusBar, statusBarWidth } from "./components/StatusBar.js";
@@ -775,6 +775,7 @@ export function DebateView(props: {
               <ModelFooter
                 models={{ claude: session.modelOf("claude"), codex: session.modelOf("codex") }}
                 contextUsage={contextUsage}
+                showModels={isContextLow(contextUsage?.claude) || isContextLow(contextUsage?.codex)}
               />
             )}
           </Box>
