@@ -6,8 +6,8 @@ import { BRAND_COLOR, GLYPH, NARROW_COLUMNS, contentWidthFor } from "../theme.js
 import type { ProjectStatus } from "../../util/projectStatus.js";
 import { welcomeMemoryLine } from "./WelcomeScreen.js";
 
-/** Rows the fixed debate header occupies: title, topic, memory, rule. */
-export const DEBATE_HEADER_ROWS = 4;
+// Defined with the other frame constants, which derive the minimum size from it.
+export { DEBATE_HEADER_ROWS } from "../theme.js";
 
 const TOPIC_LABEL = "Topic  ";
 const MEMORY_LABEL = "Memory ";

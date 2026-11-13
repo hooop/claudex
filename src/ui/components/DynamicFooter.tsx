@@ -1,11 +1,6 @@
 import { Box, Text } from "ink";
 import type { ReactNode } from "react";
-import {
-  MAX_DYNAMIC_ROWS,
-  MAX_STANDARD_DYNAMIC_ROWS,
-  MIN_COLS,
-  MIN_ROWS,
-} from "../theme.js";
+import { isTooSmall, MAX_DYNAMIC_ROWS, MAX_STANDARD_DYNAMIC_ROWS } from "../theme.js";
 import { COMMAND_PALETTE_ROWS } from "./CommandPalette.js";
 import { INPUT_BAR_MIN_ROWS } from "./InputBar.js";
 import { MODEL_FOOTER_ROWS } from "./ModelFooter.js";
@@ -74,7 +69,7 @@ export function footerMode(
   rows: number,
   preferredHeight?: number,
 ): FooterMode {
-  if (terminalRows < MIN_ROWS || columns < MIN_COLS) return { kind: "too-small" };
+  if (isTooSmall(columns, terminalRows)) return { kind: "too-small" };
 
   const minimumHeight = Math.min(rows, MAX_DYNAMIC_ROWS);
   const height = Math.min(
