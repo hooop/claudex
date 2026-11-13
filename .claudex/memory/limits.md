@@ -2,6 +2,36 @@
 
 Constraints, boundaries and things explicitly ruled out.
 
+## 2026-11-13 — System channels for the debate rules (measured)
+
+**Finding:** on SDK 0.3.310, an omitted `systemPrompt` is an empty one. Measured on this machine
+with the debate options (`debateQueryOptions(null)`, model `sonnet`, prompt `Answer exactly: ok`),
+first-response `input_tokens + cache_creation + cache_read` (method of 2026-08-17):
+
+| Claude `systemPrompt` | Tokens |
+| --- | --- |
+| omitted | 3 219 – 3 242 |
+| `[]` | 3 219 |
+| `"Reply in lowercase."` | 3 228 |
+| `{ type: "preset", preset: "claude_code" }` | 5 469 |
+
+So a custom prompt adds only its own text, while the `claude_code` preset adds about 2 200 tokens
+of instructions to every call.
+
+**Applied and kept across resume:** a custom prompt "End every reply with a last line exactly equal
+to BANANA." was followed on turn 1, on a resume that passed it again, and on a resume that did not
+(the SDK records it with the session, `snapshot`).
+
+**Codex 0.167.2:** `ThreadStartParams` and `ThreadResumeParams` (from `codex app-server
+generate-json-schema`) both carry `developerInstructions` and `baseInstructions`.
+`baseInstructions` replaces Codex's own base prompt; `developerInstructions` adds to it. The same
+BANANA instruction as `developerInstructions` was followed on `thread/start`, on a `thread/resume`
+that passed it again, and on one that did not.
+
+**How to apply:** the debate rules travel as Claude's custom `systemPrompt` and Codex's
+`developerInstructions` (`src/agents/claudeAgent.ts`, `src/agents/codexAgent.ts`). Re-measure at
+every SDK or Codex upgrade; never switch to the preset or to `baseInstructions` without measuring.
+
 ## 2026-11-11 — Claude's sandboxed Bash during the debate (measured, macOS)
 
 **Finding:** SDK 0.3.310 (Claude Code 2.1.310), `claude-sonnet-5-5`, macOS, one machine and one account
