@@ -1,4 +1,4 @@
-import { Box, Text } from "ink";
+import { Box } from "ink";
 import type { ReactNode } from "react";
 import { isTooSmall, MAX_DYNAMIC_ROWS, MAX_STANDARD_DYNAMIC_ROWS } from "../theme.js";
 import { COMMAND_PALETTE_ROWS } from "./CommandPalette.js";
@@ -97,13 +97,13 @@ export function DynamicFooter(props: {
   const { columns, terminalRows, rows, preferredHeight, children } = props;
   const mode = footerMode(columns, terminalRows, rows, preferredHeight);
 
-  if (mode.kind === "too-small") {
-    return <Text wrap="truncate-end">Terminal too small — enlarge the window</Text>;
-  }
   if (mode.kind === "hidden") return null;
 
+  // Too small: the screen hides this frame (FittedScreen) but keeps it
+  // mounted, so the transcript, scroll offset and draft survive.
+  const height = mode.kind === "box" ? mode.height : Math.max(1, terminalRows - 1);
   return (
-    <Box flexDirection="column" width={columns} height={mode.height} overflow="hidden">
+    <Box flexDirection="column" width={columns} height={height} overflow="hidden">
       {children}
     </Box>
   );

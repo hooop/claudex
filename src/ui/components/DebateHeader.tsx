@@ -40,7 +40,8 @@ export function DebateHeader(props: {
   const memoryText = memoryRow(memory, Math.max(1, width - MEMORY_LABEL.length));
 
   return (
-    <Box flexDirection="column" width={columns}>
+    // Never squeezed: the transcript is the only region that gives up rows.
+    <Box flexDirection="column" width={columns} flexShrink={0}>
       <Text wrap="truncate-end">
         <Text bold color={BRAND_COLOR}>
           CLAUDEX

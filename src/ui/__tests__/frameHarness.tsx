@@ -65,11 +65,9 @@ export function mountFrame(node: ReactElement, size: Size) {
     },
     /** The rows of the last frame, without colours or cursor sequences. */
     frame(): string[] {
-      const last = writes.at(-1) ?? "";
-      const rows = stripVTControlCharacters(last).split("\n");
-      // Ink ends a frame that does not fill the screen with a newline.
-      if (rows.at(-1) === "") rows.pop();
-      return rows;
+      // In debug mode Ink writes the frame alone, without a trailing newline,
+      // so an empty last row is a real (blank) row of the frame.
+      return stripVTControlCharacters(writes.at(-1) ?? "").split("\n");
     },
     unmount: () => app.unmount(),
   };

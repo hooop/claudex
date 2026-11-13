@@ -42,7 +42,7 @@ import {
   type DebateStatus,
   type StatusEvent,
 } from "./debateStatus.js";
-import { BRAND_COLOR, GLYPH, contentWidthFor } from "./theme.js";
+import { BRAND_COLOR, GLYPH, contentWidthFor, isTooSmall } from "./theme.js";
 import { line, type TranscriptLine } from "./stream/streamController.js";
 import { TranscriptStream, type TailView } from "./stream/transcriptStream.js";
 import { asciiSymbolsForDisplay } from "./stream/asciiSymbols.js";
@@ -50,6 +50,8 @@ import { wrapAll } from "./stream/lineBuffer.js";
 import { sanitizeForDisplay } from "./stream/sanitize.js";
 import { markdownToPlainText } from "./markdown.js";
 import { setMouseReporting } from "./terminal.js";
+import { FittedScreen } from "./screenVisibility.js";
+import { useTerminalSize } from "./useTerminalSize.js";
 import { useMouse } from "./mouse/MouseContext.js";
 import { copyNotice, copyToClipboard } from "./mouse/clipboard.js";
 import type { MouseEvent } from "./mouse/mouseInput.js";
@@ -100,10 +102,9 @@ export function DebateView(props: {
   } = props;
   const { stdout, write } = useStdout();
 
-  const [{ columns, terminalRows }, setTerminalSize] = useState(() => ({
-    columns: stdout?.columns ?? 80,
-    terminalRows: stdout?.rows ?? 24,
-  }));
+  const { columns, rows: terminalRows } = useTerminalSize();
+  // The view provides the visibility context to its children, so it reads its own here.
+  const visible = !isTooSmall(columns, terminalRows);
   const [transcriptLines, setTranscriptLines] = useState<readonly TranscriptLine[]>(INITIAL_TRANSCRIPT_LINES);
   const [scrollOffset, setScrollOffset] = useState(0);
   const [selection, setSelection] = useState<Drag | null>(null);
@@ -215,23 +216,10 @@ export function DebateView(props: {
     return () => setMouseReporting(stdout, false);
   }, [stdout]);
 
+  // A resize moves every cell, so a selection would no longer cover its text.
   useEffect(() => {
-    if (!stdout) return;
-    const onResize = () => {
-      updateSelection(null);
-      setTerminalSize({
-        columns: stdout.columns ?? 80,
-        terminalRows: stdout.rows ?? 24,
-      });
-    };
-
-    // Ink registered its own listener before this component mounted. Running
-    // ours first lets React resize the viewport before Ink measures its frame.
-    stdout.prependListener("resize", onResize);
-    return () => {
-      stdout.off("resize", onResize);
-    };
-  }, [stdout, updateSelection]);
+    updateSelection(null);
+  }, [columns, terminalRows, updateSelection]);
 
   useEffect(() => {
     // The width getter is read per line, so a resize applies to new output
@@ -373,7 +361,8 @@ export function DebateView(props: {
 
   const busy = thinkingAgent !== null;
 
-  const mouseActive = !commandPaletteOpen && modelPickerAgent === null && pendingPermission === null;
+  const mouseActive =
+    visible && !commandPaletteOpen && modelPickerAgent === null && pendingPermission === null;
 
   useInput((_input, key) => {
     // Clearing never consumes the key: the input bar still receives it.
@@ -405,7 +394,7 @@ export function DebateView(props: {
       session.pause();
       flash("Pause requested (Esc) — the debate will stop after the current turn.");
     }
-  });
+  }, { isActive: visible });
 
   async function handleSubmit(raw: string, options?: { literal: true }) {
     setCommandPaletteOpen(false);
@@ -668,126 +657,131 @@ export function DebateView(props: {
   }, mouseActive);
 
   return (
-    <DynamicFooter
-        columns={columns}
-        terminalRows={terminalRows}
-        rows={rows}
-        preferredHeight={preferredFooterHeight}
-      >
-        <DebateHeader columns={columns} topic={topic} status={debateStatus} memory={status} />
-
-        <TranscriptViewport
-          lines={transcriptLines}
-          height={transcriptRows}
+    <FittedScreen columns={columns} rows={terminalRows}>
+      <DynamicFooter
           columns={columns}
-          scrollOffset={visibleScrollOffset}
-          selection={selection ? dragSelection(transcriptLines, selection) : null}
-        />
+          terminalRows={terminalRows}
+          rows={rows}
+          preferredHeight={preferredFooterHeight}
+        >
+          <DebateHeader columns={columns} topic={topic} status={debateStatus} memory={status} />
 
-        {showTail && tail && (
-          <Box width={columns}>
-            <Text wrap="truncate-end">
-              {tail.rail ? <Text color={tail.color}>{`${GLYPH.rail} `}</Text> : null}
-              <Text dimColor>{tail.text}</Text>
-            </Text>
-          </Box>
-        )}
-
-        <Box flexGrow={1} />
-
-        {/* The one row of the frame budget that the header animation used to pay for. */}
-        <Text dimColor>{GLYPH.rule.repeat(Math.min(columns, contentWidthFor(columns)))}</Text>
-
-        {!paletteVisible && visibleBanner && (
-          <Box width={columns}>
-            <Text color={visibleBanner.color} wrap="truncate-end">
-              {visibleBanner.text}
-            </Text>
-          </Box>
-        )}
-
-        {!paletteVisible && showNotice && (
-          <Box width={columns}>
-            <Text color="#f5c542" wrap="truncate-end">
-              {notice}
-            </Text>
-          </Box>
-        )}
-
-        {pendingPermission ? (
-          <PermissionModal
-            request={pendingPermission}
-            width={columns}
-            onDecide={(allow) => {
-              session.answerPermission(
-                pendingPermission.id,
-                allow ? { behavior: "allow" } : { behavior: "deny" },
-              );
-              setPendingPermission(null);
-            }}
+          <TranscriptViewport
+            lines={transcriptLines}
+            height={transcriptRows}
+            columns={columns}
+            scrollOffset={visibleScrollOffset}
+            selection={selection ? dragSelection(transcriptLines, selection) : null}
           />
-        ) : (
-          <>
-            {modelPickerAgent && (
-              <ModelPicker
-                key={modelPickerAgent}
-                agent={modelPickerAgent}
-                width={inputBarWidth(columns)}
-                onSelect={(model) => {
-                  session.setModel(modelPickerAgent, model);
-                  setContextUsage((current) => ({ ...current, [modelPickerAgent]: undefined }));
-                  setModelPickerAgent(null);
-                }}
-                onCancel={() => setModelPickerAgent(null)}
-              />
-            )}
-            {!paletteVisible && (
-              <Box width={statusBarWidth(columns)}>
-                <StatusBar
-                  phase={phase}
-                  thinkingAgent={thinkingAgent}
-                  activity={activity}
-                  paused={paused}
-                  suspensionReason={suspensionReason}
-                  lifecycleState={coordinatorState.kind}
-                  width={columns}
-                  trailing={pulseShown(thinkingAgent, columns) ? PULSE_WIDTH + 1 : 0}
-                />
-                {pulseShown(thinkingAgent, columns) && (
-                  <Box marginLeft={1}>
-                    <ThinkingPulse agent={thinkingAgent} columns={columns} />
-                  </Box>
-                )}
+
+          {showTail && tail && (
+            <Box width={columns}>
+              <Text wrap="truncate-end">
+                {tail.rail ? <Text color={tail.color}>{`${GLYPH.rail} `}</Text> : null}
+                <Text dimColor>{tail.text}</Text>
+              </Text>
+            </Box>
+          )}
+
+          <Box flexGrow={1} />
+
+          {/* Never squeezed: the transcript viewport is sized to leave exactly this room. */}
+          <Box flexDirection="column" flexShrink={0}>
+            {/* The one row of the frame budget that the header animation used to pay for. */}
+            <Text dimColor>{GLYPH.rule.repeat(Math.min(columns, contentWidthFor(columns)))}</Text>
+
+            {!paletteVisible && visibleBanner && (
+              <Box width={columns}>
+                <Text color={visibleBanner.color} wrap="truncate-end">
+                  {visibleBanner.text}
+                </Text>
               </Box>
             )}
-            <InputBar
-              disabled={false} // Input is now always active — interventions are queued
-              inputActive={modelPickerAgent === null}
-              width={columns}
-              maxRows={maxInputRows}
-              commands={DEBATE_COMMANDS}
-              placeholder={
-                busy
-                  ? "message queued (handled after the current turn)"
-                  : "message (→ both), /claude, /codex, /model, /handoff, /implement, /save, /new, /help"
-              }
-              onCommandPaletteChange={setCommandPaletteOpen}
-              onRowsChange={setInputRows}
-              onSubmit={handleSubmit}
-              onSubmitError={(error) =>
-                flash(`Command failed: ${error instanceof Error ? error.message : String(error)}`)
-              }
-            />
-          </>
-        )}
 
-        {!paletteVisible && (
-          <ModelFooter
-            models={{ claude: session.modelOf("claude"), codex: session.modelOf("codex") }}
-            contextUsage={contextUsage}
-          />
-        )}
-    </DynamicFooter>
+            {!paletteVisible && showNotice && (
+              <Box width={columns}>
+                <Text color="#f5c542" wrap="truncate-end">
+                  {notice}
+                </Text>
+              </Box>
+            )}
+
+            {pendingPermission ? (
+              <PermissionModal
+                request={pendingPermission}
+                width={columns}
+                onDecide={(allow) => {
+                  session.answerPermission(
+                    pendingPermission.id,
+                    allow ? { behavior: "allow" } : { behavior: "deny" },
+                  );
+                  setPendingPermission(null);
+                }}
+              />
+            ) : (
+              <>
+                {modelPickerAgent && (
+                  <ModelPicker
+                    key={modelPickerAgent}
+                    agent={modelPickerAgent}
+                    width={inputBarWidth(columns)}
+                    onSelect={(model) => {
+                      session.setModel(modelPickerAgent, model);
+                      setContextUsage((current) => ({ ...current, [modelPickerAgent]: undefined }));
+                      setModelPickerAgent(null);
+                    }}
+                    onCancel={() => setModelPickerAgent(null)}
+                  />
+                )}
+                {!paletteVisible && (
+                  <Box width={statusBarWidth(columns)}>
+                    <StatusBar
+                      phase={phase}
+                      thinkingAgent={thinkingAgent}
+                      activity={activity}
+                      paused={paused}
+                      suspensionReason={suspensionReason}
+                      lifecycleState={coordinatorState.kind}
+                      width={columns}
+                      trailing={pulseShown(thinkingAgent, columns) ? PULSE_WIDTH + 1 : 0}
+                    />
+                    {pulseShown(thinkingAgent, columns) && (
+                      <Box marginLeft={1}>
+                        <ThinkingPulse agent={thinkingAgent} columns={columns} />
+                      </Box>
+                    )}
+                  </Box>
+                )}
+                <InputBar
+                  disabled={false} // Input is now always active — interventions are queued
+                  inputActive={modelPickerAgent === null}
+                  width={columns}
+                  maxRows={maxInputRows}
+                  commands={DEBATE_COMMANDS}
+                  placeholder={
+                    busy
+                      ? "message queued (handled after the current turn)"
+                      : "message (→ both), /claude, /codex, /model, /handoff, /implement, /save, /new, /help"
+                  }
+                  onCommandPaletteChange={setCommandPaletteOpen}
+                  onRowsChange={setInputRows}
+                  onSubmit={handleSubmit}
+                  onSubmitError={(error) =>
+                    flash(`Command failed: ${error instanceof Error ? error.message : String(error)}`)
+                  }
+                />
+              </>
+            )}
+
+            {!paletteVisible && (
+              <ModelFooter
+                models={{ claude: session.modelOf("claude"), codex: session.modelOf("codex") }}
+                contextUsage={contextUsage}
+              />
+            )}
+          </Box>
+      </DynamicFooter>
+    </FittedScreen>
   );
 }
 
