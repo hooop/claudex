@@ -36,9 +36,33 @@ export const MAX_STANDARD_DYNAMIC_ROWS = 7;
  * A user-opened selection palette may borrow one extra row for visual separation.
  */
 export const MAX_DYNAMIC_ROWS = MAX_STANDARD_DYNAMIC_ROWS + 1;
-/** Below these, the footer can't be drawn honestly, so it isn't drawn at all. */
-export const MIN_ROWS = 10;
+/** Rows the fixed debate header occupies: title, topic, memory, rule. */
+export const DEBATE_HEADER_ROWS = 4;
+/** The transcript must keep at least one visible row, or the debate is unreadable. */
+export const MIN_TRANSCRIPT_ROWS = 1;
+/** The thin rule between the transcript and the footer. */
+export const RULE_ROWS = 1;
+/** Ink never draws the last terminal row, so writing it cannot scroll the screen. */
+export const INK_SPARE_ROWS = 1;
+
+/**
+ * Below this size the debate frame cannot hold its fixed rows, and Yoga would
+ * squeeze the header instead. Derived rather than written by hand so a new
+ * footer row cannot silently make the minimum a lie again.
+ */
+export const MIN_ROWS =
+  DEBATE_HEADER_ROWS + MIN_TRANSCRIPT_ROWS + RULE_ROWS + MAX_DYNAMIC_ROWS + INK_SPARE_ROWS;
 export const MIN_COLS = 40;
+
+/** The only test of the minimum, shared by every screen. */
+export function isTooSmall(columns: number, rows: number): boolean {
+  return rows < MIN_ROWS || columns < MIN_COLS;
+}
+
+export function tooSmallMessage(): string {
+  // Short enough to fit, whole, in a window narrower than the minimum.
+  return `Terminal too small (min ${MIN_COLS} × ${MIN_ROWS})`;
+}
 
 /** Reading measure for a transcript line, given the terminal's width. */
 export function contentWidthFor(columns: number): number {

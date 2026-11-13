@@ -116,6 +116,7 @@ vi.mock("../components/AnimatedHeader.js", () => ({
 
 import { Root } from "../Root.js";
 import { displayWidth } from "../stream/lineBuffer.js";
+import { MIN_ROWS, tooSmallMessage } from "../theme.js";
 import {
   formatLastSession,
   welcomeDivider,
@@ -630,5 +631,35 @@ describe("Root — resize", () => {
       expect(written.slice(lastErase)).toContain(WELCOME_TAGLINE);
     });
     app.unmount();
+  });
+});
+
+describe("Root — terminal too small", () => {
+  it("still quits with Ctrl+C while the screen is hidden", async () => {
+    const terminal = fakeTerminal();
+    const app = render(<Root cwd="/test-project" />, {
+      stdout: terminal.stdout as never,
+      stdin: terminal.stdin as never,
+      stderr: terminal.stderr as never,
+      exitOnCtrlC: false,
+      patchConsole: false,
+      interactive: true,
+    });
+    await vi.waitFor(() => expect(terminal.stdin.listenerCount("readable")).toBeGreaterThan(0));
+
+    terminal.stdout.rows = MIN_ROWS - 1;
+    terminal.stdout.emit("resize");
+    await vi.waitFor(() =>
+      expect(terminal.chunks.join("").replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "")).toContain(
+        tooSmallMessage(),
+      ),
+    );
+
+    let exited = false;
+    void app.waitUntilExit().then(() => {
+      exited = true;
+    });
+    await press(terminal, "\u0003");
+    await vi.waitFor(() => expect(exited).toBe(true));
   });
 });
