@@ -127,35 +127,44 @@ including a plain question).
 
 ### D3. The rules move to each agent's system channel
 
-- **Claude:** `systemPrompt: { type: "preset", preset: "claude_code", append:
-  rules, snapshot: true }` on debate turns and on implementation turns. The SDK
-  records the prompt on a session's first request and reuses it on every
-  resume, so the rules are fixed for the session and are not resent each turn.
+- **Claude:** `systemPrompt: { type: "custom", prompt: rules, snapshot: true }`
+  on debate turns and on implementation turns. Not the `claude_code` preset:
+  measured below, an omitted `systemPrompt` is an empty one today, and the
+  preset would add about 2 200 tokens of instructions to every call. The SDK
+  records the prompt on a session's first request and reuses it on resume.
 - **Codex:** `developerInstructions` on `thread/start`, and the same value on
   `thread/resume`.
 - `pendingInstructions`, the `instructed` state and the first-delivery
   prepending are removed. The rules now arrive with the session, so the case
   they handled (a failed first turn must not lose the rules) no longer exists.
-- The `CodingAgent` interface gets the rules once, at construction or through a
-  `setInstructions(text)` call before the first turn; the builder picks the one
-  that fits the existing wiring in `src/cli.tsx` and the session code. The
-  agents still never see each other's names outside the self/other roles.
+- `AgentSendOptions` gets a required `instructions: string`: the scheduler,
+  which already builds the rules from the self/other names, passes them on
+  every `send` (debate turns, synthesis, implementation). Each adapter maps
+  them to its system channel. Passing them every time costs nothing (both
+  channels are recorded per session) and keeps one source of truth, with no
+  per-agent "already instructed" state.
 
-**Measured before switching (Task 0 of the plan):** the switch happens only if
-both measurements hold; otherwise the builder stops and reports.
+**Measured on 2026-11-13, before writing the plan** (scripts in the session
+scratchpad, debate options, model `sonnet`; first-response
+`input_tokens + cache_creation + cache_read`, method of limits.md 2026-08-17):
 
-- Claude, SDK 0.3.310: what an omitted `systemPrompt` gives today. With the
-  method of limits.md 2026-08-17 (first-response
-  `input_tokens + cache_creation + cache_read`, debate options), compare
-  omitted vs `preset` with an empty `append`. Expected: equal. If they differ,
-  omitting does not mean "Claude Code preset" and the preset would add or
-  remove base instructions: stop.
-- Codex 0.167.2: `developerInstructions` exists in the generated app-server
-  schema for both start and resume; one real start + resume shows the
-  instructions still apply after resume (ask for the end marker without
-  repeating the rules).
+| Claude `systemPrompt` | Tokens |
+| --- | --- |
+| omitted | 3 219 – 3 242 |
+| `[]` | 3 219 |
+| `"Reply in lowercase."` | 3 228 |
+| `{ type: "preset", preset: "claude_code" }` | 5 469 |
 
-Record both results in limits.md.
+- A custom prompt "End every reply with a last line exactly equal to BANANA."
+  was applied on turn 1, on a resume that passed it again, and on a resume
+  that did not pass it (recorded with the session).
+- Codex 0.167.2: `developerInstructions` and `baseInstructions` are both in the
+  generated `ThreadStartParams` and `ThreadResumeParams`. `developerInstructions`
+  (not `baseInstructions`, which replaces Codex's own base prompt) with the same
+  BANANA instruction was applied on `thread/start`, on a `thread/resume` that
+  passed it again, and on one that did not.
+
+Recorded in limits.md by the plan's last task.
 
 ### D4. The model line during the debate
 
