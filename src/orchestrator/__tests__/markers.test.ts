@@ -87,19 +87,32 @@ describe("CONSENSUS_INSTRUCTIONS", () => {
     return (end === -1 ? rest : rest.slice(0, end)).trim();
   }
 
-  it("asks for density as a target, not a limit", () => {
-    expect(prompt).toContain("as briefly as possible, but as precisely as necessary");
-    expect(prompt).toContain("200 words");
+  it("is organised in labelled sections", () => {
+    for (const label of ["Role", "Project memory", "Response style", "Evidence", "Working notes", "End marker"]) {
+      expect(prompt).toContain(`${label}:`);
+    }
+  });
+
+  it("asks for a short answer first, as a target", () => {
+    expect(prompt).toMatch(/answer or position first/i);
+    expect(prompt).toContain("120 words");
     expect(prompt).toMatch(/target, not a limit/);
   });
 
-  it("asks for the position first and no restating", () => {
-    expect(prompt).toContain("position or main objection first");
-    expect(prompt).toMatch(/do not restate/i);
+  it("rules out meta commentary, unasked headings and closing offers", () => {
+    expect(prompt).toMatch(/do not announce the language/i);
+    expect(prompt).toMatch(/no headings unless the human asks/i);
+    expect(prompt).toMatch(/no closing question or offer/i);
+    expect(prompt).toMatch(/do not speculate/i);
   });
 
-  it("allows headings only when they help", () => {
-    expect(prompt).toMatch(/headings or lists only when they make the message easier to follow/i);
+  it("lets a summary, specification or implementation request set its own length", () => {
+    expect(prompt).toMatch(/summary, a specification or implementation work/i);
+  });
+
+  it("keeps one or two arguments per debate turn and no restating", () => {
+    expect(prompt).toMatch(/one or two important arguments/i);
+    expect(prompt).toMatch(/do not restate/i);
   });
 
   it("makes working notes private", () => {
