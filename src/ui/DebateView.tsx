@@ -49,6 +49,16 @@ import { wrapAll } from "./stream/lineBuffer.js";
 import { sanitizeForDisplay } from "./stream/sanitize.js";
 import { markdownToPlainText } from "./markdown.js";
 import { setMouseReporting } from "./terminal.js";
+import { useMouse } from "./mouse/MouseContext.js";
+import type { MouseEvent } from "./mouse/mouseInput.js";
+import {
+  WHEEL_LINES,
+  highlightColumns,
+  screenToCell,
+  selectedColumns,
+  selectedText,
+  type Selection,
+} from "./mouse/selection.js";
 import type { ProjectStatus } from "../util/projectStatus.js";
 
 const INITIAL_TRANSCRIPT_LINES: readonly TranscriptLine[] = [line("")];
@@ -70,6 +80,8 @@ export function DebateView(props: {
   coordinatorNotice: string | null;
   onLifecycleRequest: (request: LifecycleRequest) => Promise<CoordinatorResponse>;
   onAutonomySelected: (budget: AutonomyBudget, remember: boolean) => Promise<void>;
+  /** Receives the text of a finished mouse selection. */
+  onCopy?: (text: string) => void;
 }) {
   const {
     session,
@@ -80,6 +92,7 @@ export function DebateView(props: {
     coordinatorNotice,
     onLifecycleRequest,
     onAutonomySelected,
+    onCopy,
   } = props;
   const { stdout } = useStdout();
 
@@ -89,6 +102,7 @@ export function DebateView(props: {
   }));
   const [transcriptLines, setTranscriptLines] = useState<readonly TranscriptLine[]>(INITIAL_TRANSCRIPT_LINES);
   const [scrollOffset, setScrollOffset] = useState(0);
+  const [selection, setSelection] = useState<Selection | null>(null);
   const [tail, setTail] = useState<TailView | null>(null);
   const [debateStatus, setDebateStatus] = useState<DebateStatus>(INITIAL_STATUS);
   const [phase, setPhase] = useState<Phase>(session.phase);
@@ -122,6 +136,16 @@ export function DebateView(props: {
   // otherwise a long implementation turn ends with no visible "done" signal
   // distinct from the ambient phase banner.
   const awaitingImplementFor = useRef<AgentId | null>(null);
+  // Mouse events can arrive faster than React renders: a press and its release
+  // in one stdin chunk must see each other, so the selection also lives in a ref.
+  const selectionRef = useRef<Selection | null>(null);
+  const draggingRef = useRef(false);
+
+  const updateSelection = useCallback((next: Selection | null) => {
+    selectionRef.current = next;
+    if (next === null) draggingRef.current = false;
+    setSelection(next);
+  }, []);
 
   const flash = useCallback((text: string) => {
     if (noticeTimer.current) clearTimeout(noticeTimer.current);
@@ -151,9 +175,11 @@ export function DebateView(props: {
     const next = current.slice(0, toLength);
     transcriptLinesRef.current = next;
     setTranscriptLines(next);
+    // The lines a selection pointed at are gone or about to be rewritten.
+    updateSelection(null);
     // Mirror of `appendTranscript`: a reader scrolled up keeps the same lines in view.
     setScrollOffset((offset) => (offset === 0 ? 0 : Math.max(0, offset - removed)));
-  }, []);
+  }, [updateSelection]);
 
   const applyStatus = useCallback((event: StatusEvent) => {
     const next = reduceStatus(debateStatusRef.current, event);
@@ -171,6 +197,7 @@ export function DebateView(props: {
   useEffect(() => {
     if (!stdout) return;
     const onResize = () => {
+      updateSelection(null);
       setTerminalSize({
         columns: stdout.columns ?? 80,
         terminalRows: stdout.rows ?? 24,
@@ -183,7 +210,7 @@ export function DebateView(props: {
     return () => {
       stdout.off("resize", onResize);
     };
-  }, [stdout]);
+  }, [stdout, updateSelection]);
 
   useEffect(() => {
     // The width getter is read per line, so a resize applies to new output
@@ -325,7 +352,12 @@ export function DebateView(props: {
 
   const busy = thinkingAgent !== null;
 
+  const mouseActive = !commandPaletteOpen && modelPickerAgent === null && pendingPermission === null;
+
   useInput((_input, key) => {
+    // Clearing never consumes the key: the input bar still receives it.
+    if (selectionRef.current) updateSelection(null);
+
     if (!commandPaletteOpen && modelPickerAgent === null && pendingPermission === null) {
       const page = Math.max(1, transcriptRowsRef.current - 1);
       const maximum = Math.max(0, transcriptLinesRef.current.length - transcriptRowsRef.current);
@@ -563,6 +595,49 @@ export function DebateView(props: {
     setScrollOffset((current) => Math.min(current, maximumScrollOffset));
   }, [maximumScrollOffset]);
 
+  const firstLineAt = (offset: number) => Math.max(0, transcriptLines.length - transcriptRows - offset);
+
+  useMouse((event: MouseEvent) => {
+    if (event.kind === "wheel") {
+      setScrollOffset((current) =>
+        event.direction === "up"
+          ? Math.min(maximumScrollOffset, current + WHEEL_LINES)
+          : Math.max(0, current - WHEEL_LINES),
+      );
+      return;
+    }
+
+    const viewport = { top: DEBATE_HEADER_ROWS, height: transcriptRows, firstLine: firstLineAt(visibleScrollOffset) };
+    if (event.kind === "press") {
+      const cell = screenToCell(event.y, event.x, viewport);
+      updateSelection(cell ? { anchor: cell, focus: cell } : null);
+      draggingRef.current = cell !== null;
+      return;
+    }
+
+    const current = selectionRef.current;
+    if (!draggingRef.current || !current || transcriptRows <= 0) return;
+
+    // Holding the pointer on the first or last row scrolls one line per event,
+    // so a selection can reach text outside the viewport.
+    let offset = visibleScrollOffset;
+    if (event.kind === "drag") {
+      if (event.y <= viewport.top) offset = Math.min(maximumScrollOffset, offset + 1);
+      else if (event.y >= viewport.top + transcriptRows - 1) offset = Math.max(0, offset - 1);
+      if (offset !== visibleScrollOffset) setScrollOffset(offset);
+    }
+    const y = Math.min(Math.max(event.y, viewport.top), viewport.top + transcriptRows - 1);
+    const focus = screenToCell(y, event.x, { ...viewport, firstLine: firstLineAt(offset) });
+    const next = focus ? { anchor: current.anchor, focus } : current;
+    updateSelection(next);
+
+    if (event.kind === "release") {
+      draggingRef.current = false;
+      const text = selectedText(transcriptLinesRef.current, next);
+      if (text !== "") onCopy?.(text);
+    }
+  }, mouseActive);
+
   return (
     <DynamicFooter
         columns={columns}
@@ -577,6 +652,7 @@ export function DebateView(props: {
           height={transcriptRows}
           columns={columns}
           scrollOffset={visibleScrollOffset}
+          selection={selection}
         />
 
         {showTail && tail && (
@@ -736,15 +812,22 @@ function TranscriptViewport(props: {
   height: number;
   columns: number;
   scrollOffset: number;
+  selection: Selection | null;
 }) {
-  const { lines, height, columns, scrollOffset } = props;
+  const { lines, height, columns, scrollOffset, selection } = props;
   if (height <= 0) return null;
 
   const visible = transcriptWindow(lines, height, scrollOffset);
+  const firstLine = Math.max(0, lines.length - height - scrollOffset);
   return (
     <Box flexDirection="column" width={columns} height={height} overflow="hidden">
       {Array.from({ length: height }, (_, index) => {
-        const styled = visible[index]?.styled ?? "";
+        const source = visible[index]?.styled ?? "";
+        const columnsSelected =
+          selection && index < visible.length ? selectedColumns(selection, firstLine + index, columns) : null;
+        // Selected cells are drawn inverted over plain text: the line's own colours
+        // would fight the inverse and hide which cells will be copied.
+        const styled = columnsSelected ? highlightColumns(source, columnsSelected) : source;
         return (
           <Text key={index} wrap="truncate-end">
             {styled === "" ? " " : styled}

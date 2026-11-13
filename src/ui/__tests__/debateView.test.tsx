@@ -7,6 +7,7 @@
  * the fixed header or footer.
  */
 
+import chalk from "chalk";
 import { Box, Text, render } from "ink";
 import { EventEmitter } from "node:events";
 import { describe, expect, it, vi } from "vitest";
@@ -14,6 +15,8 @@ import type { AgentSendOptions, CodingAgent } from "../../agents/types.js";
 import { DebateSession } from "../../orchestrator/session.js";
 import type { AgentResult } from "../../orchestrator/types.js";
 import type { AgentId } from "../../types.js";
+import { MouseProvider } from "../mouse/MouseContext.js";
+import type { MouseEvent } from "../mouse/mouseInput.js";
 import { MOUSE_OFF, MOUSE_ON } from "../terminal.js";
 import {
   DebateView,
@@ -125,8 +128,31 @@ async function press(terminal: ReturnType<typeof fakeTerminal>, input: string) {
   await tick(20);
 }
 
-function mount(options: { fromFullScreen?: boolean; topic?: string; rows?: number } = {}) {
+function fakeMouseSource() {
+  const listeners = new Set<(event: MouseEvent) => void>();
+  return {
+    on(listener: (event: MouseEvent) => void) {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    emit(event: MouseEvent) {
+      for (const listener of [...listeners]) listener(event);
+    },
+  };
+}
+
+function mount(
+  options: {
+    fromFullScreen?: boolean;
+    topic?: string;
+    rows?: number;
+    onCopy?: (text: string) => void;
+  } = {},
+) {
   const terminal = fakeTerminal(100, options.rows);
+  const mouse = fakeMouseSource();
   const agents = { claude: new FakeAgent("claude"), codex: new FakeAgent("codex") };
   const session = new DebateSession(agents, {
     cwd: "/tmp",
@@ -152,6 +178,7 @@ function mount(options: { fromFullScreen?: boolean; topic?: string; rows?: numbe
       coordinatorNotice={null}
       onLifecycleRequest={async () => ({ ok: true, message: "ok" })}
       onAutonomySelected={async () => {}}
+      onCopy={options.onCopy}
     />
   );
 
@@ -163,7 +190,7 @@ function mount(options: { fromFullScreen?: boolean; topic?: string; rows?: numbe
         <Text>ANCIEN PROMPT</Text>
       </Box>
     ) : (
-      debate
+      <MouseProvider source={mouse}>{debate}</MouseProvider>
     ),
     {
       stdout: terminal.stdout as never,
@@ -175,7 +202,14 @@ function mount(options: { fromFullScreen?: boolean; topic?: string; rows?: numbe
     },
   );
 
-  return { ...terminal, agents, session, app, startDebate: () => app.rerender(debate) };
+  return {
+    ...terminal,
+    agents,
+    session,
+    app,
+    mouse,
+    startDebate: () => app.rerender(<MouseProvider source={mouse}>{debate}</MouseProvider>),
+  };
 }
 
 describe("DebateView — full-screen viewport", () => {
@@ -579,6 +613,163 @@ describe("DebateView — mouse reporting", () => {
     expect(t.chunks.filter((chunk) => chunk === MOUSE_OFF)).toHaveLength(1);
     expect(t.chunks.lastIndexOf(MOUSE_OFF)).toBeGreaterThan(t.chunks.lastIndexOf(MOUSE_ON));
   });
+});
+
+/** The last full frame drawn, raw, and as plain rows indexed by screen row. */
+function lastFrame(t: ReturnType<typeof mount>): { raw: string; rows: string[] } {
+  const raw = t.chunks.filter((chunk) => chunk.replace(ANSI_SEQUENCE, "").includes("CLAUDEX ")).at(-1) ?? "";
+  return { raw, rows: raw.replace(ANSI_SEQUENCE, "").split("\n") };
+}
+
+/** The text drawn inverted in the last frame, one entry per highlighted run. */
+function inverted(t: ReturnType<typeof mount>): string[] {
+  return [...lastFrame(t).raw.matchAll(/\u001b\[7m(.*?)\u001b\[27m/g)].map((match) =>
+    match[1]!.replace(ANSI_SEQUENCE, ""),
+  );
+}
+
+function lastHistoryLine(t: ReturnType<typeof mount>): number {
+  const numbers = lastFrame(t)
+    .rows.map((row) => /history line (\d+)/.exec(row)?.[1])
+    .filter((value): value is string => value !== undefined)
+    .map(Number);
+  return Math.max(...numbers);
+}
+
+/** Drags from "beta" to the end of "delta" over two transcript lines, without releasing. */
+async function selectWords(t: ReturnType<typeof mount>) {
+  t.agents.claude.emit("alpha beta gamma\ndelta epsilon\n");
+  await tick();
+  const { rows } = lastFrame(t);
+  const first = rows.findIndex((row) => row.includes("alpha beta gamma"));
+  const second = rows.findIndex((row) => row.includes("delta epsilon"));
+  expect(second).toBe(first + 1);
+  const end = rows[second]!.indexOf("delta") + "delta".length;
+
+  t.mouse.emit({ kind: "press", x: rows[first]!.indexOf("beta"), y: first });
+  t.mouse.emit({ kind: "drag", x: end - 3, y: second });
+  t.mouse.emit({ kind: "drag", x: end, y: second });
+  await vi.waitFor(() => expect(inverted(t)).toEqual(["beta gamma", "│ delta"]));
+  return { end, second };
+}
+
+/** Runs a test with colours on, so the inverse is visible in the output. */
+function withColor(test: () => Promise<void>): () => Promise<void> {
+  return async () => {
+    const level = chalk.level;
+    chalk.level = 3;
+    try {
+      await test();
+    } finally {
+      chalk.level = level;
+    }
+  };
+}
+
+describe("DebateView — mouse", () => {
+  it("wheel down then up scrolls the transcript by three lines", async () => {
+    const t = mount();
+    await vi.waitFor(() => expect(t.agents.claude.pending).toBe(true));
+    t.agents.claude.emit(Array.from({ length: 50 }, (_, i) => `history line ${i}\n`).join(""));
+    await vi.waitFor(() => expect(lastHistoryLine(t)).toBe(49));
+
+    // Already at the bottom: the wheel stays within the arrow keys' bounds.
+    t.mouse.emit({ kind: "wheel", direction: "down", x: 10, y: 8 });
+    await tick();
+    expect(lastHistoryLine(t)).toBe(49);
+
+    t.mouse.emit({ kind: "wheel", direction: "up", x: 10, y: 8 });
+    await vi.waitFor(() => expect(lastHistoryLine(t)).toBe(46));
+
+    t.mouse.emit({ kind: "wheel", direction: "up", x: 10, y: 8 });
+    await vi.waitFor(() => expect(lastHistoryLine(t)).toBe(43));
+
+    t.mouse.emit({ kind: "wheel", direction: "down", x: 10, y: 8 });
+    await vi.waitFor(() => expect(lastHistoryLine(t)).toBe(46));
+
+    t.app.unmount();
+  });
+
+  it(
+    "drag selects and highlights, release reports the text",
+    withColor(async () => {
+      const copies: string[] = [];
+      const t = mount({ onCopy: (text) => copies.push(text) });
+      await vi.waitFor(() => expect(t.agents.claude.pending).toBe(true));
+      const { end, second } = await selectWords(t);
+      expect(copies).toEqual([]);
+
+      t.mouse.emit({ kind: "release", x: end, y: second });
+      await vi.waitFor(() => expect(copies).toEqual(["beta gamma\ndelta"]));
+
+      // New output appended below does not move the highlight.
+      t.agents.claude.emit("zeta\n");
+      await vi.waitFor(() => expect(lastFrame(t).rows.join("\n")).toContain("zeta"));
+      expect(inverted(t)).toEqual(["beta gamma", "│ delta"]);
+
+      // A press outside the transcript clears it and copies nothing.
+      t.mouse.emit({ kind: "press", x: 0, y: 0 });
+      t.mouse.emit({ kind: "release", x: 0, y: 0 });
+      await vi.waitFor(() => expect(inverted(t)).toEqual([]));
+      expect(copies).toEqual(["beta gamma\ndelta"]);
+
+      t.app.unmount();
+    }),
+  );
+
+  it(
+    "a rewind clears the selection",
+    withColor(async () => {
+      const t = mount();
+      await vi.waitFor(() => expect(t.agents.claude.pending).toBe(true));
+      t.agents.claude.emit("Looking.\n");
+      await tick();
+      const row = lastFrame(t).rows.findIndex((text) => text.includes("Looking."));
+      t.mouse.emit({ kind: "press", x: 2, y: row });
+      t.mouse.emit({ kind: "drag", x: 10, y: row });
+      t.mouse.emit({ kind: "release", x: 10, y: row });
+      await vi.waitFor(() => expect(inverted(t)).toEqual(["Looking."]));
+
+      t.agents.claude.note("Looking.\n");
+      t.agents.claude.emit("Answer.\n");
+      await vi.waitFor(() => expect(lastFrame(t).rows.join("\n")).toContain("Answer."));
+      expect(inverted(t)).toEqual([]);
+
+      t.app.unmount();
+    }),
+  );
+
+  it(
+    "a resize clears the selection",
+    withColor(async () => {
+      const t = mount();
+      await vi.waitFor(() => expect(t.agents.claude.pending).toBe(true));
+      await selectWords(t);
+
+      t.stdout.columns = 90;
+      t.stdout.emit("resize");
+      await vi.waitFor(() => expect(lastFrame(t).rows[3]).toBe("━".repeat(90)));
+      expect(inverted(t)).toEqual([]);
+
+      t.app.unmount();
+    }),
+  );
+
+  it(
+    "a keypress clears the selection",
+    withColor(async () => {
+      const t = mount();
+      await vi.waitFor(() => expect(t.agents.claude.pending).toBe(true));
+      await selectWords(t);
+
+      await press(t, "q");
+      await vi.waitFor(() => expect(inverted(t)).toEqual([]));
+      // The key still reaches the input bar.
+      expect(lastFrame(t).rows.some((row) => /‣ ?q\b/.test(row))).toBe(true);
+
+      t.app.unmount();
+    }),
+  );
 });
 
 describe("bootstrap helpers", () => {
