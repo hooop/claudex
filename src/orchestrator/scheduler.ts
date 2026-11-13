@@ -1196,12 +1196,18 @@ export class Scheduler {
     const text = [
       "First qualify the human input below.",
       `Proposed topic:\n${this.topic}${clarifications}`,
-      "If it really contains no technical topic to discuss, answer briefly and " +
-        "invite the human to give a topic, then end with " +
+      "Decide which case applies:\n" +
+        "1. If the input contains no topic (a greeting, an empty message), answer in one sentence and end with " +
         NO_TOPIC_MARKER +
-        ". If it contains a topic but information from the human is essential before debating, ask the question then end with " +
+        ".\n" +
+        "2. If it is a question or request that does not call for a debate between the two agents " +
+        "(how something works, where something is), answer it directly, following the response style, then end with " +
+        NO_TOPIC_MARKER +
+        ".\n" +
+        "3. If it is a topic but information from the human is essential before debating, ask the question then end with " +
         WAIT_HUMAN_MARKER +
-        ". Otherwise start the analysis and use the appropriate normal marker.",
+        ".\n" +
+        "4. Otherwise start the analysis and use the appropriate normal marker.",
     ].join("\n\n");
     const block: DeliveryBlock = {
       id: randomUUID(),

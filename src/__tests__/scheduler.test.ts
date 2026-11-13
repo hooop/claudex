@@ -999,6 +999,42 @@ describe("Scheduler", () => {
       await vi.waitFor(() => expect(callbacks.onTopicAccepted).toHaveBeenCalledOnce());
     });
 
+    it("offers a plain-question exit in the qualification prompt", async () => {
+      scheduler.start("how does it work ?");
+      await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
+      const msg = agents.claude.lastMessage ?? "";
+
+      expect(msg).toMatch(/question or request that does not call for a debate/i);
+      expect(msg).toMatch(/answer it directly/i);
+      expect(msg).not.toMatch(/invite the human to give a topic/i);
+      // The four cases appear in this order.
+      const order = [
+        "contains no topic",
+        "does not call for a debate",
+        "essential before debating",
+        "start the analysis",
+      ].map((s) => msg.indexOf(s));
+      expect(order.every((i, k) => i > -1 && (k === 0 || i > (order[k - 1] ?? 0)))).toBe(true);
+    });
+
+    it("keeps the session open after a plain answer", async () => {
+      scheduler.start("how does it work ?");
+      await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
+      agents.claude.complete("It works like this.\n\n<<NO_TOPIC>>");
+
+      await vi.waitFor(() => expect(scheduler.suspension()).toBe("waiting-human"));
+      expect(scheduler.topicStatus()).toBe("provisional");
+      expect(callbacks.onTopicAccepted).not.toHaveBeenCalled();
+      expect(agents.codex.getSendCount()).toBe(0);
+      expect(scheduler.lifecycleState()).toBe("open");
+
+      scheduler.intervene("Real topic", "both");
+      await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
+      const message = agents.claude.lastMessage ?? "";
+      expect(message).toContain("Proposed topic:\nReal topic");
+      expect(message).not.toContain("how does it work ?");
+    });
+
     it("distinguishes a real topic needing clarification and waits for the human", async () => {
       scheduler.start("Architecture choice");
       await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
