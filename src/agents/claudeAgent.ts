@@ -201,6 +201,8 @@ export class ClaudeAgent implements CodingAgent {
           model: this.model,
           cwd: options.cwd,
           resume: this.sessionId,
+          // Custom, not the claude_code preset: an omitted prompt is empty today (limits.md, 2026-11-13).
+          systemPrompt: { type: "custom", prompt: options.instructions, snapshot: true },
           ...(options.writeAccess
             ? {
                 // The user's own settings apply when the agent implements.

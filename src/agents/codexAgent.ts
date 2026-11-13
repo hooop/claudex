@@ -407,6 +407,8 @@ export class CodexAgent implements CodingAgent {
         cwd: options.cwd,
         approvalPolicy: "never",
         sandbox,
+        // Not baseInstructions, which would replace Codex's own base prompt.
+        developerInstructions: options.instructions,
       };
       if (this.model) threadParams.model = this.model;
 

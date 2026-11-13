@@ -188,7 +188,7 @@ describe("CodexAgent app-server streaming", () => {
 
     const result = await agent.send("Topic", {
       cwd: "/tmp",
-      writeAccess: false,
+      writeAccess: false, instructions: "RULES",
       onTextDelta: (delta) => deltas.push(delta),
       onActivity: (activity) => activities.push(activity),
       onContextUsage: (usage) => contexts.push(usage),
@@ -234,7 +234,7 @@ describe("CodexAgent app-server streaming", () => {
   it("makes a Codex limit explicit and resumable", async () => {
     spawnMock.mockReturnValue(new FakeAppServer("limit"));
 
-    const result = await new CodexAgent().send("Topic", { cwd: "/tmp", writeAccess: false });
+    const result = await new CodexAgent().send("Topic", { cwd: "/tmp", writeAccess: false, instructions: "RULES" });
 
     expect(result).toMatchObject({ kind: "error" });
     if (result.kind === "error") {
@@ -249,8 +249,8 @@ describe("CodexAgent app-server streaming", () => {
     spawnMock.mockReturnValueOnce(firstServer).mockReturnValueOnce(secondServer);
     const agent = new CodexAgent();
 
-    await agent.send("First", { cwd: "/tmp", writeAccess: false });
-    await agent.send("Second", { cwd: "/tmp", writeAccess: false });
+    await agent.send("First", { cwd: "/tmp", writeAccess: false, instructions: "RULES" });
+    await agent.send("Second", { cwd: "/tmp", writeAccess: false, instructions: "RULES" });
 
     expect(firstServer.requests.some((request) => request.method === "thread/start")).toBe(true);
     expect(secondServer.requests).toContainEqual(
@@ -261,12 +261,29 @@ describe("CodexAgent app-server streaming", () => {
     );
   });
 
+  it("sends the rules as developer instructions on start and resume", async () => {
+    const firstServer = new FakeAppServer("success");
+    const secondServer = new FakeAppServer("success");
+    spawnMock.mockReturnValueOnce(firstServer).mockReturnValueOnce(secondServer);
+    const agent = new CodexAgent();
+
+    await agent.send("First", { cwd: "/tmp", writeAccess: false, instructions: "RULES" });
+    await agent.send("Second", { cwd: "/tmp", writeAccess: false, instructions: "RULES" });
+
+    const start = firstServer.requests.find((request) => request.method === "thread/start");
+    const resume = secondServer.requests.find((request) => request.method === "thread/resume");
+    for (const request of [start, resume]) {
+      expect(request?.params).toEqual(expect.objectContaining({ developerInstructions: "RULES" }));
+      expect(request?.params).not.toHaveProperty("baseInstructions");
+    }
+  });
+
   it.each(["invalid-completion", "mismatched-completion"] as const)(
     "immediately turns a critical turn/completed %s into a recoverable error",
     async (scenario) => {
       spawnMock.mockReturnValue(new FakeAppServer(scenario));
 
-      const result = await new CodexAgent().send("Topic", { cwd: "/tmp", writeAccess: false });
+      const result = await new CodexAgent().send("Topic", { cwd: "/tmp", writeAccess: false, instructions: "RULES" });
 
       expect(result.kind).toBe("error");
       if (result.kind === "error") expect(result.message).toContain("Invalid Codex protocol");
@@ -279,7 +296,7 @@ describe("CodexAgent app-server streaming", () => {
     const controller = new AbortController();
     const resultPromise = new CodexAgent().send("Topic", {
       cwd: "/tmp",
-      writeAccess: false,
+      writeAccess: false, instructions: "RULES",
       signal: controller.signal,
     });
 
@@ -310,7 +327,7 @@ async function runScript(script: unknown[], withNotes: boolean) {
   const notes: Array<[string, boolean]> = [];
   const result = await new CodexAgent().send("Topic", {
     cwd: "/tmp",
-    writeAccess: false,
+    writeAccess: false, instructions: "RULES",
     onTextDelta: (d) => deltas.push(d),
     ...(withNotes ? { onNote: (text: string, streamed: boolean) => notes.push([text, streamed]) } : {}),
   });
@@ -462,7 +479,7 @@ describe("CodexAgent notes and trace", () => {
     );
     const traces: unknown[] = [];
 
-    await new CodexAgent().send("Topic", { cwd: "/tmp", writeAccess: false, onTrace: (e) => traces.push(e) });
+    await new CodexAgent().send("Topic", { cwd: "/tmp", writeAccess: false, instructions: "RULES", onTrace: (e) => traces.push(e) });
 
     expect(traces).toEqual([
       { kind: "tool", label: "ls", status: "success", exitCode: 0, output: "ok\n" },
@@ -496,7 +513,7 @@ describe("CodexAgent partial text and held items", () => {
 
     const result = await new CodexAgent().send("Topic", {
       cwd: "/tmp",
-      writeAccess: false,
+      writeAccess: false, instructions: "RULES",
       signal: controller.signal,
       onNote: vi.fn(),
       onTextDelta: (d) => {

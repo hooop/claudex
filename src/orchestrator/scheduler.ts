@@ -129,7 +129,6 @@ export class Scheduler {
   private busy = false;
   private drainPromise: Promise<void> | null = null;
   private drainRecheckRequested = false;
-  private instructed: Record<AgentId, boolean> = { claude: false, codex: false };
 
   // ─────────────────────────────────────────────────────────────────────────
   // Permission queue
@@ -835,7 +834,7 @@ export class Scheduler {
     job.attempts++;
 
     const agent = job.agent;
-    const message = this.pendingInstructions(agent) + this.buildJobMessage(job);
+    const message = this.buildJobMessage(job);
 
     this.busy = true;
     this.currentAbort = new AbortController();
@@ -885,6 +884,7 @@ export class Scheduler {
       const result = await this.agents[agent].send(message, {
         cwd: this.options.cwd,
         writeAccess: this.phase === "implementation",
+        instructions: this.instructionsFor(agent),
         signal: this.currentAbort.signal,
         onTextDelta: (delta) => {
           if (!this.isRunLive(runToken)) return;
@@ -945,10 +945,6 @@ export class Scheduler {
 
     switch (result.kind) {
       case "success": {
-        // Only an answered turn proves the agent read the rules it carried. A
-        // failed one may be replaced by a new delivery, which must bring them.
-        this.instructed[agent] = true;
-
         // The adapter's fallback (every segment, when the answer is empty) was
         // not what the live view last showed, so the view starts over from it.
         this.resetOutputIfChanged(entry, noteTrimmedText, result.text);
@@ -1447,6 +1443,7 @@ export class Scheduler {
       const result = await this.agents[agent].send(SYNTHESIS_PROMPT, {
         cwd: this.options.cwd,
         writeAccess: false, // Synthesis is always read-only
+        instructions: this.instructionsFor(agent),
         signal: this.currentAbort.signal,
         onTextDelta: (delta) => {
           if (!this.isRunLive(runToken)) return;
@@ -1681,15 +1678,8 @@ export class Scheduler {
     return full;
   }
 
-  /**
-   * The debate rules, until the agent has answered a turn that carried them.
-   * Decided at send time rather than stored in the job, so whichever delivery
-   * reaches the agent first brings them, and a retry drops them only once
-   * another delivery has been answered.
-   */
-  private pendingInstructions(agent: AgentId): string {
-    if (this.instructed[agent]) return "";
-    return `${CONSENSUS_INSTRUCTIONS(AGENT_NAME[agent], AGENT_NAME[this.other(agent)])}\n\n`;
+  private instructionsFor(agent: AgentId): string {
+    return CONSENSUS_INSTRUCTIONS(AGENT_NAME[agent], AGENT_NAME[this.other(agent)]);
   }
 }
 
@@ -1811,7 +1801,7 @@ export const CONSENSUS_INSTRUCTIONS = (self: string, other: string) =>
  * is inlined verbatim into `saveHandoff`'s output, a standalone Markdown document
  * meant to be handed to a native session (decisions.md, 2026-08-06).
  */
-const SYNTHESIS_PROMPT =
+export const SYNTHESIS_PROMPT =
   "The debate is over, you agree. Write, for a third party who will implement it, a neutral and complete " +
   "summary of the final decision: every concrete rule adopted (not only the broad outline), as a structured " +
   "bulleted list. Do not omit any precise rule you agreed on (formats, types, exceptions, constraints). When " +
