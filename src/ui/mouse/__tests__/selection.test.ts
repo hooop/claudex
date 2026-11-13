@@ -99,9 +99,24 @@ describe("selectedText", () => {
     const buffer = new LineBuffer(20);
     const physical = buffer.push(`${sentence}\n`);
     expect(physical.length).toBeGreaterThan(2);
-    const wrapped = physical.map((piece) => line(`${rail} ${piece.text}`, piece.continuation));
+    const wrapped = physical.map((piece) => line(`${rail} ${piece.text}`, piece.continuation, piece.droppedSpace));
 
     expect(selectedText(wrapped, sel(0, 0, wrapped.length - 1, 80))).toBe(sentence);
+  });
+
+  it("joins a hard-wrapped URL back without inserting spaces", () => {
+    const text = "see https://example.com/a/very/long/path/to/some/resource/file.ts";
+    const physical = new LineBuffer(20).push(`${text}\n`);
+    expect(physical.length).toBeGreaterThan(2);
+    const wrapped = physical.map((piece) => line(`${rail} ${piece.text}`, piece.continuation, piece.droppedSpace));
+
+    expect(selectedText(wrapped, sel(0, 0, wrapped.length - 1, 80))).toBe(text);
+  });
+
+  it("treats the space after the rail as chrome", () => {
+    expect(selectedText(lines, sel(1, 1, 1, 7))).toBe("first");
+    expect(selectedText(lines, sel(0, 1, 0, 40))).toBe("Claude  Round 1");
+    expect(selectedText(lines, sel(1, 1, 1, 2))).toBe("");
   });
 
   it("never splits a wide character", () => {

@@ -718,6 +718,60 @@ describe("DebateView — mouse", () => {
   );
 
   it(
+    "selects the lines shown while scrolled up",
+    withColor(async () => {
+      const copies: string[] = [];
+      const t = mount({ onCopy: (text) => copies.push(text) });
+      await vi.waitFor(() => expect(t.agents.claude.pending).toBe(true));
+      t.agents.claude.emit(Array.from({ length: 50 }, (_, i) => `history line ${i}\n`).join(""));
+      await vi.waitFor(() => expect(lastHistoryLine(t)).toBe(49));
+      t.mouse.emit({ kind: "wheel", direction: "up", x: 10, y: 8 });
+      t.mouse.emit({ kind: "wheel", direction: "up", x: 10, y: 8 });
+      await vi.waitFor(() => expect(lastHistoryLine(t)).toBe(43));
+
+      const rows = lastFrame(t).rows;
+      const row = rows.findIndex((text) => text.endsWith("history line 40"));
+      const x = rows[row]!.indexOf("history");
+      t.mouse.emit({ kind: "press", x, y: row });
+      t.mouse.emit({ kind: "drag", x: x + "history line 40".length, y: row });
+      t.mouse.emit({ kind: "release", x: x + "history line 40".length, y: row });
+
+      await vi.waitFor(() => expect(copies).toEqual(["history line 40"]));
+      await vi.waitFor(() => expect(inverted(t)).toEqual(["history line 40"]));
+
+      t.app.unmount();
+    }),
+  );
+
+  it(
+    "ignores the mouse while the command palette is open",
+    withColor(async () => {
+      const copies: string[] = [];
+      const t = mount({ onCopy: (text) => copies.push(text) });
+      await vi.waitFor(() => expect(t.agents.claude.pending).toBe(true));
+      t.agents.claude.emit(Array.from({ length: 50 }, (_, i) => `history line ${i}\n`).join(""));
+      await vi.waitFor(() => expect(lastHistoryLine(t)).toBe(49));
+
+      await press(t, "/");
+      await vi.waitFor(() => expect(t.chunks.join("")).toContain("/claude <text>"));
+      const rows = lastFrame(t).rows;
+      const row = rows.findIndex((text) => text.includes("history line"));
+
+      t.mouse.emit({ kind: "wheel", direction: "up", x: 10, y: row });
+      t.mouse.emit({ kind: "press", x: 0, y: row });
+      t.mouse.emit({ kind: "drag", x: 20, y: row });
+      t.mouse.emit({ kind: "release", x: 20, y: row });
+      await tick();
+
+      expect(lastHistoryLine(t)).toBe(49);
+      expect(inverted(t)).toEqual([]);
+      expect(copies).toEqual([]);
+
+      t.app.unmount();
+    }),
+  );
+
+  it(
     "a rewind clears the selection",
     withColor(async () => {
       const t = mount();

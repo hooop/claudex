@@ -18,7 +18,7 @@ describe("StreamController", () => {
     c.push(L("one"));
     expect(writes).toEqual([]);
     vi.advanceTimersByTime(32);
-    expect(writes).toEqual([[{ styled: "one", softWrap: false }]]);
+    expect(writes).toEqual([[{ styled: "one", softWrap: false, droppedSpace: false }]]);
   });
 
   it("groups a burst of lines into a single write", () => {
@@ -36,8 +36,8 @@ describe("StreamController", () => {
     c.push([line("a"), line("b", true)]);
     c.flush();
     expect(writes[0]).toEqual([
-      { styled: "a", softWrap: false },
-      { styled: "b", softWrap: true },
+      { styled: "a", softWrap: false, droppedSpace: false },
+      { styled: "b", softWrap: true, droppedSpace: false },
     ]);
   });
 

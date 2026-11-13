@@ -595,8 +595,6 @@ export function DebateView(props: {
     setScrollOffset((current) => Math.min(current, maximumScrollOffset));
   }, [maximumScrollOffset]);
 
-  const firstLineAt = (offset: number) => Math.max(0, transcriptLines.length - transcriptRows - offset);
-
   useMouse((event: MouseEvent) => {
     if (event.kind === "wheel") {
       setScrollOffset((current) =>
@@ -607,7 +605,7 @@ export function DebateView(props: {
       return;
     }
 
-    const viewport = { top: DEBATE_HEADER_ROWS, height: transcriptRows, firstLine: firstLineAt(visibleScrollOffset) };
+    const viewport = { top: DEBATE_HEADER_ROWS, height: transcriptRows, firstLine: firstVisibleLine(transcriptLines.length, transcriptRows, visibleScrollOffset) };
     if (event.kind === "press") {
       const cell = screenToCell(event.y, event.x, viewport);
       updateSelection(cell ? { anchor: cell, focus: cell } : null);
@@ -627,7 +625,10 @@ export function DebateView(props: {
       if (offset !== visibleScrollOffset) setScrollOffset(offset);
     }
     const y = Math.min(Math.max(event.y, viewport.top), viewport.top + transcriptRows - 1);
-    const focus = screenToCell(y, event.x, { ...viewport, firstLine: firstLineAt(offset) });
+    const focus = screenToCell(y, event.x, {
+      ...viewport,
+      firstLine: firstVisibleLine(transcriptLines.length, transcriptRows, offset),
+    });
     const next = focus ? { anchor: current.anchor, focus } : current;
     updateSelection(next);
 
@@ -768,16 +769,21 @@ export function transcriptBlockLines(data: string): string[] {
   return withoutFinalNewline.split("\n");
 }
 
+/**
+ * Absolute index of the transcript line drawn on the viewport's first row. The
+ * renderer and the mouse both use it, so a click always maps to the line drawn.
+ */
+export function firstVisibleLine(length: number, height: number, scrollOffset: number): number {
+  return Math.max(0, length - Math.max(0, height) - Math.max(0, scrollOffset));
+}
+
 export function transcriptWindow<T>(
   lines: readonly T[],
   height: number,
   scrollOffset: number,
 ): readonly T[] {
-  const safeHeight = Math.max(0, height);
-  const maximumOffset = Math.max(0, lines.length - safeHeight);
-  const safeOffset = Math.max(0, Math.min(scrollOffset, maximumOffset));
-  const start = Math.max(0, lines.length - safeHeight - safeOffset);
-  return lines.slice(start, start + safeHeight);
+  const start = firstVisibleLine(lines.length, height, scrollOffset);
+  return lines.slice(start, start + Math.max(0, height));
 }
 
 function bannerFor(
@@ -817,8 +823,8 @@ function TranscriptViewport(props: {
   const { lines, height, columns, scrollOffset, selection } = props;
   if (height <= 0) return null;
 
-  const visible = transcriptWindow(lines, height, scrollOffset);
-  const firstLine = Math.max(0, lines.length - height - scrollOffset);
+  const firstLine = firstVisibleLine(lines.length, height, scrollOffset);
+  const visible = lines.slice(firstLine, firstLine + height);
   return (
     <Box flexDirection="column" width={columns} height={height} overflow="hidden">
       {Array.from({ length: height }, (_, index) => {

@@ -18,12 +18,14 @@
 export interface TranscriptLine {
   styled: string;
   softWrap: boolean;
+  /** On a soft-wrapped line: the wrap dropped a space, which a copy puts back. */
+  droppedSpace: boolean;
 }
 
 export type StreamWriter = (lines: readonly TranscriptLine[]) => void;
 
-export function line(styled: string, softWrap = false): TranscriptLine {
-  return { styled, softWrap };
+export function line(styled: string, softWrap = false, droppedSpace = false): TranscriptLine {
+  return { styled, softWrap, droppedSpace };
 }
 
 /** Ink throttles its own renders at 32 ms; matching it keeps the two in step. */

@@ -83,7 +83,39 @@ describe("LineBuffer", () => {
   it("starts over after a line end", () => {
     const buf = new LineBuffer(10);
     buf.push("aaaaaaaaaaaaa\n");
-    expect(buf.push("bbb\n")[0]).toEqual({ text: "bbb", continuation: false });
+    expect(buf.push("bbb\n")[0]).toEqual({ text: "bbb", continuation: false, droppedSpace: false });
+  });
+
+  it("flags a line whose wrap dropped the space it broke at", () => {
+    const buf = new LineBuffer(10);
+    expect(buf.push("aaaaaaa bbbbbb\n")).toEqual([
+      { text: "aaaaaaa", continuation: false, droppedSpace: false },
+      { text: "bbbbbb", continuation: true, droppedSpace: true },
+    ]);
+  });
+
+  it("does not flag a hard cut, which keeps every character", () => {
+    const buf = new LineBuffer(10);
+    expect(buf.push("abcdefghijklmnop\n")).toEqual([
+      { text: "abcdefghij", continuation: false, droppedSpace: false },
+      { text: "klmnop", continuation: true, droppedSpace: false },
+    ]);
+  });
+
+  it("keeps the dropped-space flag on a tail completed by a later chunk", () => {
+    const buf = new LineBuffer(10);
+    expect(buf.push("aaaaaaa bbb")).toEqual([{ text: "aaaaaaa", continuation: false, droppedSpace: false }]);
+    expect(buf.tail).toEqual({ text: "bbb", continuation: true, droppedSpace: true });
+    expect(buf.push("b\n")).toEqual([{ text: "bbbb", continuation: true, droppedSpace: true }]);
+    expect(buf.push("next\n")).toEqual([{ text: "next", continuation: false, droppedSpace: false }]);
+  });
+
+  it("keeps the dropped-space flag when the wrapped remainder is flushed", () => {
+    const buf = new LineBuffer(10);
+    buf.push("aaaaaaa bbb");
+    expect(buf.flush()).toEqual([{ text: "bbb", continuation: true, droppedSpace: true }]);
+    buf.push("x");
+    expect(buf.flush()).toEqual([{ text: "x", continuation: false, droppedSpace: false }]);
   });
 
   it("applies a resize to the following lines only", () => {

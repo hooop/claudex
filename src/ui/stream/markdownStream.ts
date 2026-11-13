@@ -67,7 +67,7 @@ export class MarkdownStreamer {
     this.accent = options.accent;
   }
 
-  style(line: PhysicalLine): string {
+  style(line: Pick<PhysicalLine, "text" | "continuation">): string {
     if (!line.continuation) this.block = this.classify(line.text);
 
     switch (this.block) {

@@ -45,18 +45,22 @@ export function selectedColumns(selection: Selection, line: number, width: numbe
   return from < to ? [from, to] : null;
 }
 
-function stripChrome(text: string): string {
-  let rest = text;
-  if (rest.startsWith(`${GLYPH.rail} `)) rest = rest.slice(GLYPH.rail.length + 1);
-  else if (rest.startsWith(GLYPH.rail)) rest = rest.slice(GLYPH.rail.length);
-  if (rest.startsWith(`${GLYPH.mark} `)) rest = rest.slice(GLYPH.mark.length + 1);
-  return rest;
+/**
+ * Display columns taken by Claudex's chrome at the start of a line: the rail and
+ * its space, then the turn glyph and its space. Both glyphs are one column wide.
+ */
+function chromeWidth(plain: string): number {
+  let width = 0;
+  if (plain.startsWith(`${GLYPH.rail} `)) width = 2;
+  else if (plain.startsWith(GLYPH.rail)) width = 1;
+  if (plain.startsWith(`${GLYPH.mark} `, width)) width += 2;
+  return width;
 }
 
 /**
  * The plain text a selection copies. A soft-wrapped line is joined to the one
- * before with a space because `LineBuffer` drops the space it broke at, so a
- * wrapped paragraph comes back as the sentence that was written.
+ * before without a newline, and with the space `LineBuffer` dropped when it
+ * broke at one, so a wrapped sentence or a hard-cut URL comes back as written.
  */
 export function selectedText(lines: readonly TranscriptLine[], selection: Selection): string {
   const { start, end } = orderedRange(selection);
@@ -66,10 +70,9 @@ export function selectedText(lines: readonly TranscriptLine[], selection: Select
     const line = lines[index];
     const columns = selectedColumns(selection, index, Number.POSITIVE_INFINITY);
     if (!line || !columns) continue;
-    let piece = sliceColumns(plainOf(line.styled), columns[0], columns[1]);
-    if (columns[0] === 0) piece = stripChrome(piece);
-    piece = piece.trimEnd();
-    if (!first) text += line.softWrap ? " " : "\n";
+    const plain = plainOf(line.styled);
+    const piece = sliceColumns(plain, Math.max(columns[0], chromeWidth(plain)), columns[1]).trimEnd();
+    if (!first) text += line.softWrap ? (line.droppedSpace ? " " : "") : "\n";
     text += piece;
     first = false;
   }

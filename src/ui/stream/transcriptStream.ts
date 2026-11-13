@@ -206,7 +206,7 @@ class EntryPipeline {
   }
 
   private render(physical: PhysicalLine): TranscriptLine {
-    return { styled: this.renderStyled(physical), softWrap: physical.continuation };
+    return line(this.renderStyled(physical), physical.continuation, physical.droppedSpace);
   }
 
   private renderStyled(physical: PhysicalLine): string {
