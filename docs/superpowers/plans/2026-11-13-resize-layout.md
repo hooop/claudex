@@ -15,7 +15,7 @@
 - No new dependency. No change to existing tests (modifying one is a stop point).
 - Everything in English; comments explain why.
 - `MIN_ROWS` = `DEBATE_HEADER_ROWS (4) + MIN_TRANSCRIPT_ROWS (1) + RULE_ROWS (1) + MAX_DYNAMIC_ROWS (8) + INK_SPARE_ROWS (1)` = 15; `MIN_COLS` = 40.
-- Too-small message: `Terminal too small: enlarge it to at least 40 × 15` (built from the constants).
+- Too-small message: `Terminal too small (min 40 × 15)` (built from the constants).
 - No visual change at sizes ≥ the minimum.
 - `npm run check` passes at the end of every task.
 
@@ -43,7 +43,7 @@
 - [ ] **Step 1: Write the failing tests** in `theme.test.ts`:
   - `MIN_ROWS` equals `DEBATE_HEADER_ROWS + MIN_TRANSCRIPT_ROWS + RULE_ROWS + MAX_DYNAMIC_ROWS + INK_SPARE_ROWS` and equals 15.
   - `isTooSmall(40, 15)` is false; `isTooSmall(40, 14)` and `isTooSmall(39, 15)` are true.
-  - `tooSmallMessage()` is `"Terminal too small: enlarge it to at least 40 × 15"`.
+  - `tooSmallMessage()` is `"Terminal too small (min 40 × 15)"`.
 - [ ] **Step 2: Run** `npx vitest run src/ui/__tests__/theme.test.ts` — expect FAIL (exports missing).
 - [ ] **Step 3: Implement** the constants and functions in `theme.ts`; `DebateHeader.tsx` re-exports `DEBATE_HEADER_ROWS` from `theme.js`; `footerMode` returns `too-small` when `isTooSmall(columns, terminalRows)`.
 - [ ] **Step 4: Run** `npm run check` — expect PASS (existing `dynamicFooter` and `debateHeader` tests unchanged and green).
@@ -84,7 +84,7 @@
   - `ModelPicker`: Esc does not call `onCancel`, Enter does not call `onSelect`;
   - `DecisionViewer`: Esc does not call `onClose`;
   - `InputBar`: typing `abc` and pasting do not change the value nor call `onSubmit` on Enter;
-  - `FittedScreen` at 40 × 14 renders exactly `Terminal too small: enlarge it to at least 40 × 15` and not the child text; at 40 × 15 renders the child and not the message;
+  - `FittedScreen` at 40 × 14 renders exactly `Terminal too small (min 40 × 15)` and not the child text; at 40 × 15 renders the child and not the message;
   - a child with `useState` keeps its state across 15 → 14 → 15 rows (rerender with new props, child counter value unchanged).
   - With the provider set to `true` (control), `PermissionModal` `y` calls `onDecide(true)`.
 - [ ] **Step 2: Run** `npx vitest run src/ui/__tests__/screenVisibility.test.tsx` — expect FAIL.

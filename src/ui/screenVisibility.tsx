@@ -15,7 +15,8 @@ export function useScreenVisible(): boolean {
 }
 
 export function TerminalTooSmall() {
-  return <Text wrap="truncate-end">{tooSmallMessage()}</Text>;
+  // Wrapped, not truncated: the required size is the part that must stay visible.
+  return <Text wrap="wrap">{tooSmallMessage()}</Text>;
 }
 
 /**

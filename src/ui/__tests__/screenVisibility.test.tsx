@@ -132,6 +132,16 @@ describe("FittedScreen", () => {
     expect(screen.frame()).toEqual([tooSmallMessage()]);
   });
 
+  it("keeps the required size readable in a very narrow window", async () => {
+    const screen = await mount(
+      <FittedScreen columns={20} rows={30}>
+        <Text>the screen</Text>
+      </FittedScreen>,
+      { columns: 20, rows: 30 },
+    );
+    expect(screen.frame().join(" ").replace(/\s+/gu, " ")).toContain("(min 40 × 15)");
+  });
+
   it("shows the screen at the minimum", async () => {
     const screen = await mount(
       <FittedScreen columns={40} rows={15}>

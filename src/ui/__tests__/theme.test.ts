@@ -28,6 +28,6 @@ describe("minimum terminal size", () => {
   });
 
   it("names the minimum in the message", () => {
-    expect(tooSmallMessage()).toBe("Terminal too small: enlarge it to at least 40 × 15");
+    expect(tooSmallMessage()).toBe("Terminal too small (min 40 × 15)");
   });
 });

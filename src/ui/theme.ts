@@ -60,7 +60,8 @@ export function isTooSmall(columns: number, rows: number): boolean {
 }
 
 export function tooSmallMessage(): string {
-  return `Terminal too small: enlarge it to at least ${MIN_COLS} × ${MIN_ROWS}`;
+  // Short enough to fit, whole, in a window narrower than the minimum.
+  return `Terminal too small (min ${MIN_COLS} × ${MIN_ROWS})`;
 }
 
 /** Reading measure for a transcript line, given the terminal's width. */

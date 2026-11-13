@@ -117,8 +117,11 @@ welcome screen at a size the debate cannot use.
 ### D3. "Too small" hides, never unmounts
 
 Both screens render their frame inside a box with `display="none"` while the terminal is
-too small, and a single shared `TerminalTooSmall` line next to it ("Terminal too small:
-enlarge it to at least 40 × 15"). State stays mounted.
+too small, and a single shared `TerminalTooSmall` line next to it ("Terminal too small
+(min 40 × 15)": 32 columns, so it fits whole below the 40-column minimum, and wrapped
+rather than truncated so the required size is never the part cut off; changed after
+the final review from a 50-column wording that lost the size below 50 columns). State
+stays mounted.
 
 While hidden, every key except Ctrl+C is ignored and the mouse is not handled. This
 covers every `useInput` / `usePaste` listener of both screens: the input bar (typing and

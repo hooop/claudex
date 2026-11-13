@@ -159,8 +159,13 @@ describe("debate frame at every supported height", () => {
 
 describe("debate screen below the minimum size", () => {
   it("shows only the too-small line, ignores keys, and comes back unchanged", async () => {
-    const { screen } = await mount();
+    const { screen, session } = await mount();
+    const pause = vi.spyOn(session, "pause");
+    // A non-zero offset, so keeping it is not the same as resetting it.
+    await screen.press(PAGE_UP);
+    await settle();
     const before = transcript(screen.frame());
+    expect(before.join("\n")).not.toContain("history line 59");
 
     await screen.resize({ columns: 100, rows: MIN_ROWS - 1 });
     expect(screen.frame()).toEqual([tooSmallMessage()]);
@@ -172,7 +177,7 @@ describe("debate screen below the minimum size", () => {
     const after = screen.frame();
     expectWholeFrame(after, 24);
     expect(transcript(after)).toEqual(before);
-    expect(after.join("\n")).not.toContain("Paused");
+    expect(pause).not.toHaveBeenCalled();
   });
 
   it("keeps the draft typed before the window was shrunk too far", async () => {
