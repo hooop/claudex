@@ -618,6 +618,30 @@ describe("DebateView — full-screen viewport", () => {
     t.app.unmount();
   });
 
+  it("keeps the low-context warning through /model until a new measurement", async () => {
+    const t = mount();
+    await vi.waitFor(() => expect(t.agents.claude.pending).toBe(true));
+
+    t.agents.claude.emitContext(180_000, 200_000);
+    await vi.waitFor(() => {
+      expect(lastFrame(t).rows.join("\n")).toContain("fake-model · ctx 10% free");
+    });
+
+    await press(t, "/model claude sonnet");
+    await press(t, "\r");
+    await vi.waitFor(() => {
+      expect(lastFrame(t).rows.join("\n")).toContain("fake-model · ctx — + fake-model · ctx —");
+    });
+
+    t.agents.claude.emitContext(40_000, 200_000);
+    await vi.waitFor(() => {
+      const frame = lastFrame(t).rows.join("\n");
+      expect(frame).toContain("/help");
+      expect(frame).not.toContain("fake-model");
+    });
+    t.app.unmount();
+  });
+
   it("shows the model line when only Codex runs low", async () => {
     const t = mount();
     await vi.waitFor(() => expect(t.agents.claude.pending).toBe(true));

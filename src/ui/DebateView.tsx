@@ -113,6 +113,11 @@ export function DebateView(props: {
   const [contextUsage, setContextUsage] = useState<
     Partial<Record<AgentId, AgentContextUsage>>
   >({});
+  // /model clears a reading because the window may change, but the conversation
+  // is replayed whole: a warning shown before the change stays until a new reading.
+  const [lowBeforeModelChange, setLowBeforeModelChange] = useState<
+    Partial<Record<AgentId, boolean>>
+  >({});
   const [pendingPermission, setPendingPermission] = useState<PermissionRequest | null>(null);
   const [consensusReached, setConsensusReached] = useState(false);
   const [implementationSummary, setImplementationSummary] = useState<string | null>(null);
@@ -153,6 +158,13 @@ export function DebateView(props: {
   const { columns, rows: terminalRows } = useTerminalSize(() => updateSelection(null));
   // The view provides the visibility context to its children, so it reads its own here.
   const visible = !isTooSmall(columns, terminalRows);
+
+  const clearContextReading = (agent: AgentId) => {
+    if (isContextLow(contextUsage[agent])) {
+      setLowBeforeModelChange((current) => ({ ...current, [agent]: true }));
+    }
+    setContextUsage((current) => ({ ...current, [agent]: undefined }));
+  };
 
   const flash = useCallback((text: string) => {
     if (noticeTimer.current) clearTimeout(noticeTimer.current);
@@ -271,8 +283,10 @@ export function DebateView(props: {
       setActivity(null);
     };
     const onActivity = (_agent: AgentId, nextActivity: AgentActivity) => setActivity(nextActivity);
-    const onContextUsage = (agent: AgentId, usage: AgentContextUsage) =>
+    const onContextUsage = (agent: AgentId, usage: AgentContextUsage) => {
       setContextUsage((current) => ({ ...current, [agent]: usage }));
+      setLowBeforeModelChange((current) => ({ ...current, [agent]: false }));
+    };
     const onPhase = (p: Phase) => {
       applyStatus({ kind: "phase", phase: p });
       setPhase(p);
@@ -431,7 +445,7 @@ export function DebateView(props: {
           return;
         }
         session.setModel(cmd.agent, cmd.model);
-        setContextUsage((current) => ({ ...current, [cmd.agent]: undefined }));
+        clearContextReading(cmd.agent);
         return;
       case "implement": {
         const alreadyImplementing = phase === "implementation";
@@ -725,7 +739,7 @@ export function DebateView(props: {
                     width={inputBarWidth(columns)}
                     onSelect={(model) => {
                       session.setModel(modelPickerAgent, model);
-                      setContextUsage((current) => ({ ...current, [modelPickerAgent]: undefined }));
+                      clearContextReading(modelPickerAgent);
                       setModelPickerAgent(null);
                     }}
                     onCancel={() => setModelPickerAgent(null)}
@@ -775,7 +789,12 @@ export function DebateView(props: {
               <ModelFooter
                 models={{ claude: session.modelOf("claude"), codex: session.modelOf("codex") }}
                 contextUsage={contextUsage}
-                showModels={isContextLow(contextUsage?.claude) || isContextLow(contextUsage?.codex)}
+                showModels={
+                  isContextLow(contextUsage.claude) ||
+                  isContextLow(contextUsage.codex) ||
+                  lowBeforeModelChange.claude === true ||
+                  lowBeforeModelChange.codex === true
+                }
               />
             )}
           </Box>
