@@ -128,6 +128,10 @@ Target layout, 80 columns, while Codex is thinking:
   (today it may take three rows; one is enough now that `/topic` exists).
 - Row 3: `Memory` label and the existing memory line (`welcomeMemoryLine`).
 - Row 4: a heavy rule `━` over the content width.
+- One width for the whole debate screen: the header rows, their rule and right alignment,
+  the turn headers, the summary rules and the bottom thin rule all use the transcript's
+  content width (`contentWidthFor(columns)`, at most 84 columns), so every right edge
+  lines up.
 - The one-row animated header shown today during the debate is removed (request 2).
 - "Debate #" from the mock-up is dropped: Claudex has no reliable debate counter, and
   inventing one adds nothing. **(Claude's call.)**
@@ -204,7 +208,7 @@ In the implementation phase the header shows `Implementation` instead of `Round 
 
 ### Bottom area
 
-- A thin rule `─` above the footer.
+- A thin rule `─` above the footer, over the content width.
 - The status row (today's `StatusBar`) keeps its content and its truncation, with the
   mini animation added at its right end:
   - 7 to 10 columns wide, one row, drawn with the same generator and ramp (`░▒▓█`, braille
@@ -249,15 +253,17 @@ reported scrolling as broken on 2026-10-28.)**
   keys.
 - Selection, in the transcript viewport only:
   - Press and drag selects by character cells, line by line, like a terminal; the selected
-    cells are drawn inverted.
+    cells are drawn inverted. Once the pointer has moved, both end cells are included (the
+    whole character under each, wide ones too), whichever way the drag went.
   - On release, the selected text is copied: plain text, rails, verdict glyph and trailing
     spaces removed, lines joined with `\n`. A line soft-wrapped by the renderer is joined
     back without a newline when the builder can tell it was a soft wrap; otherwise a
     newline is acceptable. **(Claude's call.)**
   - Copy target, first that applies **(Claude's call)**:
     1. macOS: `pbcopy`.
-    2. Linux: `wl-copy` when `WAYLAND_DISPLAY` is set, else `xclip -selection clipboard`,
-       else `xsel --clipboard --input`, whichever is installed.
+    2. Linux: `wl-copy` when `WAYLAND_DISPLAY` is set, else, when `DISPLAY` is set,
+       `xclip -selection clipboard`, else `xsel --clipboard --input`, whichever is
+       installed. Without either display (an SSH session) no command is tried.
     3. Otherwise, the OSC 52 sequence (`ESC ] 52 ; c ; <base64> BEL`). Some terminals
        (VTE-based ones such as GNOME Terminal) ignore it silently, so the notice is honest:
        `Sent 214 characters to the terminal clipboard`.
@@ -267,8 +273,8 @@ reported scrolling as broken on 2026-10-28.)**
     away. Dragging past the top or bottom edge scrolls the transcript.
   - A click without drag does nothing (no copy of an empty selection).
 - Selection elsewhere (header, footer) is ignored. Native terminal selection stays
-  available with a modifier: Option in Terminal.app and iTerm2, Shift in most Linux
-  terminals; the README says so.
+  available with a modifier: hold Fn or Option on macOS (depending on the terminal), Shift
+  in most Linux terminals; the README says so.
 - To make copying possible, each transcript line keeps its plain text next to its styled
   form. Pipeline lines have it (`PhysicalLine.text`); the lines built already styled do
   not (`raw()` input such as `/help` and `/decisions`, verdict, error and cancelled lines).
@@ -359,7 +365,8 @@ behind the frame) stands. The branch updates that entry in `decisions.md`.
 
 Pure UI change on one branch; reverting the merge commit restores the previous screen.
 The one cross-cutting risk is the mouse mode: if it misbehaves in a terminal, mouse
-reporting can be disabled by a single constant, falling back to keyboard scrolling and
+reporting can be disabled by a single constant (`MOUSE_REPORTING_ENABLED` in
+`src/ui/terminal.ts`), falling back to keyboard scrolling and
 native selection.
 
 ## Left to the builder
