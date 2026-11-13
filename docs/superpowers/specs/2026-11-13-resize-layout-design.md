@@ -101,12 +101,16 @@ Rejected: a context provider at `Root`. One listener per subscribed component is
 negligible, the hook keeps components testable alone, and a provider would add a
 mounting requirement to every test.
 
-### D2. The minimum size is computed, in one layout module
+### D2. The minimum size is computed from the layout constants
 
-A new `src/ui/layout.ts` owns the frame arithmetic: `MIN_ROWS` becomes
-`DEBATE_HEADER_ROWS + MIN_TRANSCRIPT_ROWS (1) + RULE_ROWS (1) + MAX_DYNAMIC_ROWS +
-INK_SPARE_ROWS (1)` = 15, and `isTooSmall(columns, rows)` is the only test of it.
-`MIN_COLS` (40) moves there unchanged. The welcome screen needs less than the debate
+`src/ui/theme.ts` already holds the frame constants (`MAX_DYNAMIC_ROWS`, `MIN_ROWS`,
+`MIN_COLS`) and existing tests import them from there, so they stay there rather than
+in a new module. The header height moves there as `DEBATE_HEADER_ROWS` (re-exported by
+`DebateHeader.tsx` for its current importers; `DebateHeader` already imports `theme`,
+so the reverse import would be a cycle). `MIN_ROWS` becomes
+`DEBATE_HEADER_ROWS (4) + MIN_TRANSCRIPT_ROWS (1) + RULE_ROWS (1) + MAX_DYNAMIC_ROWS (8)
++ INK_SPARE_ROWS (1)` = 15, and `isTooSmall(columns, rows)` in the same module is the
+only test of it (`footerMode` calls it). `MIN_COLS` (40) is unchanged. The welcome screen needs less than the debate
 screen; it uses the same threshold, so the app has one minimum and never shows the
 welcome screen at a size the debate cannot use.
 
@@ -155,7 +159,7 @@ whole frame, on a fake stdout whose `rows`/`columns` change before `resize` is e
   restores the previous frame with the same transcript, scroll offset and draft.
 - `useTerminalSize`: initial value, update on `resize`, listener removed on unmount,
   listener runs before one registered earlier.
-- `layout.ts`: `MIN_ROWS` equals the sum of its parts; `isTooSmall` at the boundaries.
+- `theme.ts`: `MIN_ROWS` equals the sum of its parts; `isTooSmall` at the boundaries.
 
 The existing `dynamicFooter` tests that use `MIN_ROWS` keep their meaning (they iterate
 from the minimum); if one asserts the old value 10 literally, that is a stop point.
