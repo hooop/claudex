@@ -23,16 +23,19 @@ type BlockStyle = "fence" | "code" | "heading" | "subheading" | "rule" | "quote"
 const code = chalk.hex(CODE_COLOR);
 const heading = chalk.bold.hex(BRAND_COLOR);
 
-function styleInline(text: string): string {
+type Accent = (text: string) => string;
+
+/** `accentFirst`: a bold span opening the line is a label (`**Risk.**`), not emphasis. */
+function styleInline(text: string, accent?: Accent, accentFirst = false): string {
   const spans = parseInline(text);
   // Fast path: the overwhelmingly common case is a line with no markup at all.
   if (spans.length === 1 && spans[0]!.type === "text") return text;
 
   let out = "";
-  for (const span of spans) {
+  for (const [index, span] of spans.entries()) {
     switch (span.type) {
       case "bold":
-        out += chalk.bold(span.value);
+        out += accent && accentFirst && index === 0 ? chalk.bold(accent(span.value)) : chalk.bold(span.value);
         break;
       case "italic":
         out += chalk.italic(span.value);
@@ -50,11 +53,21 @@ function styleInline(text: string): string {
   return out;
 }
 
+export interface MarkdownStreamerOptions {
+  /** Colours headings and line-opening bold labels, so they carry the author's colour. */
+  accent?: Accent;
+}
+
 export class MarkdownStreamer {
+  private readonly accent: Accent | undefined;
   private inFence = false;
   private block: BlockStyle = "plain";
 
-  style(line: PhysicalLine): string {
+  constructor(options: MarkdownStreamerOptions = {}) {
+    this.accent = options.accent;
+  }
+
+  style(line: Pick<PhysicalLine, "text" | "continuation">): string {
     if (!line.continuation) this.block = this.classify(line.text);
 
     switch (this.block) {
@@ -63,9 +76,13 @@ export class MarkdownStreamer {
       case "code":
         return code(line.text);
       case "heading":
-        return heading(styleInline(stripHeading(line.text, line.continuation)));
+        return this.accent
+          ? chalk.bold(this.accent(styleInline(stripHeading(line.text, line.continuation))))
+          : heading(styleInline(stripHeading(line.text, line.continuation)));
       case "subheading":
-        return chalk.bold(styleInline(stripHeading(line.text, line.continuation)));
+        return this.accent
+          ? chalk.bold(this.accent(styleInline(stripHeading(line.text, line.continuation))))
+          : chalk.bold(styleInline(stripHeading(line.text, line.continuation)));
       case "rule":
         return chalk.dim(line.text);
       case "quote": {
@@ -81,10 +98,10 @@ export class MarkdownStreamer {
       case "list": {
         if (line.continuation) return styleInline(line.text);
         const item = classifyLine(line.text);
-        return chalk.dim(item.marker ?? "") + styleInline(item.body ?? "");
+        return chalk.dim(item.marker ?? "") + styleInline(item.body ?? "", this.accent, true);
       }
       default:
-        return styleInline(line.text);
+        return styleInline(line.text, this.accent, !line.continuation);
     }
   }
 

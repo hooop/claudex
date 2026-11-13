@@ -2,7 +2,7 @@
  * The ordered batching layer between transcript formatting and the UI viewport.
  *
  * Everything funnels through one queue so ordering remains exactly the order of
- * session events. Each block ends in a newline and is appended atomically to the
+ * session events. Each block is appended atomically to the
  * transcript state owned by `DebateView`.
  *
  * Lines are grouped at the renderer's own cadence rather than written per token:
@@ -10,7 +10,23 @@
  * is proportional to the new text, never to the length of the transcript.
  */
 
-export type StreamWriter = (data: string) => void;
+/**
+ * One physical transcript line. `softWrap` is true when it only continues the
+ * previous line because the text was too wide, so a copy can join the two back
+ * instead of inserting a newline the author never wrote.
+ */
+export interface TranscriptLine {
+  styled: string;
+  softWrap: boolean;
+  /** On a soft-wrapped line: the wrap dropped a space, which a copy puts back. */
+  droppedSpace: boolean;
+}
+
+export type StreamWriter = (lines: readonly TranscriptLine[]) => void;
+
+export function line(styled: string, softWrap = false, droppedSpace = false): TranscriptLine {
+  return { styled, softWrap, droppedSpace };
+}
 
 /** Ink throttles its own renders at 32 ms; matching it keeps the two in step. */
 export const FLUSH_INTERVAL_MS = 32;
@@ -23,7 +39,7 @@ export interface StreamControllerOptions {
 }
 
 export class StreamController {
-  private queue: string[] = [];
+  private queue: TranscriptLine[] = [];
   private timer: ReturnType<typeof setTimeout> | null = null;
   private disposed = false;
   private readonly intervalMs: number;
@@ -33,9 +49,9 @@ export class StreamController {
   }
 
   /** Queue complete physical lines. They must not contain embedded newlines. */
-  push(lines: readonly string[]): void {
+  push(lines: readonly TranscriptLine[]): void {
     if (this.disposed || lines.length === 0) return;
-    for (const line of lines) this.queue.push(line);
+    for (const item of lines) this.queue.push(item);
     this.schedule();
   }
 
@@ -64,7 +80,7 @@ export class StreamController {
     if (this.disposed) return;
 
     if (this.queue.length > 0) {
-      const block = this.queue.join("\n") + "\n";
+      const block = this.queue;
       this.queue = [];
       this.options.write(block);
     }

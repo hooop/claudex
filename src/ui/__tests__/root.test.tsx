@@ -416,7 +416,7 @@ describe("Root — header lifecycle", () => {
 
     await vi.waitFor(() => {
       const output = terminal.chunks.join("").replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "");
-      expect(output).toContain("Topic: /Users/me/app.ts:12 TypeError at main");
+      expect(output).toContain("Topic  /Users/me/app.ts:12 TypeError at main");
     });
     expect(terminal.chunks.join("")).not.toContain("No debate in progress");
     app.unmount();
@@ -602,6 +602,33 @@ describe("Root — header lifecycle", () => {
     await new Promise((resolve) => setTimeout(resolve, 20));
 
     expect(mocks.saveTranscript).not.toHaveBeenCalled();
+    app.unmount();
+  });
+});
+
+describe("Root — resize", () => {
+  it("erases the whole screen and repaints the frame after a resize", async () => {
+    const terminal = fakeTerminal();
+    const app = render(<Root cwd="/test-project" />, {
+      stdout: terminal.stdout as never,
+      stdin: terminal.stdin as never,
+      stderr: terminal.stderr as never,
+      exitOnCtrlC: false,
+      patchConsole: false,
+      interactive: true,
+    });
+    await vi.waitFor(() => expect(terminal.stdin.listenerCount("readable")).toBeGreaterThan(0));
+    terminal.chunks.length = 0;
+
+    terminal.stdout.rows = 40;
+    terminal.stdout.emit("resize");
+
+    await vi.waitFor(() => {
+      const written = terminal.chunks.join("");
+      const lastErase = written.lastIndexOf("\u001b[2J\u001b[H");
+      expect(lastErase).toBeGreaterThan(-1);
+      expect(written.slice(lastErase)).toContain(WELCOME_TAGLINE);
+    });
     app.unmount();
   });
 });

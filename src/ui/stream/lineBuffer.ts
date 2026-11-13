@@ -13,18 +13,48 @@
  * marks are measured as the terminal will actually render them.
  */
 
+import { stripVTControlCharacters } from "node:util";
 import stringWidth from "string-width";
 
 export interface PhysicalLine {
   text: string;
   /** True when this line continues a logical line that was wrapped. */
   continuation: boolean;
+  /**
+   * True when the wrap that started this line broke at a space and dropped it.
+   * A hard cut keeps every character, so a copy must join it back with nothing.
+   */
+  droppedSpace: boolean;
 }
 
 const segmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 
 export function displayWidth(text: string): number {
   return stringWidth(text, { countAnsiEscapeCodes: false });
+}
+
+/**
+ * The visible text of a styled line. Agent text went through `AnsiSanitizer`, so
+ * the only escape sequences left are the ones Claudex's own styling added.
+ */
+export function plainOf(styled: string): string {
+  return stripVTControlCharacters(styled);
+}
+
+/**
+ * The part of `text` between display columns `start` (inclusive) and `end`
+ * (exclusive). A wide character straddling either edge is left out, never cut.
+ */
+export function sliceColumns(text: string, start: number, end: number): string {
+  let result = "";
+  let column = 0;
+  for (const { segment } of segmenter.segment(text)) {
+    const width = displayWidth(segment);
+    if (column >= start && column + width <= end) result += segment;
+    column += width;
+    if (column >= end) break;
+  }
+  return result;
 }
 
 function sliceToDisplayWidth(text: string, maxWidth: number): string {
@@ -60,8 +90,13 @@ export function truncateEnd(text: string, maxWidth: number, suffix = "..."): str
  * so those fall back to a hard cut. One pass over the graphemes, whatever the
  * length of the input.
  */
-function wrap(text: string, width: number): { lines: string[]; rest: string } {
+function wrap(
+  text: string,
+  width: number,
+): { lines: string[]; rest: string; droppedSpace: boolean[] } {
   const lines: string[] = [];
+  // One flag per piece, `rest` included: did the break before it drop a space?
+  const droppedSpace: boolean[] = [false];
   const minBreak = Math.floor(width * 0.6);
 
   let start = 0; // index into `text` where the current piece begins
@@ -80,6 +115,7 @@ function wrap(text: string, width: number): { lines: string[]; rest: string } {
         keep = lastSpace + 1;
       }
       lines.push(text.slice(start, cut));
+      droppedSpace.push(keep !== cut);
       start = keep;
       used = displayWidth(text.slice(start, index)) + w;
       lastSpace = -1;
@@ -94,7 +130,7 @@ function wrap(text: string, width: number): { lines: string[]; rest: string } {
     }
   }
 
-  return { lines, rest: text.slice(start) };
+  return { lines, rest: text.slice(start), droppedSpace };
 }
 
 /** Break a complete logical line into every physical line it occupies. */
@@ -109,6 +145,8 @@ export class LineBuffer {
   private pending = "";
   /** Whether `pending` continues a logical line that has already been wrapped. */
   private continued = false;
+  /** Whether the wrap that started `pending` dropped a space. */
+  private pendingDroppedSpace = false;
   private width: number;
 
   constructor(width: number) {
@@ -132,22 +170,31 @@ export class LineBuffer {
       const logical = buf.slice(0, nl);
       buf = buf.slice(nl + 1);
 
-      let continuation = this.continued;
-      for (const piece of wrapAll(logical, this.width)) {
-        out.push({ text: piece, continuation });
-        continuation = true;
-      }
+      const { lines, rest, droppedSpace } = wrap(logical, this.width);
+      [...lines, rest].forEach((piece, index) => {
+        out.push({
+          text: piece,
+          continuation: index === 0 ? this.continued : true,
+          droppedSpace: index === 0 ? this.pendingDroppedSpace : (droppedSpace[index] ?? false),
+        });
+      });
       this.continued = false;
+      this.pendingDroppedSpace = false;
     }
 
     // What's left has no newline yet: emit the physical lines that are already
     // full, keep the rest as the tail.
     if (displayWidth(buf) > this.width) {
-      const { lines, rest } = wrap(buf, this.width);
-      for (const piece of lines) {
-        out.push({ text: piece, continuation: this.continued });
+      const { lines, rest, droppedSpace } = wrap(buf, this.width);
+      lines.forEach((piece, index) => {
+        out.push({
+          text: piece,
+          continuation: this.continued,
+          droppedSpace: index === 0 ? this.pendingDroppedSpace : (droppedSpace[index] ?? false),
+        });
         this.continued = true;
-      }
+      });
+      this.pendingDroppedSpace = droppedSpace[lines.length] ?? false;
       buf = rest;
     }
 
@@ -157,18 +204,24 @@ export class LineBuffer {
 
   /** The incomplete remainder, for display in the footer. Never written to stdout. */
   get tail(): PhysicalLine {
-    return { text: this.pending, continuation: this.continued };
+    return { text: this.pending, continuation: this.continued, droppedSpace: this.pendingDroppedSpace };
   }
 
   /** Commit whatever is left — end of message, error, cancellation, shutdown. */
   flush(): PhysicalLine[] {
     if (this.pending === "") {
       this.continued = false;
+      this.pendingDroppedSpace = false;
       return [];
     }
-    const line: PhysicalLine = { text: this.pending, continuation: this.continued };
+    const line: PhysicalLine = {
+      text: this.pending,
+      continuation: this.continued,
+      droppedSpace: this.pendingDroppedSpace,
+    };
     this.pending = "";
     this.continued = false;
+    this.pendingDroppedSpace = false;
     return [line];
   }
 }

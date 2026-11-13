@@ -7,6 +7,7 @@
  * the fixed header or footer.
  */
 
+import chalk from "chalk";
 import { Box, Text, render } from "ink";
 import { EventEmitter } from "node:events";
 import { describe, expect, it, vi } from "vitest";
@@ -14,13 +15,24 @@ import type { AgentSendOptions, CodingAgent } from "../../agents/types.js";
 import { DebateSession } from "../../orchestrator/session.js";
 import type { AgentResult } from "../../orchestrator/types.js";
 import type { AgentId } from "../../types.js";
+import { MouseProvider } from "../mouse/MouseContext.js";
+import type { MouseEvent } from "../mouse/mouseInput.js";
+import { MOUSE_OFF, MOUSE_ON } from "../terminal.js";
+import { contentWidthFor } from "../theme.js";
 import {
   DebateView,
-  topicHeaderLines,
   transcriptBlockLines,
   transcriptWindow,
 } from "../DebateView.js";
-import { displayWidth } from "../stream/lineBuffer.js";
+
+// Selections release into the clipboard: never let a test reach a real command.
+const clipboard = vi.hoisted(() => ({
+  copyToClipboard: vi.fn(() => Promise.resolve({ kind: "copied" as const })),
+}));
+vi.mock("../mouse/clipboard.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../mouse/clipboard.js")>()),
+  copyToClipboard: clipboard.copyToClipboard,
+}));
 
 const CLEAR_SCREEN = /\u001b\[[23]J/;
 const CURSOR_UP = /\u001b\[1A/g;
@@ -126,8 +138,31 @@ async function press(terminal: ReturnType<typeof fakeTerminal>, input: string) {
   await tick(20);
 }
 
-function mount(options: { fromFullScreen?: boolean; topic?: string } = {}) {
-  const terminal = fakeTerminal();
+function fakeMouseSource() {
+  const listeners = new Set<(event: MouseEvent) => void>();
+  return {
+    on(listener: (event: MouseEvent) => void) {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    emit(event: MouseEvent) {
+      for (const listener of [...listeners]) listener(event);
+    },
+  };
+}
+
+function mount(
+  options: {
+    fromFullScreen?: boolean;
+    topic?: string;
+    rows?: number;
+    onCopy?: (text: string) => void;
+  } = {},
+) {
+  const terminal = fakeTerminal(100, options.rows);
+  const mouse = fakeMouseSource();
   const agents = { claude: new FakeAgent("claude"), codex: new FakeAgent("codex") };
   const session = new DebateSession(agents, {
     cwd: "/tmp",
@@ -153,6 +188,7 @@ function mount(options: { fromFullScreen?: boolean; topic?: string } = {}) {
       coordinatorNotice={null}
       onLifecycleRequest={async () => ({ ok: true, message: "ok" })}
       onAutonomySelected={async () => {}}
+      onCopy={options.onCopy}
     />
   );
 
@@ -164,7 +200,7 @@ function mount(options: { fromFullScreen?: boolean; topic?: string } = {}) {
         <Text>ANCIEN PROMPT</Text>
       </Box>
     ) : (
-      debate
+      <MouseProvider source={mouse}>{debate}</MouseProvider>
     ),
     {
       stdout: terminal.stdout as never,
@@ -176,7 +212,14 @@ function mount(options: { fromFullScreen?: boolean; topic?: string } = {}) {
     },
   );
 
-  return { ...terminal, agents, session, app, startDebate: () => app.rerender(debate) };
+  return {
+    ...terminal,
+    agents,
+    session,
+    app,
+    mouse,
+    startDebate: () => app.rerender(<MouseProvider source={mouse}>{debate}</MouseProvider>),
+  };
 }
 
 describe("DebateView — full-screen viewport", () => {
@@ -344,7 +387,7 @@ describe("DebateView — full-screen viewport", () => {
     await tick();
 
     const output = t.chunks.join("");
-    expect(output).toContain("Topic: Test topic");
+    expect(output).toContain("Topic  Test topic");
     expect(output).toContain("a few words");
 
     t.app.unmount();
@@ -453,8 +496,8 @@ describe("DebateView — full-screen viewport", () => {
     await tick();
     const output = t.chunks.join("");
     expect(output.split("\u25b2 Claudex").length - 1).toBe(0);
-    expect(output).toContain("Topic: Test topic");
-    expect(output).not.toContain(":: Topic: Test topic");
+    expect(output).toContain("Topic  Test topic");
+    expect(output).not.toContain("· Topic: Test topic");
 
     const footerFrame = [...t.chunks]
       .reverse()
@@ -481,10 +524,43 @@ describe("DebateView — full-screen viewport", () => {
 
     const frame = [...t.chunks].reverse().find((chunk) => chunk.includes("FIRST INTERVENTION"));
     expect(frame).toBeDefined();
-    expect(frame!.replace(ANSI_SEQUENCE, "")).toContain("/topic to see it in full");
+    expect(frame!.replace(ANSI_SEQUENCE, "")).toContain("… /topic");
     for (const chunk of t.chunks) {
       expect((chunk.match(CURSOR_UP) ?? []).length).toBeLessThan(t.stdout.rows);
     }
+    t.app.unmount();
+  });
+
+  it("the debate screen has no animated header", async () => {
+    const t = mount();
+    await vi.waitFor(() => expect(t.agents.claude.pending).toBe(true));
+    await tick(400);
+
+    const output = t.chunks.join("");
+    expect(output).toContain("CLAUDEX");
+    // The status row below the transcript animates while an agent thinks; the
+    // header (its four rows, from the title down) must stay still.
+    const lines = output.split("\n");
+    for (const [index, line] of lines.entries()) {
+      if (!line.includes("CLAUDEX")) continue;
+      expect(lines.slice(index, index + 4).join("\n")).not.toMatch(/[\u2591-\u2593\u2588]/u);
+    }
+    t.app.unmount();
+  });
+
+  it("a Claude turn header shows Round 1 then Round 2", async () => {
+    const t = mount();
+    await vi.waitFor(() => expect(t.agents.claude.pending).toBe(true));
+    t.agents.claude.complete("First view.\n<<CONTINUE>>");
+    await vi.waitFor(() => expect(t.agents.codex.pending).toBe(true));
+    t.agents.codex.complete("Reply.\n<<CONTINUE>>");
+    await vi.waitFor(() => expect(t.agents.claude.pending).toBe(true));
+    await tick();
+
+    const output = t.chunks.join("").replace(ANSI_SEQUENCE, "");
+    expect(output).toMatch(/CLAUDE[^\n]*Round 1/u);
+    expect(output).toMatch(/CLAUDE[^\n]*Round 2/u);
+    expect(output).toMatch(/CODEX[^\n]*Round 1/u);
     t.app.unmount();
   });
 
@@ -533,6 +609,283 @@ describe("DebateView — full-screen viewport", () => {
   });
 });
 
+describe("DebateView — mouse reporting", () => {
+  it("turns mouse reporting on while mounted and off when it unmounts", async () => {
+    const t = mount({ fromFullScreen: true });
+    await tick(20);
+    expect(t.chunks.join("")).not.toContain(MOUSE_ON);
+
+    t.startDebate();
+    await vi.waitFor(() => expect(t.chunks.filter((chunk) => chunk === MOUSE_ON)).toHaveLength(1));
+    expect(t.chunks.join("")).not.toContain(MOUSE_OFF);
+
+    t.app.unmount();
+    expect(t.chunks.filter((chunk) => chunk === MOUSE_OFF)).toHaveLength(1);
+    expect(t.chunks.lastIndexOf(MOUSE_OFF)).toBeGreaterThan(t.chunks.lastIndexOf(MOUSE_ON));
+  });
+});
+
+/** The last full frame drawn, raw, and as plain rows indexed by screen row. */
+function lastFrame(t: ReturnType<typeof mount>): { raw: string; rows: string[] } {
+  const raw = t.chunks.filter((chunk) => chunk.replace(ANSI_SEQUENCE, "").includes("CLAUDEX ")).at(-1) ?? "";
+  return { raw, rows: raw.replace(ANSI_SEQUENCE, "").split("\n") };
+}
+
+/** The text drawn inverted in the last frame, one entry per highlighted run. */
+function inverted(t: ReturnType<typeof mount>): string[] {
+  return [...lastFrame(t).raw.matchAll(/\u001b\[7m(.*?)\u001b\[27m/g)].map((match) =>
+    match[1]!.replace(ANSI_SEQUENCE, ""),
+  );
+}
+
+function lastHistoryLine(t: ReturnType<typeof mount>): number {
+  const numbers = lastFrame(t)
+    .rows.map((row) => /history line (\d+)/.exec(row)?.[1])
+    .filter((value): value is string => value !== undefined)
+    .map(Number);
+  return Math.max(...numbers);
+}
+
+/** Drags from "beta" onto the last character of "delta" over two transcript lines, without releasing. */
+async function selectWords(t: ReturnType<typeof mount>) {
+  t.agents.claude.emit("alpha beta gamma\ndelta epsilon\n");
+  await tick();
+  const { rows } = lastFrame(t);
+  const first = rows.findIndex((row) => row.includes("alpha beta gamma"));
+  const second = rows.findIndex((row) => row.includes("delta epsilon"));
+  expect(second).toBe(first + 1);
+  const end = rows[second]!.indexOf("delta") + "delta".length - 1;
+
+  t.mouse.emit({ kind: "press", x: rows[first]!.indexOf("beta"), y: first });
+  t.mouse.emit({ kind: "drag", x: end - 3, y: second });
+  t.mouse.emit({ kind: "drag", x: end, y: second });
+  await vi.waitFor(() => expect(inverted(t)).toEqual(["beta gamma", "│ delta"]));
+  return { end, second };
+}
+
+/** Runs a test with colours on, so the inverse is visible in the output. */
+function withColor(test: () => Promise<void>): () => Promise<void> {
+  return async () => {
+    const level = chalk.level;
+    chalk.level = 3;
+    try {
+      await test();
+    } finally {
+      chalk.level = level;
+    }
+  };
+}
+
+describe("DebateView — mouse", () => {
+  it("wheel down then up scrolls the transcript by three lines", async () => {
+    const t = mount();
+    await vi.waitFor(() => expect(t.agents.claude.pending).toBe(true));
+    t.agents.claude.emit(Array.from({ length: 50 }, (_, i) => `history line ${i}\n`).join(""));
+    await vi.waitFor(() => expect(lastHistoryLine(t)).toBe(49));
+
+    // Already at the bottom: the wheel stays within the arrow keys' bounds.
+    t.mouse.emit({ kind: "wheel", direction: "down", x: 10, y: 8 });
+    await tick();
+    expect(lastHistoryLine(t)).toBe(49);
+
+    t.mouse.emit({ kind: "wheel", direction: "up", x: 10, y: 8 });
+    await vi.waitFor(() => expect(lastHistoryLine(t)).toBe(46));
+
+    t.mouse.emit({ kind: "wheel", direction: "up", x: 10, y: 8 });
+    await vi.waitFor(() => expect(lastHistoryLine(t)).toBe(43));
+
+    t.mouse.emit({ kind: "wheel", direction: "down", x: 10, y: 8 });
+    await vi.waitFor(() => expect(lastHistoryLine(t)).toBe(46));
+
+    t.app.unmount();
+  });
+
+  it(
+    "drag selects and highlights, release reports the text",
+    withColor(async () => {
+      const copies: string[] = [];
+      const t = mount({ onCopy: (text) => copies.push(text) });
+      await vi.waitFor(() => expect(t.agents.claude.pending).toBe(true));
+      const { end, second } = await selectWords(t);
+      expect(copies).toEqual([]);
+
+      t.mouse.emit({ kind: "release", x: end, y: second });
+      await vi.waitFor(() => expect(copies).toEqual(["beta gamma\ndelta"]));
+
+      // New output appended below does not move the highlight.
+      t.agents.claude.emit("zeta\n");
+      await vi.waitFor(() => expect(lastFrame(t).rows.join("\n")).toContain("zeta"));
+      expect(inverted(t)).toEqual(["beta gamma", "│ delta"]);
+
+      // A press outside the transcript clears it and copies nothing.
+      t.mouse.emit({ kind: "press", x: 0, y: 0 });
+      t.mouse.emit({ kind: "release", x: 0, y: 0 });
+      await vi.waitFor(() => expect(inverted(t)).toEqual([]));
+      expect(copies).toEqual(["beta gamma\ndelta"]);
+
+      t.app.unmount();
+    }),
+  );
+
+  it(
+    "a backward drag ending on the first character copies the full words",
+    withColor(async () => {
+      const copies: string[] = [];
+      const t = mount({ onCopy: (text) => copies.push(text) });
+      await vi.waitFor(() => expect(t.agents.claude.pending).toBe(true));
+      t.agents.claude.emit("alpha beta gamma\n");
+      await tick();
+      const { rows } = lastFrame(t);
+      const row = rows.findIndex((text) => text.includes("alpha beta gamma"));
+      const start = rows[row]!.indexOf("beta");
+      const last = rows[row]!.indexOf("gamma") + "gamma".length - 1;
+
+      t.mouse.emit({ kind: "press", x: last, y: row });
+      t.mouse.emit({ kind: "drag", x: start, y: row });
+      t.mouse.emit({ kind: "release", x: start, y: row });
+      await vi.waitFor(() => expect(copies).toEqual(["beta gamma"]));
+      await vi.waitFor(() => expect(inverted(t)).toEqual(["beta gamma"]));
+
+      // A click without a drag clears the selection and copies nothing.
+      t.mouse.emit({ kind: "press", x: start, y: row });
+      t.mouse.emit({ kind: "release", x: start, y: row });
+      await vi.waitFor(() => expect(inverted(t)).toEqual([]));
+      expect(copies).toEqual(["beta gamma"]);
+
+      t.app.unmount();
+    }),
+  );
+
+  it(
+    "copies the released selection and flashes the result",
+    withColor(async () => {
+      const t = mount();
+      await vi.waitFor(() => expect(t.agents.claude.pending).toBe(true));
+      const { end, second } = await selectWords(t);
+      clipboard.copyToClipboard.mockClear();
+
+      t.mouse.emit({ kind: "release", x: end, y: second });
+      await vi.waitFor(() => expect(lastFrame(t).rows.join("\n")).toContain("Copied 16 characters"));
+      expect(clipboard.copyToClipboard).toHaveBeenCalledTimes(1);
+      expect(clipboard.copyToClipboard.mock.calls[0]).toEqual([
+        "beta gamma\ndelta",
+        expect.objectContaining({ platform: process.platform, env: process.env }),
+      ]);
+
+      t.app.unmount();
+    }),
+  );
+
+  it(
+    "selects the lines shown while scrolled up",
+    withColor(async () => {
+      const copies: string[] = [];
+      const t = mount({ onCopy: (text) => copies.push(text) });
+      await vi.waitFor(() => expect(t.agents.claude.pending).toBe(true));
+      t.agents.claude.emit(Array.from({ length: 50 }, (_, i) => `history line ${i}\n`).join(""));
+      await vi.waitFor(() => expect(lastHistoryLine(t)).toBe(49));
+      t.mouse.emit({ kind: "wheel", direction: "up", x: 10, y: 8 });
+      t.mouse.emit({ kind: "wheel", direction: "up", x: 10, y: 8 });
+      await vi.waitFor(() => expect(lastHistoryLine(t)).toBe(43));
+
+      const rows = lastFrame(t).rows;
+      const row = rows.findIndex((text) => text.endsWith("history line 40"));
+      const x = rows[row]!.indexOf("history");
+      const last = x + "history line 40".length - 1;
+      t.mouse.emit({ kind: "press", x, y: row });
+      t.mouse.emit({ kind: "drag", x: last, y: row });
+      t.mouse.emit({ kind: "release", x: last, y: row });
+
+      await vi.waitFor(() => expect(copies).toEqual(["history line 40"]));
+      await vi.waitFor(() => expect(inverted(t)).toEqual(["history line 40"]));
+
+      t.app.unmount();
+    }),
+  );
+
+  it(
+    "ignores the mouse while the command palette is open",
+    withColor(async () => {
+      const copies: string[] = [];
+      const t = mount({ onCopy: (text) => copies.push(text) });
+      await vi.waitFor(() => expect(t.agents.claude.pending).toBe(true));
+      t.agents.claude.emit(Array.from({ length: 50 }, (_, i) => `history line ${i}\n`).join(""));
+      await vi.waitFor(() => expect(lastHistoryLine(t)).toBe(49));
+
+      await press(t, "/");
+      await vi.waitFor(() => expect(t.chunks.join("")).toContain("/claude <text>"));
+      const rows = lastFrame(t).rows;
+      const row = rows.findIndex((text) => text.includes("history line"));
+
+      t.mouse.emit({ kind: "wheel", direction: "up", x: 10, y: row });
+      t.mouse.emit({ kind: "press", x: 0, y: row });
+      t.mouse.emit({ kind: "drag", x: 20, y: row });
+      t.mouse.emit({ kind: "release", x: 20, y: row });
+      await tick();
+
+      expect(lastHistoryLine(t)).toBe(49);
+      expect(inverted(t)).toEqual([]);
+      expect(copies).toEqual([]);
+
+      t.app.unmount();
+    }),
+  );
+
+  it(
+    "a rewind clears the selection",
+    withColor(async () => {
+      const t = mount();
+      await vi.waitFor(() => expect(t.agents.claude.pending).toBe(true));
+      t.agents.claude.emit("Looking.\n");
+      await tick();
+      const row = lastFrame(t).rows.findIndex((text) => text.includes("Looking."));
+      t.mouse.emit({ kind: "press", x: 2, y: row });
+      t.mouse.emit({ kind: "drag", x: 10, y: row });
+      t.mouse.emit({ kind: "release", x: 10, y: row });
+      await vi.waitFor(() => expect(inverted(t)).toEqual(["Looking."]));
+
+      t.agents.claude.note("Looking.\n");
+      t.agents.claude.emit("Answer.\n");
+      await vi.waitFor(() => expect(lastFrame(t).rows.join("\n")).toContain("Answer."));
+      expect(inverted(t)).toEqual([]);
+
+      t.app.unmount();
+    }),
+  );
+
+  it(
+    "a resize clears the selection",
+    withColor(async () => {
+      const t = mount();
+      await vi.waitFor(() => expect(t.agents.claude.pending).toBe(true));
+      await selectWords(t);
+
+      t.stdout.columns = 70;
+      t.stdout.emit("resize");
+      await vi.waitFor(() => expect(lastFrame(t).rows[3]).toBe("━".repeat(contentWidthFor(70))));
+      expect(inverted(t)).toEqual([]);
+
+      t.app.unmount();
+    }),
+  );
+
+  it(
+    "a keypress clears the selection",
+    withColor(async () => {
+      const t = mount();
+      await vi.waitFor(() => expect(t.agents.claude.pending).toBe(true));
+      await selectWords(t);
+
+      await press(t, "q");
+      await vi.waitFor(() => expect(inverted(t)).toEqual([]));
+      // The key still reaches the input bar.
+      expect(lastFrame(t).rows.some((row) => /‣ ?q\b/.test(row))).toBe(true);
+
+      t.app.unmount();
+    }),
+  );
+});
+
 describe("bootstrap helpers", () => {
   it("splits the renderer blocks without losing blank lines", () => {
     expect(transcriptBlockLines("line 1\n\nline 3\n")).toEqual(["line 1", "", "line 3"]);
@@ -544,31 +897,42 @@ describe("bootstrap helpers", () => {
     expect(transcriptWindow(lines, 3, 2)).toEqual(["line 5", "line 6", "line 7"]);
     expect(transcriptWindow(lines, 3, 99)).toEqual(["line 0", "line 1", "line 2"]);
   });
-});
 
-describe("topic in the header", () => {
-  it("leaves a short topic as is", () => {
-    expect(topicHeaderLines("Test topic", 60)).toEqual(["Topic: Test topic"]);
+  it("draws the header, its rule, turn headers and the bottom rule at the transcript content width", async () => {
+    const t = mount();
+    await vi.waitFor(() => expect(t.agents.claude.pending).toBe(true));
+    t.agents.claude.emit("Hello.\n");
+    await vi.waitFor(() => expect(lastFrame(t).rows.join("\n")).toContain("Hello."));
+
+    const width = contentWidthFor(100);
+    expect(width).toBeLessThan(100);
+    const { rows } = lastFrame(t);
+    expect(rows[3]).toBe("━".repeat(width));
+    expect(rows.filter((row) => /^─+$/.test(row))).toEqual(["─".repeat(width)]);
+    // Right-aligned rows end on the same column as the rules.
+    expect(rows[0]!.trimEnd()).toHaveLength(width);
+    expect(rows.find((row) => row.startsWith("◆ CLAUDE"))!.trimEnd()).toHaveLength(width);
+
+    t.app.unmount();
   });
 
-  it("caps a long topic at three rows that point to /topic", () => {
-    const lines = topicHeaderLines("word ".repeat(500), 60);
+  it.each([24, 40])(
+    "fills exactly the frame height with header, transcript, rule and footer at %i rows",
+    async (rows) => {
+      const t = mount({ rows });
+      await vi.waitFor(() => expect(t.agents.claude.pending).toBe(true));
+      t.agents.claude.emit(Array.from({ length: 80 }, (_, i) => `filler ${i}\n`).join(""));
+      await tick();
 
-    expect(lines).toHaveLength(3);
-    expect(lines[2]).toMatch(/… \/topic to see it in full$/);
-    for (const line of lines) expect(displayWidth(line)).toBeLessThanOrEqual(60);
-  });
+      const full = t.chunks.filter((chunk) => chunk.includes("CLAUDEX ")).at(-1)!;
+      const frame = full.replace(ANSI_SEQUENCE, "").replace(/\n$/, "").split("\n");
+      expect(frame).toHaveLength(rows - 1);
+      expect(frame[0]).toMatch(/^CLAUDEX /);
+      expect(frame.filter((line) => /^─+$/.test(line))).toHaveLength(1);
+      expect(frame[3]).toMatch(/^━+$/);
+      expect(frame.findIndex((line) => /^─+$/.test(line))).toBeGreaterThan(3);
 
-  it("keeps a topic of exactly three rows without a pointer", () => {
-    const lines = topicHeaderLines("x".repeat(60 * 3 - "Topic: ".length), 60);
-
-    expect(lines).toHaveLength(3);
-    expect(lines.join("")).not.toContain("/topic");
-  });
-
-  it("shows a multiline topic on a single logical row", () => {
-    expect(topicHeaderLines("first\nsecond\r\n\tthird", 60)).toEqual([
-      "Topic: first second third",
-    ]);
-  });
+      t.app.unmount();
+    },
+  );
 });

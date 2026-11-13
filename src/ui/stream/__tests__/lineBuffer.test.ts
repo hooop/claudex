@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { displayWidth, LineBuffer, truncateEnd, wrapAll } from "../lineBuffer.js";
+import chalk from "chalk";
+import { displayWidth, LineBuffer, plainOf, sliceColumns, truncateEnd, wrapAll } from "../lineBuffer.js";
 
 const texts = (lines: { text: string }[]) => lines.map((l) => l.text);
 
@@ -82,7 +83,39 @@ describe("LineBuffer", () => {
   it("starts over after a line end", () => {
     const buf = new LineBuffer(10);
     buf.push("aaaaaaaaaaaaa\n");
-    expect(buf.push("bbb\n")[0]).toEqual({ text: "bbb", continuation: false });
+    expect(buf.push("bbb\n")[0]).toEqual({ text: "bbb", continuation: false, droppedSpace: false });
+  });
+
+  it("flags a line whose wrap dropped the space it broke at", () => {
+    const buf = new LineBuffer(10);
+    expect(buf.push("aaaaaaa bbbbbb\n")).toEqual([
+      { text: "aaaaaaa", continuation: false, droppedSpace: false },
+      { text: "bbbbbb", continuation: true, droppedSpace: true },
+    ]);
+  });
+
+  it("does not flag a hard cut, which keeps every character", () => {
+    const buf = new LineBuffer(10);
+    expect(buf.push("abcdefghijklmnop\n")).toEqual([
+      { text: "abcdefghij", continuation: false, droppedSpace: false },
+      { text: "klmnop", continuation: true, droppedSpace: false },
+    ]);
+  });
+
+  it("keeps the dropped-space flag on a tail completed by a later chunk", () => {
+    const buf = new LineBuffer(10);
+    expect(buf.push("aaaaaaa bbb")).toEqual([{ text: "aaaaaaa", continuation: false, droppedSpace: false }]);
+    expect(buf.tail).toEqual({ text: "bbb", continuation: true, droppedSpace: true });
+    expect(buf.push("b\n")).toEqual([{ text: "bbbb", continuation: true, droppedSpace: true }]);
+    expect(buf.push("next\n")).toEqual([{ text: "next", continuation: false, droppedSpace: false }]);
+  });
+
+  it("keeps the dropped-space flag when the wrapped remainder is flushed", () => {
+    const buf = new LineBuffer(10);
+    buf.push("aaaaaaa bbb");
+    expect(buf.flush()).toEqual([{ text: "bbb", continuation: true, droppedSpace: true }]);
+    buf.push("x");
+    expect(buf.flush()).toEqual([{ text: "x", continuation: false, droppedSpace: false }]);
   });
 
   it("applies a resize to the following lines only", () => {
@@ -107,5 +140,27 @@ describe("LineBuffer", () => {
     out.push(...texts(buf.flush()));
     // The lines are glued back with the space that the wrapping consumed.
     expect(out.join(" ").replace(/\s+/g, " ").trim()).toBe(source.replace(/\s+/g, " ").trim());
+  });
+});
+
+describe("plainOf", () => {
+  it("strips styling", () => {
+    expect(plainOf(`${chalk.hex("#ff0000")("│")} ${chalk.bold("hello")}`)).toBe("│ hello");
+  });
+});
+
+describe("sliceColumns", () => {
+  it("cuts by display width", () => {
+    expect(sliceColumns("abcdef", 1, 4)).toBe("bcd");
+  });
+
+  it("never returns half a wide character", () => {
+    expect(sliceColumns("a界b", 1, 3)).toBe("界");
+    expect(sliceColumns("a界b", 2, 3)).toBe("");
+  });
+
+  it("returns an empty string for an empty or reversed range", () => {
+    expect(sliceColumns("abc", 2, 2)).toBe("");
+    expect(sliceColumns("abc", 3, 1)).toBe("");
   });
 });

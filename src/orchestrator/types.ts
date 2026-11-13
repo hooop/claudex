@@ -154,9 +154,13 @@ export type Signal = "continue" | "consensus" | "no-topic" | "wait-human" | null
  * never have to agree by coincidence. It carries which signal rather than just
  * whether there was one, because the reader is told in words what the agent
  * decided — the marker itself never reaches the transcript.
+ *
+ * `counted` says whether that signal still counts toward consensus, or was set
+ * aside because an intervention opened a newer epoch while the turn ran. It is
+ * `true` when there is no signal to set aside (synthesis, implementation).
  */
 export type EntryOutcome =
-  | { status: "ok"; signal: Signal; closesDebate?: boolean }
+  | { status: "ok"; signal: Signal; counted: boolean; closesDebate?: boolean }
   | { status: "error"; message: string }
   | { status: "cancelled" };
 

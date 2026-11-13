@@ -3,6 +3,7 @@ import { createElement } from "react";
 import { describe, expect, it } from "vitest";
 import { displayWidth } from "../../stream/lineBuffer.js";
 import { AGENT_STYLE } from "../../theme.js";
+import { PULSE_WIDTH } from "../ThinkingPulse.js";
 import {
   describeActivity,
   fitActivityDescription,
@@ -140,5 +141,18 @@ describe("StatusBar note activity", () => {
     expect(
       describeActivity({ kind: "note", status: "running", label: "Reading \u001b[31mfiles" }),
     ).not.toContain("\u001b");
+  });
+});
+
+describe("StatusBar room for the pulse", () => {
+  it("the activity text leaves room for the pulse", () => {
+    const activity = {
+      kind: "command" as const,
+      status: "running" as const,
+      label: "x".repeat(300),
+    };
+    const plain = fitActivityDescription("debate", "claude", activity, 80);
+    const withPulse = fitActivityDescription("debate", "claude", activity, 80, PULSE_WIDTH + 1);
+    expect(plain.length - withPulse.length).toBe(PULSE_WIDTH + 1);
   });
 });
