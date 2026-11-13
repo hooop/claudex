@@ -87,10 +87,16 @@ describe("CONSENSUS_INSTRUCTIONS", () => {
     return (end === -1 ? rest : rest.slice(0, end)).trim();
   }
 
-  it("is organised in labelled sections", () => {
-    for (const label of ["Role", "Project memory", "Response style", "Evidence", "Working notes", "End marker"]) {
-      expect(prompt).toContain(`${label}:`);
+  it("is organised in labelled sections, in order", () => {
+    const labels = ["Role", "Project memory", "Response style", "Evidence", "Working notes", "End marker"];
+    expect(prompt.startsWith("Role:")).toBe(true);
+    const positions = labels.map((label) =>
+      label === "Role" ? 0 : prompt.indexOf(`\n\n${label}:`),
+    );
+    for (const [i, position] of positions.entries()) {
+      expect(position, `section not found at a paragraph start: ${labels[i]}`).toBeGreaterThan(-1);
     }
+    expect(positions).toEqual([...positions].sort((a, b) => a - b));
   });
 
   it("asks for a short answer first, as a target", () => {
