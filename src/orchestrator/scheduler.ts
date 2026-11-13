@@ -1480,7 +1480,9 @@ export class Scheduler {
       }
 
       if (result.kind === "success") {
-        const summary = result.text.trim();
+        // The rules now sit in the system prompt, so a closing end marker is
+        // likely; it must not leak into /handoff or /implement.
+        const summary = extractSignal(result.text).cleanText.trim();
         entry.text = summary;
         this.callbacks.onEntryUpdate(entry);
         this.callbacks.onEntryCompleted(entry.id, { status: "ok", signal: null, counted: true });

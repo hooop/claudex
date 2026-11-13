@@ -616,6 +616,23 @@ describe("Scheduler", () => {
       await bounded.shutdown();
     });
 
+    it("strips a trailing end marker from the consensus summary", async () => {
+      scheduler.start("Test topic");
+      await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
+      agents.claude.complete("Claude agrees\n\n<<CONSENSUS>>");
+      await vi.waitFor(() => expect(agents.codex.isPending()).toBe(true));
+      agents.codex.complete("Codex agrees\n\n<<CONSENSUS>>");
+      await vi.waitFor(() => expect(agents.codex.getSendCount()).toBe(2));
+
+      agents.codex.complete("Summary of decisions.\n\n<<CONSENSUS>>");
+
+      await vi.waitFor(() => expect(callbacks.onSynthesisReady).toHaveBeenCalledOnce());
+      expect(callbacks.onSynthesisReady).toHaveBeenCalledWith("Summary of decisions.");
+      expect(scheduler.implementationSummary).toBe("Summary of decisions.");
+      const lastUpdate = vi.mocked(callbacks.onEntryUpdate).mock.calls.at(-1)?.[0];
+      expect(lastUpdate?.text).toBe("Summary of decisions.");
+    });
+
     it("should trigger synthesis after consensus", async () => {
       scheduler.start("Test topic");
 
