@@ -202,7 +202,7 @@ Prompt quality cannot be unit-tested; the tests pin structure and delivery.
   end-marker examples still parsed by `extractSignal`.
 - Qualification prompt: the plain-question case and its `NO_TOPIC` exit.
 - Claude adapter (mocked `query`): debate and implementation turns pass
-  `systemPrompt` with the rules in `append` and `snapshot: true`.
+  `systemPrompt: { type: "custom", prompt: rules, snapshot: true }`.
 - Codex adapter (mocked spawn): `developerInstructions` on start and resume.
 - Scheduler: no delivery carries the rules.
 - Footer: `/help` only during the debate; full line when one context is
