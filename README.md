@@ -5,8 +5,8 @@
 **Claude Code and Codex debate your technical question until they agree. You watch, step in, and decide.**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/diagram/claudex-exploded-dark.png">
-  <img src="docs/diagram/claudex-exploded.png" alt="Exploded view of Claudex: your project at the base stays read-only, Claude Code and Codex sit side by side above it, Claudex relays their answers until both agree, and the terminal on top is where you follow and step in" width="760">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/diagram/claudex-diagram-dark.png">
+  <img src="docs/diagram/claudex-diagram-light.png" alt="Exploded view of Claudex: your project at the base stays read-only, Claude Code and Codex sit side by side above it, Claudex relays their answers until both agree, and the terminal on top is where you follow and step in" width="760">
 </picture>
 
 ## Why
@@ -41,30 +41,55 @@ The full, measured details are in [docs/security.md](docs/security.md).
 
 ## Quick start
 
-You need Node.js 22 or newer, a Claude Code account and a ChatGPT plan that includes Codex, both signed in. No API key is needed: Claudex reuses those sessions. If `ANTHROPIC_API_KEY` is set, Claude Code may bill per token instead of using your subscription, so `echo $ANTHROPIC_API_KEY` should print nothing.
+You need Node.js 22 or newer, a Claude Code account and a ChatGPT plan that includes Codex.
+
+> [!NOTE]
+> No API key is needed: Claudex reuses your signed-in Claude Code and Codex sessions.
+
+> [!IMPORTANT]
+> If `ANTHROPIC_API_KEY` is set, Claude Code may bill per token instead of using your subscription. `echo $ANTHROPIC_API_KEY` should print nothing.
+
+**1. Check Node.js** (v22 or newer)
 
 ```bash
-# 1. Check Node.js (v22 or newer)
 node --version
+```
 
-# 2. Claude Code: sign in on first launch, then /quit
-npm install -g @anthropic-ai/claude-code && claude
+**2. Install Claude Code**, sign in on first launch, then `/quit`
 
-# 3. Codex: sign in on first launch, then quit
-npm install -g @openai/codex && codex
+```bash
+npm install -g @anthropic-ai/claude-code
+claude
+```
 
-# 4. Claudex, from source
+**3. Install Codex**, sign in on first launch, then quit
+
+```bash
+npm install -g @openai/codex
+codex
+```
+
+**4. Install Claudex** from source
+
+```bash
 git clone https://github.com/hooop/claudex.git
 cd claudex
 npm install
 npm link
 ```
 
-`npm link` makes the `claudex` command available everywhere; do not move the folder afterwards. Then, from the project you want to discuss:
+> [!TIP]
+> `npm link` makes the `claudex` command available everywhere. Do not move the folder afterwards.
+
+**5. Run it** from the project you want to discuss
 
 ```bash
 claudex
-# or start straight on a topic
+```
+
+Or start straight on a topic:
+
+```bash
 claudex "What architecture should the video timeline use?"
 ```
 
