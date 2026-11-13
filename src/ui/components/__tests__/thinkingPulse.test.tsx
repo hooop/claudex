@@ -42,8 +42,10 @@ describe("ThinkingPulse", () => {
   describe("timer", () => {
     afterEach(() => vi.useRealTimers());
 
-    it("stops its timer on unmount", () => {
+    it("animates while shown and stops its timer on unmount", async () => {
       vi.useFakeTimers();
+      const setSpy = vi.spyOn(globalThis, "setInterval");
+      const clearSpy = vi.spyOn(globalThis, "clearInterval");
       const writes: string[] = [];
       const stdout = Object.assign(new EventEmitter(), {
         isTTY: true,
@@ -56,9 +58,22 @@ describe("ThinkingPulse", () => {
         patchConsole: false,
         interactive: true,
       });
-      const clear = vi.spyOn(globalThis, "clearInterval");
+      const frame = () => writes.join("").replace(ANSI_SEQUENCE, "");
+
+      // The pulse's own interval (90 ms frames), among any Ink may have set.
+      const pulseTimers = setSpy.mock.results
+        .filter((_, index) => setSpy.mock.calls[index]?.[1] === 90)
+        .map((result) => result.value as unknown);
+      expect(pulseTimers).toHaveLength(1);
+
+      const first = frame();
+      await vi.advanceTimersByTimeAsync(500);
+      const later = frame();
+      expect(later).not.toBe(first);
+
+      clearSpy.mockClear();
       app.unmount();
-      expect(clear).toHaveBeenCalledOnce();
+      expect(clearSpy.mock.calls.map(([id]) => id as unknown)).toContain(pulseTimers[0]);
       const before = writes.length;
       vi.advanceTimersByTime(1000);
       expect(writes).toHaveLength(before);

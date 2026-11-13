@@ -22,7 +22,9 @@ export function clipboardCommands(
   if (platform === "linux") {
     const commands: [string, string[]][] = [];
     if (env.WAYLAND_DISPLAY) commands.push(["wl-copy", []]);
-    commands.push(["xclip", ["-selection", "clipboard"]], ["xsel", ["--clipboard", "--input"]]);
+    // Without a display (an SSH session) the X11 tools would copy to nothing
+    // the user can paste from, so the copy falls through to OSC 52.
+    if (env.DISPLAY) commands.push(["xclip", ["-selection", "clipboard"]], ["xsel", ["--clipboard", "--input"]]);
     return commands;
   }
   return [];

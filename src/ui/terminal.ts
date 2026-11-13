@@ -34,12 +34,22 @@ type TerminalOutput = { write(data: string): unknown; isTTY?: boolean };
 const mouseReporting = new WeakMap<TerminalOutput, boolean>();
 
 /**
+ * The rollback switch for the mouse: false leaves the terminal's own selection
+ * and scrollback untouched, and the wheel and drag code then receives nothing.
+ */
+export const MOUSE_REPORTING_ENABLED = true;
+
+/**
  * Turns SGR mouse reporting (press, drag, release, wheel) on or off. Idempotent.
  * Written straight to the terminal rather than through Ink: a mode switch
  * draws nothing, so it cannot disturb Ink's frame.
  */
-export function setMouseReporting(stdout: TerminalOutput, on: boolean): void {
-  if (!stdout.isTTY) return;
+export function setMouseReporting(
+  stdout: TerminalOutput,
+  on: boolean,
+  enabled: boolean = MOUSE_REPORTING_ENABLED,
+): void {
+  if (!enabled || !stdout.isTTY) return;
   if ((mouseReporting.get(stdout) ?? false) === on) return;
   mouseReporting.set(stdout, on);
   stdout.write(on ? MOUSE_ON : MOUSE_OFF);

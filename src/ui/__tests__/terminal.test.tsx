@@ -5,7 +5,14 @@ import { Box, render, Text, useStdout } from "ink";
 import { useEffect, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { RENDER_OPTIONS } from "../../renderOptions.js";
-import { installExitGuards, installResizeClear, MOUSE_OFF, MOUSE_ON, setMouseReporting } from "../terminal.js";
+import {
+  installExitGuards,
+  installResizeClear,
+  MOUSE_OFF,
+  MOUSE_ON,
+  MOUSE_REPORTING_ENABLED,
+  setMouseReporting,
+} from "../terminal.js";
 
 // Erase the whole visible screen. Whatever the terminal did to the old frame on
 // resize (reflow, anchoring to the bottom), nothing of it survives this.
@@ -186,6 +193,14 @@ describe("setMouseReporting", () => {
     setMouseReporting(stdout, false);
     setMouseReporting(stdout, true);
     expect(writes).toEqual([MOUSE_ON, MOUSE_OFF, MOUSE_ON]);
+  });
+
+  it("writes nothing when mouse reporting is disabled", () => {
+    expect(MOUSE_REPORTING_ENABLED).toBe(true);
+    const { stdout, writes } = fakeStdout();
+    setMouseReporting(stdout, true, false);
+    setMouseReporting(stdout, false, false);
+    expect(writes).toEqual([]);
   });
 
   it("writes nothing to an output that is not a terminal", () => {

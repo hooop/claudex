@@ -65,15 +65,21 @@ describe("clipboardCommands", () => {
   });
 
   it("puts wl-copy first on Wayland only", () => {
-    expect(clipboardCommands("linux", { WAYLAND_DISPLAY: "wayland-0" })).toEqual([
+    expect(clipboardCommands("linux", { WAYLAND_DISPLAY: "wayland-0", DISPLAY: ":0" })).toEqual([
       ["wl-copy", []],
       ["xclip", ["-selection", "clipboard"]],
       ["xsel", ["--clipboard", "--input"]],
     ]);
-    expect(clipboardCommands("linux", {})).toEqual([
+    expect(clipboardCommands("linux", { DISPLAY: ":0" })).toEqual([
       ["xclip", ["-selection", "clipboard"]],
       ["xsel", ["--clipboard", "--input"]],
     ]);
+  });
+
+  it("uses the X11 commands only with an X display", () => {
+    expect(clipboardCommands("linux", { WAYLAND_DISPLAY: "wayland-0" })).toEqual([["wl-copy", []]]);
+    // An SSH session has neither: the copy goes straight to OSC 52.
+    expect(clipboardCommands("linux", {})).toEqual([]);
   });
 
   it("has no command elsewhere", () => {
@@ -92,7 +98,7 @@ describe("copyToClipboard", () => {
   });
 
   it("falls through ENOENT to the next candidate", async () => {
-    const h = harness({ "wl-copy": "enoent", xclip: "ok" }, "linux", { WAYLAND_DISPLAY: "w" });
+    const h = harness({ "wl-copy": "enoent", xclip: "ok" }, "linux", { WAYLAND_DISPLAY: "w", DISPLAY: ":0" });
     await expect(copyToClipboard("abc", h.deps)).resolves.toEqual({ kind: "copied" });
     expect(h.calls.map((c) => c.command)).toEqual(["wl-copy", "xclip"]);
     expect(h.calls[1]?.args).toEqual(["-selection", "clipboard"]);
@@ -100,9 +106,16 @@ describe("copyToClipboard", () => {
   });
 
   it("sends OSC 52 when every command is missing", async () => {
-    const h = harness({}, "linux");
+    const h = harness({}, "linux", { DISPLAY: ":0" });
     await expect(copyToClipboard("héllo", h.deps)).resolves.toEqual({ kind: "sent-to-terminal" });
     expect(h.terminal).toEqual([`\x1b]52;c;${Buffer.from("héllo", "utf8").toString("base64")}\x07`]);
+  });
+
+  it("sends OSC 52 over SSH on Linux without spawning", async () => {
+    const h = harness({ xclip: "ok", xsel: "ok" }, "linux", {});
+    await expect(copyToClipboard("hi", h.deps)).resolves.toEqual({ kind: "sent-to-terminal" });
+    expect(h.calls).toEqual([]);
+    expect(h.terminal).toEqual(["\x1b]52;c;aGk=\x07"]);
   });
 
   it("sends OSC 52 on win32 without spawning", async () => {
