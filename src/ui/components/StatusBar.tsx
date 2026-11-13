@@ -52,8 +52,10 @@ export function fitActivityDescription(
   agent: AgentId,
   activity: AgentActivity,
   width: number,
+  trailing = 0,
 ): string {
   const fixedWidth =
+    trailing +
     (phase === "debate" ? 0 : displayWidth(`${PHASE_LABEL[phase]}  ·  `)) +
     displayWidth(
       activity.status === "running" ? "x " : activity.status === "success" ? "[ok] " : "[x] ",
@@ -74,6 +76,8 @@ export function StatusBar(props: {
   width: number;
   suspensionReason?: SuspensionReason | null;
   lifecycleState?: "idle" | "closing" | "shutdown-failed" | "archive-failed";
+  /** Columns kept free at the right edge, for the thinking pulse and its gap. */
+  trailing?: number;
 }) {
   const {
     phase,
@@ -83,10 +87,11 @@ export function StatusBar(props: {
     width,
     suspensionReason = null,
     lifecycleState = "idle",
+    trailing = 0,
   } = props;
   const currentActivity = activity ?? { kind: "waiting", status: "running" as const };
   const fittedActivity = thinkingAgent
-    ? fitActivityDescription(phase, thinkingAgent, currentActivity, width)
+    ? fitActivityDescription(phase, thinkingAgent, currentActivity, width, trailing)
     : "";
   const idleState =
     lifecycleState !== "idle"
@@ -97,7 +102,7 @@ export function StatusBar(props: {
   const showPhase = phase !== "debate";
 
   return (
-    <Box width={statusBarWidth(width)}>
+    <Box width={Math.max(1, statusBarWidth(width) - trailing)}>
       <Text wrap="truncate-end">
         {thinkingAgent ? (
           <>

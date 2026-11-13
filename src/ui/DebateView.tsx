@@ -31,7 +31,8 @@ import { INPUT_BAR_MIN_ROWS, inputBarWidth, InputBar } from "./components/InputB
 import { ModelFooter } from "./components/ModelFooter.js";
 import { ModelPicker } from "./components/ModelPicker.js";
 import { PermissionModal } from "./components/PermissionModal.js";
-import { StatusBar } from "./components/StatusBar.js";
+import { StatusBar, statusBarWidth } from "./components/StatusBar.js";
+import { PULSE_WIDTH, ThinkingPulse, pulseShown } from "./components/ThinkingPulse.js";
 import { DEBATE_HEADER_ROWS, DebateHeader } from "./components/DebateHeader.js";
 import {
   INITIAL_STATUS,
@@ -40,7 +41,7 @@ import {
   type DebateStatus,
   type StatusEvent,
 } from "./debateStatus.js";
-import { BRAND_COLOR, contentWidthFor } from "./theme.js";
+import { BRAND_COLOR, GLYPH, contentWidthFor } from "./theme.js";
 import { line, type TranscriptLine } from "./stream/streamController.js";
 import { TranscriptStream, type TailView } from "./stream/transcriptStream.js";
 import { asciiSymbolsForDisplay } from "./stream/asciiSymbols.js";
@@ -545,7 +546,7 @@ export function DebateView(props: {
   const maxInputRows = inputBarMaxRows(footerSurfaces);
   const rows = footerRows(footerSurfaces);
   const preferredFooterHeight = Math.max(1, terminalRows - 1);
-  const transcriptRows = Math.max(0, preferredFooterHeight - 1 - DEBATE_HEADER_ROWS - rows);
+  const transcriptRows = Math.max(0, preferredFooterHeight - DEBATE_HEADER_ROWS - 1 - rows);
   transcriptRowsRef.current = transcriptRows;
   const maximumScrollOffset = Math.max(0, transcriptLines.length - transcriptRows);
   const visibleScrollOffset = Math.min(scrollOffset, maximumScrollOffset);
@@ -580,6 +581,9 @@ export function DebateView(props: {
         )}
 
         <Box flexGrow={1} />
+
+        {/* The one row of the frame budget that the header animation used to pay for. */}
+        <Text dimColor>{GLYPH.rule.repeat(columns)}</Text>
 
         {!paletteVisible && visibleBanner && (
           <Box width={columns}>
@@ -625,15 +629,23 @@ export function DebateView(props: {
               />
             )}
             {!paletteVisible && (
-              <StatusBar
-                phase={phase}
-                thinkingAgent={thinkingAgent}
-                activity={activity}
-                paused={paused}
-                suspensionReason={suspensionReason}
-                lifecycleState={coordinatorState.kind}
-                width={columns}
-              />
+              <Box width={statusBarWidth(columns)}>
+                <StatusBar
+                  phase={phase}
+                  thinkingAgent={thinkingAgent}
+                  activity={activity}
+                  paused={paused}
+                  suspensionReason={suspensionReason}
+                  lifecycleState={coordinatorState.kind}
+                  width={columns}
+                  trailing={pulseShown(thinkingAgent, columns) ? PULSE_WIDTH + 1 : 0}
+                />
+                {pulseShown(thinkingAgent, columns) && (
+                  <Box marginLeft={1}>
+                    <ThinkingPulse agent={thinkingAgent} columns={columns} />
+                  </Box>
+                )}
+              </Box>
             )}
             <InputBar
               disabled={false} // Input is now always active — interventions are queued

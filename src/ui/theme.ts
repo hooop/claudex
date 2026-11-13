@@ -53,6 +53,7 @@ export const GLYPH = {
   mark: "◆",
   rail: "│",
   ruleHeavy: "━",
+  rule: "─",
   ok: "✓",
   next: "→",
   ask: "?",

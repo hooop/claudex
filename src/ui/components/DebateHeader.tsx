@@ -37,11 +37,7 @@ export function DebateHeader(props: {
 
   const flatTopic = topic.trim().replace(/\s+/gu, " ");
   const topicText = truncateEnd(flatTopic, Math.max(1, width - TOPIC_LABEL.length), TOPIC_MORE);
-  // welcomeMemoryLine carries its own "Memory:" prefix, which the label replaces.
-  const memoryText = welcomeMemoryLine(memory, Math.max(1, width - MEMORY_LABEL.length)).replace(
-    /^Memory: /u,
-    "",
-  );
+  const memoryText = memoryRow(memory, Math.max(1, width - MEMORY_LABEL.length));
 
   return (
     <Box flexDirection="column" width={columns}>
@@ -72,4 +68,18 @@ export function DebateHeader(props: {
       <Text dimColor>{GLYPH.ruleHeavy.repeat(width)}</Text>
     </Box>
   );
+}
+
+const MEMORY_PREFIX = "Memory: ";
+
+/**
+ * welcomeMemoryLine counts its own "Memory: " prefix in the width and is capped
+ * at the header maximum. Ask for the prefix on top, strip it, and give the
+ * capped difference back to the gap so the row still ends at `width`.
+ */
+function memoryRow(memory: Pick<ProjectStatus, "decisionsCount" | "lastSession">, width: number): string {
+  const line = welcomeMemoryLine(memory, width + MEMORY_PREFIX.length).replace(MEMORY_PREFIX, "");
+  const missing = width - displayWidth(line);
+  if (missing <= 0) return line;
+  return line.replace(/ +(?=last session: |no previous session$)/u, (gap) => gap + " ".repeat(missing));
 }

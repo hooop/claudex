@@ -124,8 +124,8 @@ async function press(terminal: ReturnType<typeof fakeTerminal>, input: string) {
   await tick(20);
 }
 
-function mount(options: { fromFullScreen?: boolean; topic?: string } = {}) {
-  const terminal = fakeTerminal();
+function mount(options: { fromFullScreen?: boolean; topic?: string; rows?: number } = {}) {
+  const terminal = fakeTerminal(100, options.rows);
   const agents = { claude: new FakeAgent("claude"), codex: new FakeAgent("codex") };
   const session = new DebateSession(agents, {
     cwd: "/tmp",
@@ -493,7 +493,13 @@ describe("DebateView — full-screen viewport", () => {
 
     const output = t.chunks.join("");
     expect(output).toContain("CLAUDEX");
-    expect(output).not.toMatch(/[\u2591-\u2593\u2588]/u);
+    // The status row below the transcript animates while an agent thinks; the
+    // header (its four rows, from the title down) must stay still.
+    const lines = output.split("\n");
+    for (const [index, line] of lines.entries()) {
+      if (!line.includes("CLAUDEX")) continue;
+      expect(lines.slice(index, index + 4).join("\n")).not.toMatch(/[\u2591-\u2593\u2588]/u);
+    }
     t.app.unmount();
   });
 
@@ -569,4 +575,24 @@ describe("bootstrap helpers", () => {
     expect(transcriptWindow(lines, 3, 2)).toEqual(["line 5", "line 6", "line 7"]);
     expect(transcriptWindow(lines, 3, 99)).toEqual(["line 0", "line 1", "line 2"]);
   });
+
+  it.each([24, 40])(
+    "fills exactly the frame height with header, transcript, rule and footer at %i rows",
+    async (rows) => {
+      const t = mount({ rows });
+      await vi.waitFor(() => expect(t.agents.claude.pending).toBe(true));
+      t.agents.claude.emit(Array.from({ length: 80 }, (_, i) => `filler ${i}\n`).join(""));
+      await tick();
+
+      const full = t.chunks.filter((chunk) => chunk.includes("CLAUDEX ")).at(-1)!;
+      const frame = full.replace(ANSI_SEQUENCE, "").replace(/\n$/, "").split("\n");
+      expect(frame).toHaveLength(rows - 1);
+      expect(frame[0]).toMatch(/^CLAUDEX /);
+      expect(frame.filter((line) => /^─+$/.test(line))).toHaveLength(1);
+      expect(frame[3]).toMatch(/^━+$/);
+      expect(frame.findIndex((line) => /^─+$/.test(line))).toBeGreaterThan(3);
+
+      t.app.unmount();
+    },
+  );
 });

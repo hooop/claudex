@@ -68,6 +68,10 @@ describe("DebateHeader", () => {
     expect(lines[3]).toBe("━".repeat(80));
   });
 
+  it.each([60, 80, 96, 120])("the memory row reaches the content width at %i columns", (columns) => {
+    expect(displayWidth(rows(columns)[2]!)).toBe(Math.min(columns, HEADER_MAX_WIDTH));
+  });
+
   it("caps the width at the header maximum", () => {
     expect(rows(200)[3]).toBe("━".repeat(HEADER_MAX_WIDTH));
   });
