@@ -554,6 +554,28 @@ describe("TranscriptStream — multi-line input", () => {
     expect(rows.every((r) => !r.includes("\n"))).toBe(true);
   });
 
+  it("strips terminal escape sequences out of an error message", () => {
+    const rows: string[] = [];
+    const stream = new TranscriptStream({
+      write: (lines) => rows.push(...lines.map((l) => l.styled)),
+      width: () => 60,
+      onTail: () => {},
+      intervalMs: 0,
+    });
+    const e = entry({ from: "claude", kind: "message" });
+    stream.entryStarted(e);
+    const before = rows.length;
+    stream.entryCompleted(e.id, {
+      status: "error",
+      message: "API said \u001b[2Jno\u001b]52;c;aGVsbG8=\u0007 way\u0007\r",
+    });
+    const written = rows.slice(before);
+    const plain = written.map((r) => r.replace(/\u001b\[[0-9;]*m/g, ""));
+    expect(plain).toEqual([`${ERROR_STYLE.badge} Error: API said no way`, ""]);
+    // Only Claudex's own colour codes reach the terminal.
+    expect(written.join("").replace(/\u001b\[[0-9;]*m/g, "")).not.toMatch(/[\u0000-\u0009\u000b-\u001f\u007f]/u);
+  });
+
   it("splits raw lines that contain a line break, CRLF included", () => {
     const rows: string[] = [];
     const stream = new TranscriptStream({
@@ -579,7 +601,7 @@ describe("TranscriptStream — turn blocks", () => {
     return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
   };
 
-  function withRound(round: (e: TranscriptEntry) => number | null, width = 60) {
+  function withRound(round: (e: TranscriptEntry) => number | "implementation" | null, width = 60) {
     const writes: string[] = [];
     const stream = new TranscriptStream({
       write: (lines) => writes.push(block(lines)),
@@ -608,6 +630,17 @@ describe("TranscriptStream — turn blocks", () => {
     stream.entryStarted(e);
     const header = plainRows()[0]!;
     expect(header.endsWith(`  ${clock(e)}`)).toBe(true);
+    expect(header).not.toContain("Round");
+    expect(displayWidth(header)).toBe(60);
+  });
+
+  it("shows Implementation instead of a round number in the implementation phase", () => {
+    const { stream, plainRows } = withRound(() => "implementation");
+    const e = entry({ from: "codex", kind: "message" });
+    stream.entryStarted(e);
+    const header = plainRows()[0]!;
+    expect(header.startsWith("◆ CODEX")).toBe(true);
+    expect(header.endsWith(`Implementation · ${clock(e)}`)).toBe(true);
     expect(header).not.toContain("Round");
     expect(displayWidth(header)).toBe(60);
   });
@@ -686,7 +719,9 @@ describe("TranscriptStream — turn blocks", () => {
       stream.entryStarted(e);
       stream.entryCompleted(e.id, ok("continue"));
       expect(output()).toContain(`\u001b[38;5;159m→\u001b[39m`);
-      expect(output()).toContain(chalk.dim("Continues · over to Claude"));
+      expect(output()).toContain(chalk.dim(chalk.ansi256(159)("Continues · over to Claude")));
+      // The glyph itself is not dimmed.
+      expect(output()).not.toContain(chalk.dim(chalk.ansi256(159)("→")));
     });
   });
 
@@ -744,6 +779,26 @@ describe("TranscriptStream — turn blocks", () => {
       stream.entryCompleted(e.id, ok("continue"));
       const rows = plain().split("\n");
       expect(rows[rows.indexOf("│ → Continues · over to Codex") - 2]).toBe("◆ CLAUDE (continued)");
+    });
+
+    it("writes it before an error or a cancellation that ends an interrupted turn", () => {
+      for (const outcome of [
+        { status: "error", message: "network down" },
+        { status: "cancelled" },
+      ] as const) {
+        const { stream, plain } = harness();
+        const e = entry({ from: "codex", kind: "message" });
+        stream.entryStarted(e);
+        stream.chunk(e.id, "First part.\n");
+        stream.entry(entry({ from: "human", kind: "intervention", text: "stop", to: "codex" }));
+        stream.entryCompleted(e.id, outcome);
+
+        const rows = plain().split("\n");
+        const last = rows.findIndex((r) => r === "! Error: network down" || r === "· Cancelled");
+        expect(last).toBeGreaterThan(0);
+        expect(rows[last - 1]).toBe("◆ CODEX (continued)");
+        expect(rows.findIndex((r) => r.startsWith("◆ YOU"))).toBeLessThan(last - 1);
+      }
     });
 
     it("does not write one when nothing interrupted the turn", () => {

@@ -72,9 +72,13 @@ export function stageOf(status: DebateStatus): Stage {
   return status.consensus ? "consensus" : "debate";
 }
 
-/** Round label for a turn starting now, or null outside the debate phase. */
-export function roundForStart(status: DebateStatus, agent: AgentId): number | null {
-  return status.phase === "debate" ? status.answered[agent] + 1 : null;
+/** What a turn's header shows instead of a clock alone. */
+export type TurnRound = number | "implementation";
+
+/** Round of a turn starting now: its number while debating, the phase while implementing, else null. */
+export function roundForStart(status: DebateStatus, agent: AgentId): TurnRound | null {
+  if (status.phase === "debate") return status.answered[agent] + 1;
+  return status.phase === "implementation" ? "implementation" : null;
 }
 
 const STANCE_TEXT: Record<AgentStance, string> = {

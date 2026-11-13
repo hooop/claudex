@@ -133,8 +133,8 @@ describe("roundForStart", () => {
     expect(roundForStart(s, "codex")).toBe(2);
   });
 
-  it("implementation turns have no round", () => {
-    expect(roundForStart(run([{ kind: "phase", phase: "implementation" }]), "claude")).toBeNull();
+  it("implementation turns are labelled as such, ended ones have no round", () => {
+    expect(roundForStart(run([{ kind: "phase", phase: "implementation" }]), "claude")).toBe("implementation");
     expect(roundForStart(run([{ kind: "phase", phase: "ended" }]), "codex")).toBeNull();
   });
 });

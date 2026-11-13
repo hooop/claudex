@@ -28,6 +28,7 @@
 
 import type { AgentId, TranscriptEntry } from "../../types.js";
 import type { EntryOutcome, Signal } from "../../orchestrator/types.js";
+import type { TurnRound } from "../debateStatus.js";
 import {
   AGENT_STYLE,
   ERROR_STYLE,
@@ -41,7 +42,7 @@ import chalk from "chalk";
 import { LineBuffer, displayWidth, truncateEnd, type PhysicalLine } from "./lineBuffer.js";
 import { MarkdownStreamer } from "./markdownStream.js";
 import { MarkerFilter } from "./markerFilter.js";
-import { AnsiSanitizer } from "./sanitize.js";
+import { AnsiSanitizer, sanitizeForDisplay } from "./sanitize.js";
 import { AsciiSymbolSanitizer, asciiSymbolsForDisplay } from "./asciiSymbols.js";
 import { StreamController, line, type StreamWriter, type TranscriptLine } from "./streamController.js";
 
@@ -121,7 +122,7 @@ export interface TranscriptStreamOptions {
   /** Drop every line from `toLength` on. */
   rewind?: (toLength: number) => void;
   /** Round number of an agent's turn, asked once when its header is written. */
-  round?: (entry: TranscriptEntry) => number | null;
+  round?: (entry: TranscriptEntry) => TurnRound | null;
 }
 
 export function entryStyle(entry: TranscriptEntry): EntryStyle {
@@ -384,19 +385,21 @@ export class TranscriptStream {
     if (outcome.status === "ok" && (active.from === "claude" || active.from === "codex")) {
       turn.push(...this.verdictLines(outcome, active.from));
     }
-    // An error or a cancellation speaks for itself, so it does not reopen the block.
-    const lines = this.resumed(active, turn);
     if (outcome.status === "error") {
+      // The message comes from an adapter or an API: it must not drive the terminal.
       // One TranscriptLine per row: a message with line breaks must not count as a
       // single line, or length(), rewind and the viewport height would be wrong.
       const paint = chalk.hex(ERROR_STYLE.color);
-      const rows = splitRows(asciiSymbolsForDisplay(outcome.message));
+      const rows = splitRows(asciiSymbolsForDisplay(sanitizeForDisplay(outcome.message)));
       rows.forEach((row, index) => {
-        lines.push(line(paint(index === 0 ? `${ERROR_STYLE.badge} Error: ${row}` : row)));
+        turn.push(line(paint(index === 0 ? `${ERROR_STYLE.badge} Error: ${row}` : row)));
       });
     } else if (outcome.status === "cancelled") {
-      lines.push(line(chalk.dim(`${GLYPH.dot} Cancelled`)));
+      turn.push(line(chalk.dim(`${GLYPH.dot} Cancelled`)));
     }
+    // After an interruption the error or cancellation also gets the continued
+    // header, so it is never read as the interruption's own.
+    const lines = this.resumed(active, turn);
     lines.push(line(""));
 
     this.active = null;
@@ -461,7 +464,7 @@ export class TranscriptStream {
     // sentence of it, and must not read as one.
     return [
       line(terminalColor(color)(GLYPH.rail)),
-      line(`${railPrefix(color)}${terminalColor(color)(verdict.glyph)} ${chalk.dim(verdict.words)}`),
+      line(`${railPrefix(color)}${terminalColor(color)(verdict.glyph)} ${chalk.dim(terminalColor(color)(verdict.words))}`),
     ];
   }
 
@@ -479,12 +482,13 @@ export class TranscriptStream {
       return [line(paint(GLYPH.ruleHeavy.repeat(width))), line(paint.bold(style.badge)), line("")];
     }
 
-    const target = entry.to ? (entry.to === "both" ? " → both" : ` → ${entry.to}`) : "";
+    const target = entry.to ? ` ${GLYPH.next} ${entry.to}` : "";
     const left = `${GLYPH.mark} ${authorName(style)}${target}`;
     const isAgent = entry.from === "claude" || entry.from === "codex";
     const round = isAgent ? (this.options.round?.(entry) ?? null) : null;
     const clock = clockOf(entry.timestamp);
-    const right = round === null ? clock : `Round ${round} ${GLYPH.dot} ${clock}`;
+    const label = round === "implementation" ? "Implementation" : round === null ? null : `Round ${round}`;
+    const right = label === null ? clock : `${label} ${GLYPH.dot} ${clock}`;
 
     // Right-aligned to the content width, rail column included.
     const gap = " ".repeat(Math.max(1, width - displayWidth(left) - displayWidth(right)));
