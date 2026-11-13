@@ -12,14 +12,21 @@ export const MODEL_FOOTER_ROWS = 1;
  * there would retract the pressure warning exactly when the operator is acting
  * on it.
  */
-export function contextRemainingPercent(
+export function contextFreePercent(
   usage: AgentContextUsage | null | undefined,
-): string | null {
+): number | null {
   if (!usage || usage.contextWindow <= 0) return null;
   const percent = Math.round(
     ((usage.contextWindow - usage.usedTokens) / usage.contextWindow) * 100,
   );
-  return `${Math.max(0, Math.min(100, percent))}%`;
+  return Math.max(0, Math.min(100, percent));
+}
+
+export function contextRemainingPercent(
+  usage: AgentContextUsage | null | undefined,
+): string | null {
+  const free = contextFreePercent(usage);
+  return free === null ? null : `${free}%`;
 }
 
 /** Below this share of free context the debate footer brings the model line back. */
@@ -27,8 +34,8 @@ export const LOW_CONTEXT_FREE_PERCENT = 25;
 
 /** An unmeasured context is not low: there is nothing to warn about yet. */
 export function isContextLow(usage: AgentContextUsage | null | undefined): boolean {
-  const remaining = contextRemainingPercent(usage);
-  return remaining !== null && parseInt(remaining, 10) < LOW_CONTEXT_FREE_PERCENT;
+  const free = contextFreePercent(usage);
+  return free !== null && free < LOW_CONTEXT_FREE_PERCENT;
 }
 
 /** Stable line below the prompt, shared by the welcome and debate screens. */

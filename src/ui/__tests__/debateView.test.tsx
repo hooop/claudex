@@ -618,6 +618,21 @@ describe("DebateView — full-screen viewport", () => {
     t.app.unmount();
   });
 
+  it("shows the model line when only Codex runs low", async () => {
+    const t = mount();
+    await vi.waitFor(() => expect(t.agents.claude.pending).toBe(true));
+    t.agents.claude.complete("First view.\n<<CONTINUE>>");
+    await vi.waitFor(() => expect(t.agents.codex.pending).toBe(true));
+    t.chunks.length = 0;
+
+    t.agents.codex.emitContext(180_000, 200_000);
+
+    await vi.waitFor(() => {
+      const output = t.chunks.join("").replace(ANSI_SEQUENCE, "");
+      expect(output).toContain("fake-model · ctx — + fake-model · ctx 10% free");
+    });
+    t.app.unmount();
+  });
 });
 
 describe("DebateView — mouse reporting", () => {
