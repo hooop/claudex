@@ -102,9 +102,6 @@ export function DebateView(props: {
   } = props;
   const { stdout, write } = useStdout();
 
-  const { columns, rows: terminalRows } = useTerminalSize();
-  // The view provides the visibility context to its children, so it reads its own here.
-  const visible = !isTooSmall(columns, terminalRows);
   const [transcriptLines, setTranscriptLines] = useState<readonly TranscriptLine[]>(INITIAL_TRANSCRIPT_LINES);
   const [scrollOffset, setScrollOffset] = useState(0);
   const [selection, setSelection] = useState<Drag | null>(null);
@@ -151,6 +148,11 @@ export function DebateView(props: {
     if (next === null) draggingRef.current = false;
     setSelection(next);
   }, []);
+
+  // A resize moves every cell, so a selection would no longer cover its text.
+  const { columns, rows: terminalRows } = useTerminalSize(() => updateSelection(null));
+  // The view provides the visibility context to its children, so it reads its own here.
+  const visible = !isTooSmall(columns, terminalRows);
 
   const flash = useCallback((text: string) => {
     if (noticeTimer.current) clearTimeout(noticeTimer.current);
@@ -216,10 +218,6 @@ export function DebateView(props: {
     return () => setMouseReporting(stdout, false);
   }, [stdout]);
 
-  // A resize moves every cell, so a selection would no longer cover its text.
-  useEffect(() => {
-    updateSelection(null);
-  }, [columns, terminalRows, updateSelection]);
 
   useEffect(() => {
     // The width getter is read per line, so a resize applies to new output

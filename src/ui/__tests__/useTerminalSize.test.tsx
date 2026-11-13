@@ -75,6 +75,24 @@ describe("useTerminalSize", () => {
     expect(terminal.stdout.listenerCount("resize")).toBe(before);
   });
 
+  it("calls onResize before the new size is rendered", async () => {
+    const terminal = fakeTerminal(100, 30);
+    const seen: string[] = [];
+    function Watcher() {
+      const { columns, rows } = useTerminalSize(() => seen.push(`resize while showing ${shown}`));
+      const shown = `${columns}x${rows}`;
+      return <Text>{shown}</Text>;
+    }
+    const app = render(<Watcher />, { debug: true, patchConsole: false, stdout: terminal.stdout as never });
+    unmount = () => app.unmount();
+    await settle();
+    terminal.stdout.rows = 40;
+    terminal.stdout.emit("resize");
+    await settle();
+    expect(seen).toEqual(["resize while showing 100x30"]);
+    expect(lastWrite(terminal)).toContain("100x40");
+  });
+
   it("runs before listeners registered earlier, such as Ink's own", async () => {
     const terminal = fakeTerminal(100, 30);
     const earlier = () => {};

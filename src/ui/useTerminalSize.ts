@@ -1,5 +1,5 @@
 import { useStdout } from "ink";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export interface TerminalSize {
   columns: number;
@@ -15,13 +15,21 @@ function sizeOf(stdout: NodeJS.WriteStream | undefined): TerminalSize {
  * the size must read it here: Ink's own resize handler only lays out the
  * existing tree again, so a component that reads `stdout.rows` during render
  * keeps the old size until something else happens to re-render it.
+ *
+ * `onResize` runs inside the resize event, before the new size is set, so
+ * state it clears (a selection, for one) is gone from the first frame drawn
+ * at the new size rather than one frame later.
  */
-export function useTerminalSize(): TerminalSize {
+export function useTerminalSize(onResize?: () => void): TerminalSize {
   const { stdout } = useStdout();
   const [size, setSize] = useState(() => sizeOf(stdout));
+  const onResizeRef = useRef(onResize);
+  useEffect(() => {
+    onResizeRef.current = onResize;
+  });
 
   useEffect(() => {
-    const onResize = () => {
+    const update = () => {
       const next = sizeOf(stdout);
       // Same values keep the same object, so an unchanged size costs no render.
       setSize((current) =>
@@ -30,11 +38,15 @@ export function useTerminalSize(): TerminalSize {
     };
     // Ink registered its listener when it mounted. Running first makes React
     // commit the new size before Ink computes the frame for it.
-    stdout.prependListener("resize", onResize);
+    const onTerminalResize = () => {
+      onResizeRef.current?.();
+      update();
+    };
+    stdout.prependListener("resize", onTerminalResize);
     // A resize between the first render and this effect would otherwise be missed.
-    onResize();
+    update();
     return () => {
-      stdout.off("resize", onResize);
+      stdout.off("resize", onTerminalResize);
     };
   }, [stdout]);
 
