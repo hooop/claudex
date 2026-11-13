@@ -1,4 +1,4 @@
-import { useApp, useInput } from "ink";
+import { useApp, useInput, useStdout } from "ink";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ClaudeAgent } from "../agents/claudeAgent.js";
 import { CodexAgent } from "../agents/codexAgent.js";
@@ -18,6 +18,7 @@ import { getProjectStatus } from "../util/projectStatus.js";
 import { WelcomeScreen } from "./components/WelcomeScreen.js";
 import { DebateView } from "./DebateView.js";
 import { DEFAULT_HEADER_ANIMATION, type HeaderAnimationId } from "./headerArt.js";
+import { installResizeClear } from "./terminal.js";
 
 /** A trace failure must never undo the transcript save; it only adds to the notice. */
 async function saveTraceNotice(
@@ -68,6 +69,11 @@ export function Root(props: {
 }) {
   const { cwd, initialTopic, approvedSettings = [] } = props;
   const { exit } = useApp();
+  const { stdout, write } = useStdout();
+
+  // Mounted after Ink registered its own resize listener, so the clean repaint
+  // follows Ink's frame for the new size (see installResizeClear).
+  useEffect(() => installResizeClear(stdout, write), [stdout, write]);
 
   const [status, setStatus] = useState(() => getProjectStatus(cwd));
   const [agents] = useState<Record<AgentId, CodingAgent>>(() => ({

@@ -298,6 +298,19 @@ written are not reflowed (current behaviour, kept); the frame, header, rules and
 are recomputed. If the builder finds the cause is elsewhere, the requirement (G6) stands
 and the finding goes into this document.
 
+Confirmed (2026-11-13, `src/ui/__tests__/terminal.test.tsx`): on a fake TTY with
+`RENDER_OPTIONS`, Ink 7.1.1 writes no full-screen erase when the window grows taller,
+wider or narrower. Taller and wider get an incremental diff against the old frame;
+narrower gets a cursor-relative `eraseLines`, which misses rows the terminal reflowed.
+Only a height decrease is cleared (`shouldClearTerminalForFrame`, `wasOverflowing`).
+`app.clear()` is not a fix: it erases the frame, then `log.sync` keeps log-update's diff
+state on the erased frame, so Ink's next render skips every unchanged line and leaves it
+blank (measured: `ESC[23A` then `ESC[E` skips, the top line never rewritten). The fix
+(`installResizeClear` in `src/ui/terminal.ts`, installed by `Root`) writes `ESC[2J ESC[H`
+through Ink's own `useStdout().write` after Ink's resize listener: Ink erases its frame,
+writes the clear, then repaints its last frame in full from the top and resets its diff
+state to it, so later renders diff against what is really on screen.
+
 ## Where things live
 
 - `src/ui/theme.ts`: the only place for colours, glyphs (`◆ │ ━ ─ ✓ → ? ! ·`), widths
