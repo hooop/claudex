@@ -1,5 +1,6 @@
 import { useInput } from "ink";
 import { useState } from "react";
+import { useScreenVisible } from "../screenVisibility.js";
 import type { AgentId } from "../../types.js";
 import {
   SELECTION_PALETTE_ROWS,
@@ -58,6 +59,7 @@ export function ModelPicker(props: {
   const options = OPTIONS[agent];
   const [selectedIndex, setSelectedIndex] = useState(0);
   const safeSelectedIndex = Math.min(selectedIndex, options.length - 1);
+  const visible = useScreenVisible();
 
   useInput((_input, key) => {
     if (key.escape) {
@@ -76,7 +78,7 @@ export function ModelPicker(props: {
       const option = options[safeSelectedIndex];
       if (option) onSelect(option.value);
     }
-  });
+  }, { isActive: visible });
 
   return (
     <SelectionPalette

@@ -1,6 +1,7 @@
 import { Box, Text, useInput } from "ink";
 import type { PermissionRequest } from "../../types.js";
 import { formatToolInput } from "../../util/formatToolInput.js";
+import { useScreenVisible } from "../screenVisibility.js";
 import { AGENT_STYLE } from "../theme.js";
 
 /**
@@ -16,12 +17,13 @@ export function PermissionModal(props: {
   width: number;
 }) {
   const { request, onDecide, width } = props;
+  const visible = useScreenVisible();
 
   useInput((input) => {
     // Explicit y/n required — Enter alone does not approve
     if (input.toLowerCase() === "y") onDecide(true);
     if (input.toLowerCase() === "n") onDecide(false);
-  });
+  }, { isActive: visible });
 
   const style = AGENT_STYLE[request.agent];
   const preview = formatToolInput(request.input);

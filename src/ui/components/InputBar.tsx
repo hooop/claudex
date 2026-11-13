@@ -1,6 +1,7 @@
 import { Box, Text, useInput, usePaste, useStdout } from "ink";
 import chalk from "chalk";
 import { useEffect, useRef, useState } from "react";
+import { useScreenVisible } from "../screenVisibility.js";
 import { displayWidth } from "../stream/lineBuffer.js";
 import {
   CommandPalette,
@@ -203,7 +204,8 @@ export function InputBar(props: {
   const latestSubmission = useRef<Promise<void> | null>(null);
   const { stdout } = useStdout();
   const width = inputBarWidth(props.width ?? stdout?.columns ?? 80);
-  const inputActive = props.inputActive ?? !props.disabled;
+  const visible = useScreenVisible();
+  const inputActive = visible && (props.inputActive ?? !props.disabled);
   const promptWidth = displayWidth(PROMPT);
   const inner = Math.max(4, width - promptWidth - INPUT_BAR_RIGHT_PADDING);
   const maxRows = Math.max(

@@ -1,5 +1,6 @@
 import { Box, Text, useInput } from "ink";
 import { useMemo, useState } from "react";
+import { useScreenVisible } from "../screenVisibility.js";
 import { markdownToPlainText } from "../markdown.js";
 import { asciiSymbolsForDisplay } from "../stream/asciiSymbols.js";
 import { wrapAll } from "../stream/lineBuffer.js";
@@ -16,6 +17,7 @@ export function DecisionViewer(props: {
 }) {
   const { markdown, width, height, onClose } = props;
   const [offset, setOffset] = useState(0);
+  const visible = useScreenVisible();
   const bodyRows = Math.max(1, height - 2);
   const contentWidth = Math.max(8, width - 2);
   const lines = useMemo(
@@ -43,7 +45,7 @@ export function DecisionViewer(props: {
       const delta = key.pageUp ? -bodyRows : bodyRows;
       setOffset((current) => Math.max(0, Math.min(maximumOffset, current + delta)));
     }
-  });
+  }, { isActive: visible });
 
   const first = lines.length === 0 ? 0 : visibleOffset + 1;
   const last = Math.min(lines.length, visibleOffset + bodyRows);
