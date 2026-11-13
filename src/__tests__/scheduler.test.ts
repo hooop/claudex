@@ -612,6 +612,8 @@ describe("Scheduler", () => {
       const synthesis = agents.codex.sends[1];
       expect(synthesis?.message).toBe(SYNTHESIS_PROMPT);
       expect(synthesis?.options.instructions).toBe(CONSENSUS_INSTRUCTIONS("Codex", "Claude"));
+
+      await bounded.shutdown();
     });
 
     it("should trigger synthesis after consensus", async () => {
@@ -727,14 +729,14 @@ describe("Scheduler", () => {
       }
     });
 
-    it("should not repeat the debate rules when retrying an answer that lacked a marker", async () => {
+    it("should keep the rules out of a retried message", async () => {
       scheduler.start("Test topic");
 
       await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));
       agents.claude.complete("Qualification without a marker");
       await vi.waitFor(() => expect(scheduler.isPaused()).toBe(true));
 
-      // The agent answered, so it read the rules even though the answer is rejected.
+      // The rules travel with the session, never in a delivery, retries included.
       scheduler.resume();
 
       await vi.waitFor(() => expect(agents.claude.getSendCount()).toBe(2));
@@ -742,7 +744,7 @@ describe("Scheduler", () => {
       expect(agents.claude.lastMessage).not.toContain("you are Claude");
     });
 
-    it("should send the debate rules only once to an agent whose turn succeeded", async () => {
+    it("should keep the rules out of later messages", async () => {
       scheduler.start("Test topic");
 
       await vi.waitFor(() => expect(agents.claude.isPending()).toBe(true));

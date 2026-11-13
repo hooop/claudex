@@ -201,7 +201,8 @@ export class ClaudeAgent implements CodingAgent {
           model: this.model,
           cwd: options.cwd,
           resume: this.sessionId,
-          // Custom, not the claude_code preset: an omitted prompt is empty today (limits.md, 2026-11-13).
+          // Custom, not the claude_code preset: an omitted prompt is empty today, and the preset
+          // would add about 2 200 tokens to every call (measured, limits.md, 2026-11-13).
           systemPrompt: { type: "custom", prompt: options.instructions, snapshot: true },
           ...(options.writeAccess
             ? {
